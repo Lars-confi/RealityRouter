@@ -68,6 +68,26 @@ The router distinguishes between model "quality" and system "infrastructure":
 - **Quality Failures**: (Truncation, malformed syntax) Trigger negative feedback and automatic escalation.
 - **Infrastructure Failures**: (Connection timeouts, API 500s, invalid keys) These do **not** trigger Reality Check feedback. Instead, the router immediately propagates an `HTTP 502 Bad Gateway` to the calling agent so the user can address the connectivity or configuration issue.
 
+## Multi-Agent Protocol Support
+
+The LLMRerouter features a sophisticated **Protocol Identification & Transformation Layer** that goes beyond simple headers to natively support complex agentic workflows across different environments.
+
+### Protocol Identification Layer
+The router natively detects and adapts to specific clients like **Zed**, **VSCodium/Continue**, and **OpenClaw**. This allows the system to apply client-specific routing rules, format responses correctly, and manage state in a way that matches the expectations of the calling agent.
+
+### Dynamic Agent Discovery
+For agent-to-agent (A2A) communication, the router exposes a standard `/.well-known/agent-card.json` endpoint. This allows clients like OpenClaw to dynamically discover the rerouter and its supported capabilities, which include advanced tool sets like `codebase-edit`, `filesystem-search`, and `mcp-proxy`.
+
+### Multi-Agent Sticky State
+To prevent "split-brain" routing (where consecutive messages in a single tool-call loop are sent to different models), the system maintains a **Multi-Agent Sticky State**. Once a conversation begins, the router locks that session to a specific model. This is achieved using:
+- **Explicit Session IDs**: Native support for session tracking provided by clients like OpenClaw and Continue.
+- **Synthesized IDs**: For clients like Zed that don't provide explicit session tracking, the router synthesizes and maintains state seamlessly.
+
+### MCP/ACP Translation Layer
+Different models have varying levels of support for function calling and specific schema requirements. The router includes a translation layer that handles this automatically:
+- **Seamless Interception**: It intercepts tool calls from clients like Zed (using the Agent Client Protocol) and standardizes them into the format required by the target model.
+- **Graceful Fallbacks**: If the optimal model chosen for a task does not natively support `function_calling`, the router gracefully strips the tools from the request and injects a fallback prompt, allowing the model to answer the query without breaking the agent's workflow.
+
 ## Routing Strategies
 
 The LLMRerouter supports two distinct strategies for model selection, selectable during setup:

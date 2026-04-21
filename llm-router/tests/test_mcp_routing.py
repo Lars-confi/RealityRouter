@@ -104,6 +104,8 @@ async def test_sticky_routing(mock_router):
     session_str = f"test_agent_{first_msg_str}"
     session_hash = hashlib.sha256(session_str.encode("utf-8")).hexdigest()
     session_id = f"zed_{session_hash}"
+    import src.router.core as rc
+    print("FILE:", rc.__file__)
 
     mock_router.active_sessions[session_id] = "model-tool-supporter"
 

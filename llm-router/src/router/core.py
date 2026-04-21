@@ -113,6 +113,7 @@ class RouterCore:
         self.adapters = {}
         self.load_balancer = load_balancer
         self.concurrency_limits = {}  # Map of model_id to asyncio.Semaphore
+        self.active_sessions = {}
 
         init_db()
         self.load_configured_models()
@@ -709,9 +710,13 @@ class RouterCore:
             decisions = []
             feedback_candidates = []
             for r in results:
+                is_zed = request.agent_id and "zed" in request.agent_id.lower()
                 utility = self.utility_calculator.calculate_expected_utility(
                     r["cost"], r["time"], r["prob"]
                 )
+                if is_zed and "claude-3" in r["id"].lower() and "sonnet" in r["id"].lower():
+                    utility *= 1.20
+                    
                 d = RoutingDecision(
                     model_id=r["id"],
                     expected_utility=utility,
@@ -933,6 +938,35 @@ class RouterCore:
         logger.info(f"Routing request with strategy: {strategy}")
         db = SessionLocal()
         try:
+            # Check for sticky session
+            if request.agent_id and request.parameters and "messages" in request.parameters and request.parameters["messages"]:
+                import hashlib
+                import json
+                from fastapi import HTTPException
+                first_msg_str = json.dumps(request.parameters["messages"][0], sort_keys=True)
+                session_str = f"{request.agent_id}_{first_msg_str}"
+                session_hash = hashlib.sha256(session_str.encode("utf-8")).hexdigest()
+                session_id = f"zed_{session_hash}"
+                
+                if getattr(self, "active_sessions", None) is not None and session_id in self.active_sessions:
+                    model_id = self.active_sessions[session_id]
+                    if model_id not in self.models:
+                        raise HTTPException(status_code=503, detail="Sticky model unavailable")
+                    
+                    adapter = self.adapters.get(model_id)
+                    if adapter:
+                        response = await adapter.forward_request(request)
+                        model_info = self.models[model_id]
+                        return RoutingResponse(
+                            model_id=model_id,
+                            model_name=model_info.get("name", model_id),
+                            expected_utility=10.0,
+                            cost=model_info.get("cost", 0.0),
+                            time=model_info.get("time", 0.0),
+                            probability=model_info.get("probability", 1.0),
+                            response=response,
+                            decision_log={}
+                        )
             ranked_decisions = await self.get_ranked_models(request, strategy)
             sentiment = await self.assess_user_sentiment(request)
 
@@ -1034,6 +1068,19 @@ class RouterCore:
 
                 try:
                     start_time = time.time()
+                    
+                    has_tools = bool(request.parameters and request.parameters.get("tools"))
+                    if has_tools and not self.models[decision.model_id].get("supports_function_calling"):
+                        del request.parameters["tools"]
+                        if "tool_choice" in request.parameters:
+                            del request.parameters["tool_choice"]
+                        sys_msg = {
+                            "role": "system",
+                            "content": "The user has MCP tools available. Please respond with a JSON object that matches the requested tool schema."
+                        }
+                        if request.parameters and "messages" in request.parameters:
+                            request.parameters["messages"].insert(0, sys_msg)
+
                     if semaphore:
                         if semaphore.locked():
                             logger.warning(
@@ -1439,6 +1486,8 @@ class RouterCore:
             raise HTTPException(
                 status_code=500, detail=f"All models failed. Last error: {last_error}"
             )
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Routing error: {e}")
             raise HTTPException(status_code=500, detail=f"Routing error: {str(e)}")

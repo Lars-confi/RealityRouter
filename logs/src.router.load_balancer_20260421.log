@@ -260,3 +260,57 @@
 2026-04-21 07:35:19,255 - src.router.load_balancer - INFO - Added model models/gemini-3-flash-preview (ID: models/gemini-3-flash-preview) to load balancer
 2026-04-21 07:35:19,260 - src.router.load_balancer - INFO - Added model models/gemini-3.1-pro-preview (ID: models/gemini-3.1-pro-preview) to load balancer
 2026-04-21 07:35:19,266 - src.router.load_balancer - INFO - Added model models/gemini-3.1-flash-lite-preview (ID: models/gemini-3.1-flash-lite-preview) to load balancer
+2026-04-21 08:01:00,572 - src.router.load_balancer - INFO - Load balancer initialized
+2026-04-21 08:01:00,638 - src.router.load_balancer - INFO - Added model qwen3-coder:30b (ID: qwen3-coder:30b) to load balancer
+2026-04-21 08:01:00,644 - src.router.load_balancer - INFO - Added model gemma4:31b (ID: gemma4:31b) to load balancer
+2026-04-21 08:01:00,649 - src.router.load_balancer - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (ID: MFDoom/deepseek-coder-v2-tool-calling:16b) to load balancer
+2026-04-21 08:01:00,789 - src.router.load_balancer - INFO - Added model models/gemini-2.5-flash (ID: models/gemini-2.5-flash) to load balancer
+2026-04-21 08:01:00,800 - src.router.load_balancer - INFO - Added model models/gemini-2.0-flash (ID: models/gemini-2.0-flash) to load balancer
+2026-04-21 08:01:00,810 - src.router.load_balancer - INFO - Added model models/gemini-2.0-flash-lite (ID: models/gemini-2.0-flash-lite) to load balancer
+2026-04-21 08:01:00,820 - src.router.load_balancer - INFO - Added model models/gemini-2.5-flash-lite (ID: models/gemini-2.5-flash-lite) to load balancer
+2026-04-21 08:01:00,830 - src.router.load_balancer - INFO - Added model models/gemini-3-flash-preview (ID: models/gemini-3-flash-preview) to load balancer
+2026-04-21 08:01:00,840 - src.router.load_balancer - INFO - Added model models/gemini-3.1-pro-preview (ID: models/gemini-3.1-pro-preview) to load balancer
+2026-04-21 08:01:00,851 - src.router.load_balancer - INFO - Added model models/gemini-3.1-flash-lite-preview (ID: models/gemini-3.1-flash-lite-preview) to load balancer
+2026-04-21 08:30:06,616 - src.router.load_balancer - INFO - Load balancer initialized
+2026-04-21 08:30:06,671 - src.router.load_balancer - INFO - Added model nemotron-3-nano:30b (ID: nemotron-3-nano:30b) to load balancer
+2026-04-21 08:30:06,677 - src.router.load_balancer - INFO - Added model qwen3-coder:30b (ID: qwen3-coder:30b) to load balancer
+2026-04-21 08:30:06,682 - src.router.load_balancer - INFO - Added model gemma4:31b (ID: gemma4:31b) to load balancer
+2026-04-21 08:30:06,688 - src.router.load_balancer - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (ID: MFDoom/deepseek-coder-v2-tool-calling:16b) to load balancer
+2026-04-21 08:30:06,839 - src.router.load_balancer - INFO - Added model models/gemini-2.5-flash (ID: models/gemini-2.5-flash) to load balancer
+2026-04-21 08:30:06,849 - src.router.load_balancer - INFO - Added model models/gemini-2.5-pro (ID: models/gemini-2.5-pro) to load balancer
+2026-04-21 08:30:06,860 - src.router.load_balancer - INFO - Added model models/gemini-2.0-flash (ID: models/gemini-2.0-flash) to load balancer
+2026-04-21 08:30:06,870 - src.router.load_balancer - INFO - Added model models/gemini-3.1-pro-preview (ID: models/gemini-3.1-pro-preview) to load balancer
+2026-04-21 18:09:20,848 - src.router.load_balancer - INFO - Load balancer initialized
+2026-04-21 18:09:20,910 - src.router.load_balancer - INFO - Added model nemotron-3-nano:30b (ID: nemotron-3-nano:30b) to load balancer
+2026-04-21 18:09:20,916 - src.router.load_balancer - INFO - Added model qwen3-coder:30b (ID: qwen3-coder:30b) to load balancer
+2026-04-21 18:09:20,921 - src.router.load_balancer - INFO - Added model gemma4:31b (ID: gemma4:31b) to load balancer
+2026-04-21 18:09:20,926 - src.router.load_balancer - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (ID: MFDoom/deepseek-coder-v2-tool-calling:16b) to load balancer
+2026-04-21 18:09:21,082 - src.router.load_balancer - INFO - Added model models/gemini-2.5-flash (ID: models/gemini-2.5-flash) to load balancer
+2026-04-21 18:09:21,094 - src.router.load_balancer - INFO - Added model models/gemini-2.5-pro (ID: models/gemini-2.5-pro) to load balancer
+2026-04-21 18:09:21,103 - src.router.load_balancer - INFO - Added model models/gemini-2.0-flash (ID: models/gemini-2.0-flash) to load balancer
+2026-04-21 18:09:21,113 - src.router.load_balancer - INFO - Added model models/gemini-3.1-pro-preview (ID: models/gemini-3.1-pro-preview) to load balancer
+2026-04-21 18:10:13,970 - src.router.load_balancer - INFO - Load balancer initialized
+2026-04-21 18:10:14,023 - src.router.load_balancer - INFO - Added model nemotron-3-nano:30b (ID: nemotron-3-nano:30b) to load balancer
+2026-04-21 18:10:14,028 - src.router.load_balancer - INFO - Added model qwen3-coder:30b (ID: qwen3-coder:30b) to load balancer
+2026-04-21 18:10:14,033 - src.router.load_balancer - INFO - Added model gemma4:31b (ID: gemma4:31b) to load balancer
+2026-04-21 18:10:14,039 - src.router.load_balancer - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (ID: MFDoom/deepseek-coder-v2-tool-calling:16b) to load balancer
+2026-04-21 18:10:14,192 - src.router.load_balancer - INFO - Added model models/gemini-2.5-flash (ID: models/gemini-2.5-flash) to load balancer
+2026-04-21 18:10:14,200 - src.router.load_balancer - INFO - Added model models/gemini-2.5-pro (ID: models/gemini-2.5-pro) to load balancer
+2026-04-21 18:10:14,206 - src.router.load_balancer - INFO - Added model models/gemini-2.0-flash (ID: models/gemini-2.0-flash) to load balancer
+2026-04-21 18:10:14,215 - src.router.load_balancer - INFO - Added model models/gemini-3.1-pro-preview (ID: models/gemini-3.1-pro-preview) to load balancer
+2026-04-21 18:22:29,832 - src.router.load_balancer - INFO - Load balancer initialized
+2026-04-21 18:22:29,885 - src.router.load_balancer - INFO - Added model qwen3-coder:30b (ID: qwen3-coder:30b) to load balancer
+2026-04-21 18:22:29,891 - src.router.load_balancer - INFO - Added model gemma4:31b (ID: gemma4:31b) to load balancer
+2026-04-21 18:22:29,896 - src.router.load_balancer - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (ID: MFDoom/deepseek-coder-v2-tool-calling:16b) to load balancer
+2026-04-21 18:22:30,030 - src.router.load_balancer - INFO - Added model models/gemini-2.5-flash (ID: models/gemini-2.5-flash) to load balancer
+2026-04-21 18:22:30,040 - src.router.load_balancer - INFO - Added model models/gemini-2.5-pro (ID: models/gemini-2.5-pro) to load balancer
+2026-04-21 18:22:30,049 - src.router.load_balancer - INFO - Added model models/gemini-2.0-flash (ID: models/gemini-2.0-flash) to load balancer
+2026-04-21 18:22:30,059 - src.router.load_balancer - INFO - Added model models/gemini-3.1-pro-preview (ID: models/gemini-3.1-pro-preview) to load balancer
+2026-04-21 18:53:22,714 - src.router.load_balancer - INFO - Load balancer initialized
+2026-04-21 18:53:22,776 - src.router.load_balancer - INFO - Added model qwen3-coder:30b (ID: qwen3-coder:30b) to load balancer
+2026-04-21 18:53:22,786 - src.router.load_balancer - INFO - Added model gemma4:31b (ID: gemma4:31b) to load balancer
+2026-04-21 18:53:22,792 - src.router.load_balancer - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (ID: MFDoom/deepseek-coder-v2-tool-calling:16b) to load balancer
+2026-04-21 18:53:23,043 - src.router.load_balancer - INFO - Added model models/gemini-2.5-flash (ID: models/gemini-2.5-flash) to load balancer
+2026-04-21 18:53:23,052 - src.router.load_balancer - INFO - Added model models/gemini-2.5-pro (ID: models/gemini-2.5-pro) to load balancer
+2026-04-21 18:53:23,059 - src.router.load_balancer - INFO - Added model models/gemini-2.0-flash (ID: models/gemini-2.0-flash) to load balancer
+2026-04-21 18:53:23,062 - src.router.load_balancer - INFO - Added model models/gemini-3.1-pro-preview (ID: models/gemini-3.1-pro-preview) to load balancer

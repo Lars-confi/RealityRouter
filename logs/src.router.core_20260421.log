@@ -728,3 +728,486 @@ probability
 2026-04-21 07:35:20,631 - src.router.core - INFO - Reality Check calibration for model-tool-supporter: prob=0.8000, id=123
 2026-04-21 07:35:20,631 - src.router.core - INFO - Reality Check calibration for model-no-tools: prob=0.8000, id=123
 2026-04-21 07:35:20,632 - src.router.core - INFO - Reality Check calibration for claude-3-5-sonnet: prob=0.8000, id=123
+2026-04-21 08:01:00,604 - src.router.core - INFO - Auto-discovering models from configured providers...
+2026-04-21 08:01:00,637 - src.router.core - INFO - Ollama discovery: found 4 models
+2026-04-21 08:01:00,638 - src.router.core - INFO - Added model qwen3-coder:30b (qwen3-coder:30b) to router
+2026-04-21 08:01:00,644 - src.router.core - INFO - Added model gemma4:31b (gemma4:31b) to router
+2026-04-21 08:01:00,649 - src.router.core - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (MFDoom/deepseek-coder-v2-tool-calling:16b) to router
+2026-04-21 08:01:00,789 - src.router.core - INFO - Added model models/gemini-2.5-flash (models/gemini-2.5-flash) to router
+2026-04-21 08:01:00,799 - src.router.core - INFO - Added model models/gemini-2.0-flash (models/gemini-2.0-flash) to router
+2026-04-21 08:01:00,810 - src.router.core - INFO - Added model models/gemini-2.0-flash-lite (models/gemini-2.0-flash-lite) to router
+2026-04-21 08:01:00,820 - src.router.core - INFO - Added model models/gemini-2.5-flash-lite (models/gemini-2.5-flash-lite) to router
+2026-04-21 08:01:00,830 - src.router.core - INFO - Added model models/gemini-3-flash-preview (models/gemini-3-flash-preview) to router
+2026-04-21 08:01:00,840 - src.router.core - INFO - Added model models/gemini-3.1-pro-preview (models/gemini-3.1-pro-preview) to router
+2026-04-21 08:01:00,851 - src.router.core - INFO - Added model models/gemini-3.1-flash-lite-preview (models/gemini-3.1-flash-lite-preview) to router
+2026-04-21 08:01:00,859 - src.router.core - INFO - Total configured and discovered models: 10
+2026-04-21 08:01:00,859 - src.router.core - INFO - Router core initialized with Expected Utility Theory framework
+2026-04-21 08:01:24,240 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:01:24,240 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:01:24,975 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=1
+2026-04-21 08:01:25,055 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=2
+2026-04-21 08:01:25,284 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=3
+2026-04-21 08:01:25,490 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=4
+2026-04-21 08:01:25,842 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=5
+2026-04-21 08:01:25,897 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=6
+2026-04-21 08:01:26,206 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=7
+2026-04-21 08:01:26,298 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=8
+2026-04-21 08:01:26,568 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=9
+2026-04-21 08:01:26,665 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=10
+2026-04-21 08:02:23,047 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:08:41,092 - src.router.core - INFO - Updated log entry 1 with RC ID and features
+2026-04-21 08:08:41,092 - src.router.core - INFO - Logged routing decision for model qwen3-coder:30b
+2026-04-21 08:08:41,599 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:08:41,599 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:08:42,229 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=12
+2026-04-21 08:08:42,234 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=11
+2026-04-21 08:08:42,397 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=13
+2026-04-21 08:08:42,947 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=15
+2026-04-21 08:08:42,948 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=14
+2026-04-21 08:08:42,957 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=16
+2026-04-21 08:08:43,356 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=17
+2026-04-21 08:08:43,356 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=18
+2026-04-21 08:08:43,664 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=19
+2026-04-21 08:08:43,706 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=20
+2026-04-21 08:08:46,644 - src.router.core - INFO - Updated log entry 2 with RC ID and features
+2026-04-21 08:08:46,645 - src.router.core - INFO - Logged routing decision for model models/gemini-2.5-flash
+2026-04-21 08:08:46,648 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:08:46,648 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:08:47,064 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=21
+2026-04-21 08:08:47,264 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=22
+2026-04-21 08:08:47,652 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=23
+2026-04-21 08:08:47,652 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=24
+2026-04-21 08:08:47,850 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=25
+2026-04-21 08:08:48,274 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=26
+2026-04-21 08:08:48,313 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=27
+2026-04-21 08:08:48,682 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=28
+2026-04-21 08:08:48,694 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=29
+2026-04-21 08:08:48,914 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=30
+2026-04-21 08:09:14,384 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:09:14,403 - src.router.core - INFO - Updated log entry 2 sentiment to happy
+2026-04-21 08:09:14,404 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 20: happy
+2026-04-21 08:09:14,614 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:09:17,047 - src.router.core - ERROR - Model models/gemini-2.0-flash failed with infrastructure error: Error calling Custom OpenAI API: Error code: 429 - [{'error': {'code': 429, 'message': 'Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.', 'status': 'RESOURCE_EXHAUSTED'}}]
+2026-04-21 08:09:17,075 - src.router.core - INFO - Updated log entry 3 with RC ID and features
+2026-04-21 08:09:17,076 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash
+2026-04-21 08:09:17,076 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash: Error calling Custom OpenAI API: Error code: 429 - [{'error': {'code': 429, 'message': 'Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.', 'status': 'RESOURCE_EXHAUSTED'}}]
+2026-04-21 08:16:08,523 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:16:08,523 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:16:09,067 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=31
+2026-04-21 08:16:09,162 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=32
+2026-04-21 08:16:09,517 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=33
+2026-04-21 08:16:09,652 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=34
+2026-04-21 08:16:09,893 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=35
+2026-04-21 08:16:10,128 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=36
+2026-04-21 08:16:10,438 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=37
+2026-04-21 08:16:10,504 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=38
+2026-04-21 08:16:10,847 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=39
+2026-04-21 08:16:10,946 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=40
+2026-04-21 08:16:20,676 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:16:20,691 - src.router.core - INFO - Updated log entry 3 sentiment to happy
+2026-04-21 08:16:20,691 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 24: happy
+2026-04-21 08:16:20,878 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:16:22,705 - src.router.core - WARNING - Model models/gemini-2.0-flash returned still truncated after continuation response. Escalating...
+2026-04-21 08:16:22,705 - src.router.core - INFO - Sending auto-negative feedback for still truncated after continuation response (decision 39)
+2026-04-21 08:16:23,030 - src.router.core - INFO - Auto-feedback (quality) response: 200
+2026-04-21 08:16:23,059 - src.router.core - INFO - Updated log entry 4 with RC ID and features
+2026-04-21 08:16:23,059 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash
+2026-04-21 08:16:23,441 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:16:23,470 - src.router.core - INFO - Updated log entry 5 with RC ID and features
+2026-04-21 08:16:23,470 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:16:23,470 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:16:23,473 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:16:23,473 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:16:23,859 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=41
+2026-04-21 08:16:24,053 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=42
+2026-04-21 08:16:24,358 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=43
+2026-04-21 08:16:24,410 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=44
+2026-04-21 08:16:24,599 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=45
+2026-04-21 08:16:24,871 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=46
+2026-04-21 08:16:24,993 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=47
+2026-04-21 08:16:25,386 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=48
+2026-04-21 08:16:25,395 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=49
+2026-04-21 08:16:25,614 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=50
+2026-04-21 08:16:28,485 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:16:28,485 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:16:29,074 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=51
+2026-04-21 08:16:30,201 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=52
+2026-04-21 08:16:30,205 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=54
+2026-04-21 08:16:30,205 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=53
+2026-04-21 08:16:30,205 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=55
+2026-04-21 08:16:30,206 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=56
+2026-04-21 08:16:30,206 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=58
+2026-04-21 08:16:30,206 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=57
+2026-04-21 08:16:30,608 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=59
+2026-04-21 08:16:30,635 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=60
+2026-04-21 08:17:06,554 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:17:06,575 - src.router.core - INFO - Updated log entry 5 sentiment to happy
+2026-04-21 08:17:06,575 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 36: happy
+2026-04-21 08:17:06,596 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:17:06,626 - src.router.core - INFO - Updated log entry 1 sentiment to happy
+2026-04-21 08:17:06,627 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 2: happy
+2026-04-21 08:17:06,852 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:17:06,981 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:17:07,162 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:17:07,196 - src.router.core - INFO - Updated log entry 6 with RC ID and features
+2026-04-21 08:17:07,196 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:17:07,196 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:17:07,278 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:17:07,305 - src.router.core - INFO - Updated log entry 7 with RC ID and features
+2026-04-21 08:17:07,305 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:17:07,305 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:17:07,308 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:17:07,309 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:17:07,884 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=61
+2026-04-21 08:17:07,884 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=62
+2026-04-21 08:17:08,295 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=63
+2026-04-21 08:17:08,296 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=64
+2026-04-21 08:17:08,475 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=65
+2026-04-21 08:17:08,766 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=66
+2026-04-21 08:17:08,861 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=67
+2026-04-21 08:17:09,045 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=68
+2026-04-21 08:17:09,254 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=69
+2026-04-21 08:17:09,624 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=70
+2026-04-21 08:17:12,311 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:17:12,311 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:17:12,900 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=71
+2026-04-21 08:17:14,643 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=75
+2026-04-21 08:17:14,644 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=74
+2026-04-21 08:17:14,644 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=72
+2026-04-21 08:17:14,644 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=76
+2026-04-21 08:17:14,645 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=78
+2026-04-21 08:17:14,646 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=73
+2026-04-21 08:17:14,647 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=77
+2026-04-21 08:17:14,716 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=79
+2026-04-21 08:17:15,050 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=80
+2026-04-21 08:17:52,648 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:17:52,669 - src.router.core - INFO - Updated log entry 7 sentiment to happy
+2026-04-21 08:17:52,670 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 55: happy
+2026-04-21 08:17:52,692 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:17:52,702 - src.router.core - INFO - Updated log entry 6 sentiment to happy
+2026-04-21 08:17:52,702 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 43: happy
+2026-04-21 08:17:52,949 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:17:53,080 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:17:53,192 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:17:53,211 - src.router.core - INFO - Updated log entry 8 with RC ID and features
+2026-04-21 08:17:53,212 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:17:53,212 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:17:53,452 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:17:53,470 - src.router.core - INFO - Updated log entry 9 with RC ID and features
+2026-04-21 08:17:53,470 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:17:53,470 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:17:53,472 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:17:53,472 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:17:53,823 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=81
+2026-04-21 08:17:54,024 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=82
+2026-04-21 08:17:54,190 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=83
+2026-04-21 08:17:54,378 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=84
+2026-04-21 08:17:54,680 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=85
+2026-04-21 08:17:54,740 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=86
+2026-04-21 08:17:55,092 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=87
+2026-04-21 08:17:55,099 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=88
+2026-04-21 08:17:55,397 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=89
+2026-04-21 08:17:55,448 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=90
+2026-04-21 08:17:58,475 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:17:58,475 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:17:58,981 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=91
+2026-04-21 08:17:59,801 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=92
+2026-04-21 08:17:59,801 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=93
+2026-04-21 08:17:59,803 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=94
+2026-04-21 08:17:59,804 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=96
+2026-04-21 08:17:59,804 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=95
+2026-04-21 08:18:00,107 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=97
+2026-04-21 08:18:00,175 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=98
+2026-04-21 08:18:00,517 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=99
+2026-04-21 08:18:00,571 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=100
+2026-04-21 08:18:39,224 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:18:39,231 - src.router.core - INFO - Updated log entry 9 sentiment to happy
+2026-04-21 08:18:39,231 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 79: happy
+2026-04-21 08:18:39,241 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:18:39,249 - src.router.core - INFO - Updated log entry 8 sentiment to happy
+2026-04-21 08:18:39,249 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 67: happy
+2026-04-21 08:18:39,633 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:18:39,640 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:18:40,047 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:18:40,066 - src.router.core - INFO - Updated log entry 10 with RC ID and features
+2026-04-21 08:18:40,066 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:18:40,066 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:18:40,067 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:18:40,081 - src.router.core - INFO - Updated log entry 11 with RC ID and features
+2026-04-21 08:18:40,081 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:18:40,081 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:18:40,093 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:18:40,093 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:18:40,760 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=102
+2026-04-21 08:18:40,760 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=101
+2026-04-21 08:18:40,919 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=103
+2026-04-21 08:18:41,272 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=104
+2026-04-21 08:18:41,273 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=105
+2026-04-21 08:18:41,682 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=106
+2026-04-21 08:18:41,725 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=107
+2026-04-21 08:18:42,091 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=108
+2026-04-21 08:18:42,125 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=109
+2026-04-21 08:18:42,319 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=110
+2026-04-21 08:18:53,944 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:18:53,944 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:18:54,324 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=111
+2026-04-21 08:18:54,499 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=112
+2026-04-21 08:18:54,663 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=113
+2026-04-21 08:18:54,993 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=114
+2026-04-21 08:18:55,057 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=115
+2026-04-21 08:18:55,236 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=116
+2026-04-21 08:18:55,608 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=117
+2026-04-21 08:18:55,625 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=118
+2026-04-21 08:18:55,917 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=119
+2026-04-21 08:18:56,015 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=120
+2026-04-21 08:19:26,456 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:19:26,468 - src.router.core - INFO - Updated log entry 11 sentiment to happy
+2026-04-21 08:19:26,468 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 97: happy
+2026-04-21 08:19:26,495 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:19:26,507 - src.router.core - INFO - Updated log entry 10 sentiment to happy
+2026-04-21 08:19:26,508 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 89: happy
+2026-04-21 08:19:26,722 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:19:26,865 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:19:26,997 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:19:27,017 - src.router.core - INFO - Updated log entry 12 with RC ID and features
+2026-04-21 08:19:27,017 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:19:27,018 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:19:27,118 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:19:27,133 - src.router.core - INFO - Updated log entry 13 with RC ID and features
+2026-04-21 08:19:27,134 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:19:27,134 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:19:27,136 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:19:27,136 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:19:27,762 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=122
+2026-04-21 08:19:27,762 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=121
+2026-04-21 08:19:29,094 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=129
+2026-04-21 08:19:29,095 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=125
+2026-04-21 08:19:29,095 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=123
+2026-04-21 08:19:29,098 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=127
+2026-04-21 08:19:29,098 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=126
+2026-04-21 08:19:29,098 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=128
+2026-04-21 08:19:29,099 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=124
+2026-04-21 08:19:29,185 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=130
+2026-04-21 08:19:32,139 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:19:32,140 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:19:32,679 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=131
+2026-04-21 08:19:33,396 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=133
+2026-04-21 08:19:33,396 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=132
+2026-04-21 08:19:33,399 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=135
+2026-04-21 08:19:33,400 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=134
+2026-04-21 08:19:33,906 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=137
+2026-04-21 08:19:33,907 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=136
+2026-04-21 08:19:33,945 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=138
+2026-04-21 08:19:34,316 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=139
+2026-04-21 08:19:34,335 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=140
+2026-04-21 08:20:13,831 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:20:13,840 - src.router.core - INFO - Updated log entry 13 sentiment to happy
+2026-04-21 08:20:13,840 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 111: happy
+2026-04-21 08:20:13,871 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:20:13,877 - src.router.core - INFO - Updated log entry 12 sentiment to happy
+2026-04-21 08:20:13,877 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 102: happy
+2026-04-21 08:20:14,068 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:20:14,198 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:20:14,318 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:20:14,337 - src.router.core - INFO - Updated log entry 14 with RC ID and features
+2026-04-21 08:20:14,337 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:20:14,338 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:20:14,664 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:20:14,684 - src.router.core - INFO - Updated log entry 15 with RC ID and features
+2026-04-21 08:20:14,684 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:20:14,684 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:20:14,687 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:20:14,687 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:20:15,025 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=141
+2026-04-21 08:20:15,220 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=142
+2026-04-21 08:20:15,583 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=143
+2026-04-21 08:20:15,584 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=144
+2026-04-21 08:20:15,890 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=145
+2026-04-21 08:20:15,943 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=146
+2026-04-21 08:20:16,299 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=147
+2026-04-21 08:20:16,388 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=148
+2026-04-21 08:20:16,594 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=149
+2026-04-21 08:20:16,914 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=150
+2026-04-21 08:20:19,690 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:20:19,690 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:20:20,191 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=151
+2026-04-21 08:20:20,413 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=153
+2026-04-21 08:20:20,414 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=152
+2026-04-21 08:20:20,594 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash-lite: prob=0.5000, id=154
+2026-04-21 08:20:20,803 - src.router.core - INFO - Reality Check calibration for models/gemini-3-flash-preview: prob=0.5000, id=155
+2026-04-21 08:20:21,045 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=156
+2026-04-21 08:20:21,423 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=157
+2026-04-21 08:20:21,449 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-flash-lite-preview: prob=0.5000, id=158
+2026-04-21 08:20:21,727 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash-lite: prob=0.5000, id=159
+2026-04-21 08:20:21,807 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=160
+2026-04-21 08:21:02,075 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:21:02,092 - src.router.core - INFO - Updated log entry 15 sentiment to happy
+2026-04-21 08:21:02,092 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 137: happy
+2026-04-21 08:21:02,105 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 08:21:02,114 - src.router.core - INFO - Updated log entry 14 sentiment to happy
+2026-04-21 08:21:02,115 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 122: happy
+2026-04-21 08:21:02,587 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:21:02,646 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 08:21:02,850 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:21:02,877 - src.router.core - INFO - Updated log entry 16 with RC ID and features
+2026-04-21 08:21:02,878 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:21:02,878 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:21:03,031 - src.router.core - ERROR - Model models/gemini-2.0-flash-lite failed with infrastructure error: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:21:03,073 - src.router.core - INFO - Updated log entry 17 with RC ID and features
+2026-04-21 08:21:03,073 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash-lite
+2026-04-21 08:21:03,073 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling models/gemini-2.0-flash-lite: Error calling Custom OpenAI API: Error code: 404 - [{'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash-lite is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}]
+2026-04-21 08:30:06,645 - src.router.core - INFO - Auto-discovering models from configured providers...
+2026-04-21 08:30:06,670 - src.router.core - INFO - Ollama discovery: found 4 models
+2026-04-21 08:30:06,671 - src.router.core - INFO - Added model nemotron-3-nano:30b (nemotron-3-nano:30b) to router
+2026-04-21 08:30:06,677 - src.router.core - INFO - Added model qwen3-coder:30b (qwen3-coder:30b) to router
+2026-04-21 08:30:06,682 - src.router.core - INFO - Added model gemma4:31b (gemma4:31b) to router
+2026-04-21 08:30:06,688 - src.router.core - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (MFDoom/deepseek-coder-v2-tool-calling:16b) to router
+2026-04-21 08:30:06,839 - src.router.core - INFO - Added model models/gemini-2.5-flash (models/gemini-2.5-flash) to router
+2026-04-21 08:30:06,849 - src.router.core - INFO - Added model models/gemini-2.5-pro (models/gemini-2.5-pro) to router
+2026-04-21 08:30:06,860 - src.router.core - INFO - Added model models/gemini-2.0-flash (models/gemini-2.0-flash) to router
+2026-04-21 08:30:06,870 - src.router.core - INFO - Added model models/gemini-3.1-pro-preview (models/gemini-3.1-pro-preview) to router
+2026-04-21 08:30:06,879 - src.router.core - INFO - Total configured and discovered models: 8
+2026-04-21 08:30:06,879 - src.router.core - INFO - Router core initialized with Expected Utility Theory framework
+2026-04-21 08:30:40,751 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:30:40,752 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:30:41,255 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=1
+2026-04-21 08:30:41,355 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=2
+2026-04-21 08:30:41,763 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=3
+2026-04-21 08:30:41,775 - src.router.core - INFO - Reality Check calibration for nemotron-3-nano:30b: prob=0.5000, id=4
+2026-04-21 08:30:41,949 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=5
+2026-04-21 08:30:42,159 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=6
+2026-04-21 08:30:42,481 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=7
+2026-04-21 08:30:42,523 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-pro: prob=0.5000, id=8
+2026-04-21 08:30:59,851 - src.router.core - INFO - Assessed user sentiment: indeterminate (raw output: '')
+2026-04-21 08:31:01,607 - src.router.core - INFO - Updated log entry 1 with RC ID and features
+2026-04-21 08:31:01,607 - src.router.core - INFO - Logged routing decision for model models/gemini-2.5-flash
+2026-04-21 08:31:01,620 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:31:01,621 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:31:02,086 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=9
+2026-04-21 08:31:02,190 - src.router.core - INFO - Reality Check calibration for nemotron-3-nano:30b: prob=0.5000, id=10
+2026-04-21 08:31:02,485 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=11
+2026-04-21 08:31:02,575 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=12
+2026-04-21 08:31:02,858 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=13
+2026-04-21 08:31:02,978 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=14
+2026-04-21 08:31:03,181 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=15
+2026-04-21 08:31:03,575 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-pro: prob=0.5000, id=16
+2026-04-21 08:33:05,537 - src.router.core - INFO - Assessed user sentiment: indeterminate (raw output: '')
+2026-04-21 08:33:09,005 - src.router.core - INFO - Updated log entry 2 with RC ID and features
+2026-04-21 08:33:09,005 - src.router.core - INFO - Logged routing decision for model models/gemini-2.0-flash
+2026-04-21 08:33:44,235 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 08:33:44,236 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 08:33:44,753 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=17
+2026-04-21 08:33:44,855 - src.router.core - INFO - Reality Check calibration for models/gemini-2.0-flash: prob=0.5000, id=18
+2026-04-21 08:33:45,048 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=19
+2026-04-21 08:33:45,365 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-pro: prob=0.5000, id=20
+2026-04-21 08:33:45,415 - src.router.core - INFO - Reality Check calibration for nemotron-3-nano:30b: prob=0.5000, id=21
+2026-04-21 08:33:45,777 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=22
+2026-04-21 08:33:45,789 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=23
+2026-04-21 08:33:46,084 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=24
+2026-04-21 08:35:13,228 - src.router.core - INFO - Assessed user sentiment: indeterminate (raw output: '')
+2026-04-21 08:40:11,069 - src.router.core - INFO - Model nemotron-3-nano:30b truncated output. Attempting continuation 1/2...
+2026-04-21 08:43:10,011 - src.router.core - INFO - Model nemotron-3-nano:30b truncated output. Attempting continuation 2/2...
+2026-04-21 08:44:17,591 - src.router.core - WARNING - Model nemotron-3-nano:30b returned still truncated after continuation response. Escalating...
+2026-04-21 08:44:17,591 - src.router.core - INFO - Sending auto-negative feedback for still truncated after continuation response (decision 21)
+2026-04-21 08:44:17,818 - src.router.core - INFO - Auto-feedback (quality) response: 200
+2026-04-21 08:44:17,845 - src.router.core - INFO - Updated log entry 3 with RC ID and features
+2026-04-21 08:44:17,846 - src.router.core - INFO - Logged routing decision for model nemotron-3-nano:30b
+2026-04-21 08:46:08,697 - src.router.core - WARNING - Model qwen3-coder:30b returned still truncated after continuation response. Escalating...
+2026-04-21 08:46:08,698 - src.router.core - INFO - Sending auto-negative feedback for still truncated after continuation response (decision 17)
+2026-04-21 08:46:09,106 - src.router.core - INFO - Auto-feedback (quality) response: 200
+2026-04-21 08:46:09,131 - src.router.core - INFO - Updated log entry 4 with RC ID and features
+2026-04-21 08:46:09,131 - src.router.core - INFO - Logged routing decision for model qwen3-coder:30b
+2026-04-21 08:58:03,893 - src.router.core - WARNING - Model gemma4:31b returned empty response. Escalating...
+2026-04-21 08:58:03,893 - src.router.core - INFO - Sending auto-negative feedback for empty response (decision 23)
+2026-04-21 08:58:04,111 - src.router.core - INFO - Auto-feedback (quality) response: 200
+2026-04-21 08:58:04,120 - src.router.core - INFO - Updated log entry 5 with RC ID and features
+2026-04-21 08:58:04,120 - src.router.core - INFO - Logged routing decision for model gemma4:31b
+2026-04-21 08:59:11,093 - src.router.core - INFO - Updated log entry 6 with RC ID and features
+2026-04-21 08:59:11,093 - src.router.core - INFO - Logged routing decision for model MFDoom/deepseek-coder-v2-tool-calling:16b
+2026-04-21 18:09:20,878 - src.router.core - INFO - Auto-discovering models from configured providers...
+2026-04-21 18:09:20,910 - src.router.core - INFO - Ollama discovery: found 4 models
+2026-04-21 18:09:20,910 - src.router.core - INFO - Added model nemotron-3-nano:30b (nemotron-3-nano:30b) to router
+2026-04-21 18:09:20,916 - src.router.core - INFO - Added model qwen3-coder:30b (qwen3-coder:30b) to router
+2026-04-21 18:09:20,921 - src.router.core - INFO - Added model gemma4:31b (gemma4:31b) to router
+2026-04-21 18:09:20,926 - src.router.core - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (MFDoom/deepseek-coder-v2-tool-calling:16b) to router
+2026-04-21 18:09:21,082 - src.router.core - INFO - Added model models/gemini-2.5-flash (models/gemini-2.5-flash) to router
+2026-04-21 18:09:21,093 - src.router.core - INFO - Added model models/gemini-2.5-pro (models/gemini-2.5-pro) to router
+2026-04-21 18:09:21,103 - src.router.core - INFO - Added model models/gemini-2.0-flash (models/gemini-2.0-flash) to router
+2026-04-21 18:09:21,113 - src.router.core - INFO - Added model models/gemini-3.1-pro-preview (models/gemini-3.1-pro-preview) to router
+2026-04-21 18:09:21,122 - src.router.core - INFO - Total configured and discovered models: 8
+2026-04-21 18:09:21,123 - src.router.core - INFO - Router core initialized with Expected Utility Theory framework
+2026-04-21 18:10:13,999 - src.router.core - INFO - Auto-discovering models from configured providers...
+2026-04-21 18:10:14,022 - src.router.core - INFO - Ollama discovery: found 4 models
+2026-04-21 18:10:14,023 - src.router.core - INFO - Added model nemotron-3-nano:30b (nemotron-3-nano:30b) to router
+2026-04-21 18:10:14,028 - src.router.core - INFO - Added model qwen3-coder:30b (qwen3-coder:30b) to router
+2026-04-21 18:10:14,033 - src.router.core - INFO - Added model gemma4:31b (gemma4:31b) to router
+2026-04-21 18:10:14,039 - src.router.core - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (MFDoom/deepseek-coder-v2-tool-calling:16b) to router
+2026-04-21 18:10:14,192 - src.router.core - INFO - Added model models/gemini-2.5-flash (models/gemini-2.5-flash) to router
+2026-04-21 18:10:14,200 - src.router.core - INFO - Added model models/gemini-2.5-pro (models/gemini-2.5-pro) to router
+2026-04-21 18:10:14,206 - src.router.core - INFO - Added model models/gemini-2.0-flash (models/gemini-2.0-flash) to router
+2026-04-21 18:10:14,215 - src.router.core - INFO - Added model models/gemini-3.1-pro-preview (models/gemini-3.1-pro-preview) to router
+2026-04-21 18:10:14,225 - src.router.core - INFO - Total configured and discovered models: 8
+2026-04-21 18:10:14,225 - src.router.core - INFO - Router core initialized with Expected Utility Theory framework
+2026-04-21 18:11:04,257 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 18:11:04,259 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 18:11:04,657 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=1
+2026-04-21 18:11:04,825 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-pro: prob=0.5000, id=2
+2026-04-21 18:11:05,167 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=3
+2026-04-21 18:11:05,189 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=4
+2026-04-21 18:11:05,387 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=5
+2026-04-21 18:11:05,777 - src.router.core - INFO - Reality Check calibration for nemotron-3-nano:30b: prob=0.5000, id=6
+2026-04-21 18:11:05,794 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=7
+2026-04-21 18:11:30,055 - src.router.core - INFO - Assessed user sentiment: indeterminate (raw output: '')
+2026-04-21 18:22:29,860 - src.router.core - INFO - Auto-discovering models from configured providers...
+2026-04-21 18:22:29,885 - src.router.core - INFO - Ollama discovery: found 4 models
+2026-04-21 18:22:29,885 - src.router.core - INFO - Added model qwen3-coder:30b (qwen3-coder:30b) to router
+2026-04-21 18:22:29,891 - src.router.core - INFO - Added model gemma4:31b (gemma4:31b) to router
+2026-04-21 18:22:29,896 - src.router.core - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (MFDoom/deepseek-coder-v2-tool-calling:16b) to router
+2026-04-21 18:22:30,029 - src.router.core - INFO - Added model models/gemini-2.5-flash (models/gemini-2.5-flash) to router
+2026-04-21 18:22:30,039 - src.router.core - INFO - Added model models/gemini-2.5-pro (models/gemini-2.5-pro) to router
+2026-04-21 18:22:30,049 - src.router.core - INFO - Added model models/gemini-2.0-flash (models/gemini-2.0-flash) to router
+2026-04-21 18:22:30,059 - src.router.core - INFO - Added model models/gemini-3.1-pro-preview (models/gemini-3.1-pro-preview) to router
+2026-04-21 18:22:30,067 - src.router.core - INFO - Total configured and discovered models: 7
+2026-04-21 18:22:30,067 - src.router.core - INFO - Router core initialized with Expected Utility Theory framework
+2026-04-21 18:22:39,362 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 18:22:39,363 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 18:22:39,775 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=1
+2026-04-21 18:22:39,970 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=2
+2026-04-21 18:22:40,152 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=3
+2026-04-21 18:22:40,461 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=4
+2026-04-21 18:22:40,535 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-pro: prob=0.5000, id=5
+2026-04-21 18:22:40,972 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=6
+2026-04-21 18:23:18,052 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 18:38:15,067 - src.router.core - ERROR - Model qwen3-coder:30b failed with infrastructure error: Error calling Custom OpenAI API: Connection error.
+2026-04-21 18:38:15,137 - src.router.core - INFO - Updated log entry 1 with RC ID and features
+2026-04-21 18:38:15,137 - src.router.core - INFO - Logged routing decision for model qwen3-coder:30b
+2026-04-21 18:38:15,138 - src.router.core - ERROR - Chat error: 502: Infrastructure error calling qwen3-coder:30b: Error calling Custom OpenAI API: Connection error.
+2026-04-21 18:53:22,732 - src.router.core - INFO - Auto-discovering models from configured providers...
+2026-04-21 18:53:22,774 - src.router.core - INFO - Ollama discovery: found 4 models
+2026-04-21 18:53:22,775 - src.router.core - INFO - Added model qwen3-coder:30b (qwen3-coder:30b) to router
+2026-04-21 18:53:22,786 - src.router.core - INFO - Added model gemma4:31b (gemma4:31b) to router
+2026-04-21 18:53:22,792 - src.router.core - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (MFDoom/deepseek-coder-v2-tool-calling:16b) to router
+2026-04-21 18:53:23,042 - src.router.core - INFO - Added model models/gemini-2.5-flash (models/gemini-2.5-flash) to router
+2026-04-21 18:53:23,052 - src.router.core - INFO - Added model models/gemini-2.5-pro (models/gemini-2.5-pro) to router
+2026-04-21 18:53:23,058 - src.router.core - INFO - Added model models/gemini-2.0-flash (models/gemini-2.0-flash) to router
+2026-04-21 18:53:23,062 - src.router.core - INFO - Added model models/gemini-3.1-pro-preview (models/gemini-3.1-pro-preview) to router
+2026-04-21 18:53:23,065 - src.router.core - INFO - Total configured and discovered models: 7
+2026-04-21 18:53:23,065 - src.router.core - INFO - Router core initialized with Expected Utility Theory framework
+2026-04-21 18:53:28,116 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 18:53:28,116 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 18:53:28,745 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-pro: prob=0.5000, id=1
+2026-04-21 18:53:28,943 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=2
+2026-04-21 18:53:29,127 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=3
+2026-04-21 18:53:29,307 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=4
+2026-04-21 18:53:29,492 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=5
+2026-04-21 18:53:29,735 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=6
+2026-04-21 18:53:42,166 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 18:54:40,082 - src.router.core - INFO - Model qwen3-coder:30b truncated output. Attempting continuation 1/2...
+2026-04-21 18:54:57,463 - src.router.core - WARNING - Model qwen3-coder:30b returned still truncated after continuation response. Escalating...
+2026-04-21 18:54:57,463 - src.router.core - INFO - Sending auto-negative feedback for still truncated after continuation response (decision 3)
+2026-04-21 18:54:57,736 - src.router.core - INFO - Auto-feedback (quality) response: 200
+2026-04-21 18:54:57,756 - src.router.core - INFO - Updated log entry 1 with RC ID and features
+2026-04-21 18:54:57,756 - src.router.core - INFO - Logged routing decision for model qwen3-coder:30b
+2026-04-21 18:58:44,856 - src.router.core - INFO - Model gemma4:31b truncated output. Attempting continuation 1/2...
+2026-04-21 19:00:07,420 - src.router.core - INFO - Updated log entry 2 with RC ID and features
+2026-04-21 19:00:07,420 - src.router.core - INFO - Logged routing decision for model gemma4:31b

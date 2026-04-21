@@ -262,6 +262,7 @@ async def get_metrics_summary(db: Session = Depends(get_db)):
                     "total_tokens": 0,
                     "total_time": 0.0,
                     "success_count": 0,
+                    "total_utility": 0.0,
                 }
             model_stats[model_id]["requests"] += 1
             model_stats[model_id]["total_cost"] += log.cost
@@ -271,6 +272,7 @@ async def get_metrics_summary(db: Session = Depends(get_db)):
             )
             model_stats[model_id]["total_tokens"] += log.total_tokens or 0
             model_stats[model_id]["total_time"] += log.time
+            model_stats[model_id]["total_utility"] += log.expected_utility or 0.0
             if log.success:
                 model_stats[model_id]["success_count"] += 1
 
@@ -440,8 +442,12 @@ async def get_dashboard():
             .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
             .stat { background: #2c2c2c; padding: 15px; border-radius: 8px; border-left: 4px solid #3498db; }
             .stat-savings { border-left-color: #2ecc71; background: #1a3b2b; }
+            .stat-expense { border-left-color: #e67e22; background: #3a2518; }
+            .stat-potential { border-left-color: #e74c3c; background: #3b1a1a; }
             .stat-value { font-size: 1.8em; font-weight: bold; color: #5dade2; margin: 5px 0; }
             .stat-savings .stat-value { color: #2ecc71; }
+            .stat-expense .stat-value { color: #e67e22; }
+            .stat-potential .stat-value { color: #e74c3c; }
             .stat-label { color: #95a5a6; font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px; }
             table { width: 100%; border-collapse: collapse; margin-top: 15px; }
             th, td { text-align: left; padding: 12px 15px; border-bottom: 1px solid #333; }
@@ -492,7 +498,7 @@ async def get_dashboard():
                                 <th>Total Cost</th>
                                 <th>Avg Latency</th>
                                 <th>Throughput (Tokens)</th>
-                                <th>Reliability</th>
+                                <th>Avg Utility</th>
                             </tr>
                         </thead>
                         <tbody id="models-body"></tbody>
@@ -515,8 +521,8 @@ async def get_dashboard():
                     const savings = Math.max(0, data.potential_max_cost - data.total_cost);
                     summaryGrid.innerHTML = `
                         <div class="stat"><div class="stat-label">Total Volume</div><div class="stat-value">${data.total_requests.toLocaleString()}</div><div class="stat-label">Requests</div></div>
-                        <div class="stat"><div class="stat-label">Accrued Expense</div><div class="stat-value">$${data.total_cost.toFixed(4)}</div><div class="stat-label">Actual USD</div></div>
-                        <div class="stat"><div class="stat-label">Potential Cost</div><div class="stat-value" style="color: #e74c3c;">$${data.potential_max_cost.toFixed(4)}</div><div class="stat-label">Max Model USD</div></div>
+                        <div class="stat stat-expense"><div class="stat-label">Accrued Expense</div><div class="stat-value">$${data.total_cost.toFixed(4)}</div><div class="stat-label">Actual USD</div></div>
+                        <div class="stat stat-potential"><div class="stat-label">Potential Cost</div><div class="stat-value">$${data.potential_max_cost.toFixed(4)}</div><div class="stat-label">Max Model USD</div></div>
                         <div class="stat stat-savings"><div class="stat-label">Total Savings</div><div class="stat-value">$${savings.toFixed(4)}</div><div class="stat-label">Retained Value</div></div>
                         <div class="stat"><div class="stat-label">Success Density</div><div class="stat-value">${(data.success_rate * 100).toFixed(1)}%</div><div class="stat-label">Operational</div></div>
                     `;
@@ -546,7 +552,7 @@ async def get_dashboard():
 
                     for (const [id, stats] of sortedModels) {
                         const row = document.createElement('tr');
-                        const rate = ((stats.success_count / stats.requests) * 100).toFixed(1);
+                        const avgUtil = stats.requests ? (stats.total_utility / stats.requests) : 0;
                         row.innerHTML = `
                             <td>
                                 <div style="font-weight: 600; color: #ecf0f1;">${stats.name || id}</div>
@@ -560,7 +566,7 @@ async def get_dashboard():
                                 <div style="font-size: 0.85em;">C: ${stats.total_completion_tokens.toLocaleString()}</div>
                             </td>
                             <td>
-                                <span class="badge ${rate > 90 ? 'badge-success' : ''}">${rate}%</span>
+                                <span class="badge badge-success">${avgUtil.toFixed(4)}</span>
                             </td>
                         `;
                         modelsBody.appendChild(row);

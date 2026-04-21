@@ -98,25 +98,27 @@ class PricingManager:
             return None, None, False, None, None
 
         model_name_lower = model_name.lower()
+        if model_name_lower.startswith("models/"):
+            model_name_lower = model_name_lower[7:]
 
         # 1. Try exact direct match
         if model_name_lower in self.prices:
-            return self._extract_costs(self.prices[model_name_lower])
+            return self._extract_costs(self.prices[model_name_lower], model_name_lower)
 
         # 2. Try matching with common provider prefixes (e.g., 'gemini/gemini-1.5-flash')
         for key in self.prices.keys():
             if key.endswith(f"/{model_name_lower}"):
-                return self._extract_costs(self.prices[key])
+                return self._extract_costs(self.prices[key], model_name_lower)
 
         # 3. Try finding a key that contains the model name
         for key in self.prices.keys():
             if model_name_lower in key:
-                return self._extract_costs(self.prices[key])
+                return self._extract_costs(self.prices[key], model_name_lower)
 
         return None, None, False, None, None
 
     def _extract_costs(
-        self, price_data: dict
+        self, price_data: dict, model_name: str = ""
     ) -> Tuple[Optional[float], Optional[float], bool, Optional[int], Optional[int]]:
         """Convert cost per token to cost per 1k tokens, also extract limits"""
         try:
@@ -128,7 +130,14 @@ class PricingManager:
             c_cost = (output_cost * 1000) if output_cost is not None else None
             supports_function_calling = price_data.get(
                 "supports_function_calling", False
-            )
+            ) or price_data.get("supports_tool_choice", False)
+
+            if not supports_function_calling and (
+                "gemini-1.5" in model_name
+                or "gemini-2.0" in model_name
+                or "gemini-2.5" in model_name
+            ):
+                supports_function_calling = True
             max_input_tokens = price_data.get("max_input_tokens")
             max_tokens = price_data.get("max_tokens")
 

@@ -79,8 +79,3 @@ class HuggingFaceAdapter(BaseAdapter):
             "type": "chat",
             "description": "Hugging Face inference endpoints"
         }
-    
-    def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
-        # Assuming inference API costs
-        return 0.0
-

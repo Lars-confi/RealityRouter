@@ -1211,3 +1211,84 @@ probability
 2026-04-21 18:58:44,856 - src.router.core - INFO - Model gemma4:31b truncated output. Attempting continuation 1/2...
 2026-04-21 19:00:07,420 - src.router.core - INFO - Updated log entry 2 with RC ID and features
 2026-04-21 19:00:07,420 - src.router.core - INFO - Logged routing decision for model gemma4:31b
+2026-04-21 20:01:43,002 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 20:01:43,002 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 20:01:43,599 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=7
+2026-04-21 20:01:43,825 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-pro: prob=0.5000, id=8
+2026-04-21 20:01:43,995 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=9
+2026-04-21 20:01:44,249 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=10
+2026-04-21 20:01:44,443 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=11
+2026-04-21 20:01:44,607 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=12
+2026-04-21 20:01:50,835 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 20:01:50,844 - src.router.core - INFO - Updated log entry 2 sentiment to happy
+2026-04-21 20:01:50,845 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 6: happy
+2026-04-21 20:01:51,092 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 20:02:20,930 - src.router.core - INFO - Updated log entry 3 with RC ID and features
+2026-04-21 20:02:20,930 - src.router.core - INFO - Logged routing decision for model MFDoom/deepseek-coder-v2-tool-calling:16b
+2026-04-21 20:04:04,386 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 20:04:04,387 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 20:04:05,197 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=13
+2026-04-21 20:04:05,439 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=14
+2026-04-21 20:04:05,650 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=15
+2026-04-21 20:04:05,849 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-pro: prob=0.5000, id=16
+2026-04-21 20:04:06,011 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=17
+2026-04-21 20:04:06,195 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=18
+2026-04-21 20:04:18,721 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 20:04:18,738 - src.router.core - INFO - Updated log entry 3 sentiment to happy
+2026-04-21 20:04:18,738 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 7: happy
+2026-04-21 20:04:19,001 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 20:04:21,602 - src.router.core - INFO - Updated log entry 4 with RC ID and features
+2026-04-21 20:04:21,602 - src.router.core - INFO - Logged routing decision for model models/gemini-2.5-flash
+2026-04-21 22:35:28,852 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 22:35:28,852 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 22:35:29,248 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-pro: prob=0.5000, id=19
+2026-04-21 22:35:29,428 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=20
+2026-04-21 22:35:29,620 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=21
+2026-04-21 22:35:29,794 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=22
+2026-04-21 22:35:29,996 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=23
+2026-04-21 22:35:30,215 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=24
+2026-04-21 22:35:42,527 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 22:35:42,542 - src.router.core - INFO - Updated log entry 4 sentiment to happy
+2026-04-21 22:35:42,543 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 14: happy
+2026-04-21 22:35:42,729 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 22:35:53,673 - src.router.core - INFO - Updated log entry 5 with RC ID and features
+2026-04-21 22:35:53,673 - src.router.core - INFO - Logged routing decision for model models/gemini-2.5-flash
+2026-04-21 22:36:22,445 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 22:36:22,446 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 22:36:27,498 - src.router.core - ERROR - Reality Check call failed for qwen3-coder:30b: 
+2026-04-21 22:36:27,499 - src.router.core - ERROR - Reality Check call failed for gemma4:31b: 
+2026-04-21 22:36:27,499 - src.router.core - ERROR - Reality Check call failed for MFDoom/deepseek-coder-v2-tool-calling:16b: 
+2026-04-21 22:36:27,500 - src.router.core - ERROR - Reality Check call failed for models/gemini-2.5-flash: 
+2026-04-21 22:36:27,502 - src.router.core - ERROR - Reality Check call failed for models/gemini-2.5-pro: 
+2026-04-21 22:36:27,503 - src.router.core - ERROR - Reality Check call failed for models/gemini-3.1-pro-preview: 
+2026-04-21 22:37:48,759 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 22:37:48,772 - src.router.core - INFO - Updated log entry 5 sentiment to happy
+2026-04-21 22:37:48,773 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 24: happy
+2026-04-21 22:37:51,790 - src.router.core - ERROR - Error sending feedback to Reality Check: 
+2026-04-21 22:38:03,220 - src.router.core - INFO - Updated log entry 6 with RC ID and features
+2026-04-21 22:38:03,221 - src.router.core - INFO - Logged routing decision for model models/gemini-2.5-flash
+2026-04-21 22:41:30,602 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 22:41:30,602 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 22:41:30,958 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=25
+2026-04-21 22:41:31,163 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=26
+2026-04-21 22:41:31,353 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=27
+2026-04-21 22:41:31,545 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-pro: prob=0.5000, id=28
+2026-04-21 22:41:31,741 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=29
+2026-04-21 22:41:31,903 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=30
+2026-04-21 22:41:32,307 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 22:41:39,705 - src.router.core - INFO - Updated log entry 7 with RC ID and features
+2026-04-21 22:41:39,705 - src.router.core - INFO - Logged routing decision for model models/gemini-2.5-flash
+2026-04-21 22:42:07,014 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 22:42:07,014 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 22:42:07,372 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-flash: prob=0.5000, id=31
+2026-04-21 22:42:07,561 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=32
+2026-04-21 22:42:07,756 - src.router.core - INFO - Reality Check calibration for models/gemini-2.5-pro: prob=0.5000, id=33
+2026-04-21 22:42:07,928 - src.router.core - INFO - Reality Check calibration for models/gemini-3.1-pro-preview: prob=0.5000, id=34
+2026-04-21 22:42:08,095 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=35
+2026-04-21 22:42:08,268 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=36
+2026-04-21 22:43:41,063 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 22:43:41,073 - src.router.core - INFO - Updated log entry 7 sentiment to happy
+2026-04-21 22:43:41,073 - src.router.core - INFO - Sending feedback to Reality Check (expected_utility) for decision 30: happy
+2026-04-21 22:43:41,295 - src.router.core - INFO - Reality Check feedback response: 200
+2026-04-21 22:43:43,656 - src.router.core - INFO - Updated log entry 8 with RC ID and features
+2026-04-21 22:43:43,657 - src.router.core - INFO - Logged routing decision for model models/gemini-2.5-flash

@@ -39,26 +39,48 @@ class GeminiAdapter(BaseAdapter):
             }
             
             if request.parameters:
-                if "messages" in request.parameters:
-                    params["messages"] = request.parameters["messages"]
-                    temp_params = dict(request.parameters)
+                temp_params = dict(request.parameters)
+                if "messages" in temp_params:
+                    params["messages"] = temp_params["messages"]
                     del temp_params["messages"]
-                    params.update(temp_params)
-                else:
-                    params.update(request.parameters)
+                
+                # NEVER overwrite the mapped model name
+                if "model" in temp_params:
+                    del temp_params["model"]
+                
+                params.update(temp_params)
+                
+                # Filter out parameters known to cause 400 errors on Gemini
+                unsupported_params = ["frequency_penalty", "presence_penalty"]
+                for p in unsupported_params:
+                    if p in params:
+                        del params[p]
                     
             response = await self.client.chat.completions.create(**params)
             
-            return {
-                "text": response.choices[0].message.content,
+            message = response.choices[0].message
+            result = {
+                "text": message.content,
                 "usage": {
                     "prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
                     "completion_tokens": response.usage.completion_tokens if response.usage else 0,
-                    "total_tokens": response.usage.total_tokens if response.usage else 0
+                    "total_tokens": response.usage.total_tokens if response.usage else 0,
                 },
                 "model": response.model,
-                "finish_reason": response.choices[0].finish_reason
+                "finish_reason": response.choices[0].finish_reason,
             }
+            if hasattr(message, "tool_calls") and message.tool_calls:
+                result["tool_calls"] = []
+                for tc in message.tool_calls:
+                    result["tool_calls"].append({
+                        "id": tc.id,
+                        "type": tc.type,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    })
+            return result
         except Exception as e:
             raise Exception(f"Error calling Gemini API: {str(e)}")
             
@@ -69,9 +91,3 @@ class GeminiAdapter(BaseAdapter):
             "type": "chat",
             "description": "Google Gemini models via OpenAI compatibility"
         }
-        
-    def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
-        # Cost estimate based on Gemini 1.5 Flash pricing
-        input_cost = (input_tokens / 1_000_000) * 0.35
-        output_cost = (output_tokens / 1_000_000) * 1.05
-        return input_cost + output_cost

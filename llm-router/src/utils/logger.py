@@ -42,7 +42,7 @@ def setup_logger(name, level=logging.INFO):
             os.makedirs(log_dir)
 
         log_file = os.path.join(
-            log_dir, f"{name}_{datetime.now().strftime('%Y%m%d')}.log"
+            log_dir, f"llm_router_{datetime.now().strftime('%Y%m%d')}.log"
         )
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(level)

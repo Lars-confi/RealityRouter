@@ -3,6 +3,7 @@ Load balancer for LLM routing system
 """
 
 import logging
+import time
 from typing import Dict, List, Optional
 
 from sqlalchemy import func
@@ -24,6 +25,7 @@ class LoadBalancer:
         self.request_counts = {}
         self.success_counts = {}
         self.total_requests = 0
+        self.circuit_breakers = {}  # Track circuit breaker states per model
 
         logger.info("Load balancer initialized")
 
@@ -44,6 +46,14 @@ class LoadBalancer:
         }
         self.request_counts[model_id] = 0
         self.success_counts[model_id] = 0
+        self.circuit_breakers[model_id] = {
+            "state": "CLOSED",  # CLOSED, OPEN, HALF_OPEN
+            "failure_count": 0,
+            "last_failure_time": None,
+            "last_attempt_time": None,
+            "reset_timeout": 30.0,  # seconds before trying to reset
+            "failure_threshold": 5,  # number of failures to trip circuit
+        }
         logger.info(f"Added model {model_name} (ID: {model_id}) to load balancer")
 
     def get_next_model_round_robin(self) -> Optional[str]:
@@ -174,6 +184,79 @@ class LoadBalancer:
         else:
             logger.warning(f"Unknown strategy {strategy}, using round-robin")
             return self.get_next_model_round_robin()
+
+    def is_model_healthy(self, model_id: str) -> bool:
+        """
+        Check if a model is healthy (not circuit-tripped)
+
+        Args:
+            model_id: Model identifier
+
+        Returns:
+            True if model is healthy, False if circuit is open
+        """
+        if model_id not in self.circuit_breakers:
+            return True  # No circuit breaker, assume healthy
+
+        cb = self.circuit_breakers[model_id]
+
+        if cb["state"] == "CLOSED":
+            return True
+        elif cb["state"] == "OPEN":
+            # Check if timeout has passed to attempt reset
+            if cb["last_failure_time"] is not None:
+                elapsed = time.time() - cb["last_failure_time"]
+                if elapsed >= cb["reset_timeout"]:
+                    cb["state"] = "HALF_OPEN"
+                    logger.info(
+                        f"Model {model_id} circuit breaker half-opened after {cb['reset_timeout']}s"
+                    )
+                return False
+            return False
+        elif cb["state"] == "HALF_OPEN":
+            # In half-open state, allow one request to test
+            return True
+        return True
+
+    def record_failure(self, model_id: str):
+        """
+        Record a failure for a model and update circuit breaker state
+
+        Args:
+            model_id: Model identifier
+        """
+        if model_id not in self.circuit_breakers:
+            return
+
+        cb = self.circuit_breakers[model_id]
+        cb["last_failure_time"] = time.time()
+        cb["failure_count"] += 1
+        cb["last_attempt_time"] = time.time()
+
+        if cb["failure_count"] >= cb["failure_threshold"]:
+            cb["state"] = "OPEN"
+            logger.warning(
+                f"Model {model_id} circuit breaker OPEN after {cb['failure_count']} failures"
+            )
+
+    def record_success(self, model_id: str):
+        """
+        Record a success for a model and reset circuit breaker
+
+        Args:
+            model_id: Model identifier
+        """
+        if model_id not in self.circuit_breakers:
+            return
+
+        cb = self.circuit_breakers[model_id]
+        cb["last_attempt_time"] = time.time()
+
+        if cb["state"] == "OPEN":
+            # Reset circuit breaker after successful test
+            cb["state"] = "CLOSED"
+            cb["failure_count"] = 0
+            logger.info(f"Model {model_id} circuit breaker reset to CLOSED")
 
     def update_metrics(self, model_id: str, success: bool = True):
         """

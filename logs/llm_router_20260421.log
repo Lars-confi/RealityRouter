@@ -1,0 +1,54 @@
+2026-04-21 22:50:46,568 - src.router.load_balancer - INFO - Load balancer initialized
+2026-04-21 22:50:46,582 - src.utils.pricing - INFO - Loaded model prices from local cache.
+2026-04-21 22:50:46,586 - src.config.settings - INFO - Loaded 0 models from configuration
+2026-04-21 22:50:46,586 - src.router.core - INFO - Auto-discovering models from configured providers...
+2026-04-21 22:50:46,605 - src.router.core - INFO - Ollama discovery: found 4 models
+2026-04-21 22:50:46,606 - src.router.core - INFO - Added model qwen3-coder:30b (qwen3-coder:30b) to router
+2026-04-21 22:50:46,606 - src.router.load_balancer - INFO - Added model qwen3-coder:30b (ID: qwen3-coder:30b) to load balancer
+2026-04-21 22:50:46,609 - src.router.core - INFO - Added model gemma4:31b (gemma4:31b) to router
+2026-04-21 22:50:46,609 - src.router.load_balancer - INFO - Added model gemma4:31b (ID: gemma4:31b) to load balancer
+2026-04-21 22:50:46,613 - src.router.core - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (MFDoom/deepseek-coder-v2-tool-calling:16b) to router
+2026-04-21 22:50:46,613 - src.router.load_balancer - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (ID: MFDoom/deepseek-coder-v2-tool-calling:16b) to load balancer
+2026-04-21 22:50:51,755 - src.router.core - INFO - Added model models/gemini-2.5-flash (models/gemini-2.5-flash) to router
+2026-04-21 22:50:51,755 - src.router.load_balancer - INFO - Added model models/gemini-2.5-flash (ID: models/gemini-2.5-flash) to load balancer
+2026-04-21 22:50:51,760 - src.router.core - INFO - Added model models/gemini-2.5-pro (models/gemini-2.5-pro) to router
+2026-04-21 22:50:51,760 - src.router.load_balancer - INFO - Added model models/gemini-2.5-pro (ID: models/gemini-2.5-pro) to load balancer
+2026-04-21 22:50:51,765 - src.router.core - INFO - Added model models/gemini-2.0-flash (models/gemini-2.0-flash) to router
+2026-04-21 22:50:51,765 - src.router.load_balancer - INFO - Added model models/gemini-2.0-flash (ID: models/gemini-2.0-flash) to load balancer
+2026-04-21 22:50:51,770 - src.router.core - INFO - Added model models/gemini-3.1-pro-preview (models/gemini-3.1-pro-preview) to router
+2026-04-21 22:50:51,770 - src.router.load_balancer - INFO - Added model models/gemini-3.1-pro-preview (ID: models/gemini-3.1-pro-preview) to load balancer
+2026-04-21 22:50:51,776 - src.router.core - INFO - Total configured and discovered models: 7
+2026-04-21 22:50:51,776 - src.router.core - INFO - Router core initialized with Expected Utility Theory framework
+2026-04-21 22:51:26,217 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 22:51:26,217 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 22:51:31,276 - src.router.core - ERROR - Reality Check call failed for qwen3-coder:30b: 
+2026-04-21 22:51:31,276 - src.router.core - ERROR - Reality Check call failed for gemma4:31b: 
+2026-04-21 22:51:31,277 - src.router.core - ERROR - Reality Check call failed for MFDoom/deepseek-coder-v2-tool-calling:16b: 
+2026-04-21 22:51:31,277 - src.router.core - ERROR - Reality Check call failed for models/gemini-2.5-flash: 
+2026-04-21 22:51:31,278 - src.router.core - ERROR - Reality Check call failed for models/gemini-2.5-pro: 
+2026-04-21 22:51:31,278 - src.router.core - ERROR - Reality Check call failed for models/gemini-3.1-pro-preview: 
+2026-04-21 22:51:46,581 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 22:52:33,705 - src.router.core - ERROR - Error logging routing decision: cannot access local variable 'json' where it is not associated with a value
+2026-04-21 22:58:23,461 - src.router.load_balancer - INFO - Load balancer initialized
+2026-04-21 22:58:23,483 - src.utils.pricing - INFO - Loaded model prices from local cache.
+2026-04-21 22:58:23,489 - src.config.settings - INFO - Loaded 0 models from configuration
+2026-04-21 22:58:23,489 - src.router.core - INFO - Auto-discovering models from configured providers...
+2026-04-21 22:58:23,856 - src.router.core - INFO - Ollama discovery: found 4 models
+2026-04-21 22:58:23,857 - src.router.core - INFO - Added model qwen3-coder:30b (qwen3-coder:30b) to router
+2026-04-21 22:58:23,858 - src.router.load_balancer - INFO - Added model qwen3-coder:30b (ID: qwen3-coder:30b) to load balancer
+2026-04-21 22:58:23,869 - src.router.core - INFO - Added model gemma4:31b (gemma4:31b) to router
+2026-04-21 22:58:23,869 - src.router.load_balancer - INFO - Added model gemma4:31b (ID: gemma4:31b) to load balancer
+2026-04-21 22:58:23,879 - src.router.core - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (MFDoom/deepseek-coder-v2-tool-calling:16b) to router
+2026-04-21 22:58:23,879 - src.router.load_balancer - INFO - Added model MFDoom/deepseek-coder-v2-tool-calling:16b (ID: MFDoom/deepseek-coder-v2-tool-calling:16b) to load balancer
+2026-04-21 22:58:31,085 - src.router.core - WARNING - Auto-discovery failed for Gemini: The read operation timed out
+2026-04-21 22:58:31,087 - src.router.core - INFO - Total configured and discovered models: 3
+2026-04-21 22:58:31,087 - src.router.core - INFO - Router core initialized with Expected Utility Theory framework
+2026-04-21 22:59:17,137 - src.router.core - INFO - Routing request with strategy: expected_utility
+2026-04-21 22:59:17,138 - src.router.core - INFO - Ranking models using strategy: expected_utility
+2026-04-21 22:59:17,639 - src.router.core - INFO - Reality Check calibration for qwen3-coder:30b: prob=0.5000, id=1
+2026-04-21 22:59:17,869 - src.router.core - INFO - Reality Check calibration for gemma4:31b: prob=0.5000, id=2
+2026-04-21 22:59:17,954 - src.router.core - INFO - Reality Check calibration for MFDoom/deepseek-coder-v2-tool-calling:16b: prob=0.5000, id=3
+2026-04-21 22:59:21,967 - src.router.core - INFO - Assessed user sentiment: happy (raw output: 'happy')
+2026-04-21 23:01:41,260 - src.router.metrics - INFO - Logged routing decision for model qwen3-coder:30b
+2026-04-21 23:01:41,281 - src.router.core - INFO - Updated log entry 1 with RC ID and features
+2026-04-21 23:01:41,282 - src.router.core - INFO - Logged routing decision for model qwen3-coder:30b

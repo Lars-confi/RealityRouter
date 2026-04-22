@@ -24,3 +24,9 @@
 2026-04-21 18:38:15,103 - src.router.metrics - INFO - Logged routing decision for model qwen3-coder:30b
 2026-04-21 18:54:57,749 - src.router.metrics - INFO - Logged routing decision for model qwen3-coder:30b
 2026-04-21 19:00:07,394 - src.router.metrics - INFO - Logged routing decision for model gemma4:31b
+2026-04-21 20:02:20,921 - src.router.metrics - INFO - Logged routing decision for model MFDoom/deepseek-coder-v2-tool-calling:16b
+2026-04-21 20:04:21,592 - src.router.metrics - INFO - Logged routing decision for model models/gemini-2.5-flash
+2026-04-21 22:35:53,661 - src.router.metrics - INFO - Logged routing decision for model models/gemini-2.5-flash
+2026-04-21 22:38:03,191 - src.router.metrics - INFO - Logged routing decision for model models/gemini-2.5-flash
+2026-04-21 22:41:39,691 - src.router.metrics - INFO - Logged routing decision for model models/gemini-2.5-flash
+2026-04-21 22:43:43,626 - src.router.metrics - INFO - Logged routing decision for model models/gemini-2.5-flash

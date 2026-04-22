@@ -130,7 +130,13 @@ class RouterCore:
             for model_id, model_info in config_models.items():
                 if model_id in settings.disabled_models:
                     continue
-                p_cost, c_cost, supports_function_calling, max_input_tokens, max_tokens = pricing_manager.get_model_pricing(model_id)
+                (
+                    p_cost,
+                    c_cost,
+                    supports_function_calling,
+                    max_input_tokens,
+                    max_tokens,
+                ) = pricing_manager.get_model_pricing(model_id)
                 self.add_model(
                     model_id=model_id,
                     model_name=model_info.get("name", model_id),
@@ -148,18 +154,49 @@ class RouterCore:
                     if model_info.get("completion_cost") is not None
                     else c_cost,
                     supports_function_calling=supports_function_calling,
-                    max_input_tokens=model_info.get("max_input_tokens") or max_input_tokens,
+                    max_input_tokens=model_info.get("max_input_tokens")
+                    or max_input_tokens,
                     max_tokens=model_info.get("max_tokens") or max_tokens,
                 )
                 self.load_balancer.add_model(
                     model_id, model_info.get("name", model_id), 1.0
                 )
-                self.adapters[model_id] = GenericOpenAIAdapter(
-                    model_name=model_info.get("name", model_id),
-                    api_key=model_info.get("api_key"),
-                    base_url=model_info.get("base_url"),
-                    default_model=model_info.get("model", model_id),
-                )
+                base_url = model_info.get("base_url", "")
+                if "anthropic" in base_url or "anthropic" in model_id.lower():
+                    from src.adapters.anthropic_adapter import AnthropicAdapter
+
+                    self.adapters[model_id] = AnthropicAdapter(
+                        api_key=model_info.get("api_key")
+                    )
+                elif "gemini" in model_id.lower() or "generativelanguage" in base_url:
+                    from src.adapters.gemini_adapter import GeminiAdapter
+
+                    self.adapters[model_id] = GeminiAdapter(
+                        api_key=model_info.get("api_key")
+                    )
+                elif "cohere" in model_id.lower():
+                    from src.adapters.cohere_adapter import CohereAdapter
+
+                    self.adapters[model_id] = CohereAdapter(
+                        api_key=model_info.get("api_key")
+                    )
+                elif "api.openai.com" in base_url:
+                    from src.adapters.openai_adapter import OpenAIAdapter
+
+                    self.adapters[model_id] = OpenAIAdapter(
+                        api_key=model_info.get("api_key")
+                    )
+                else:
+                    self.adapters[model_id] = GenericOpenAIAdapter(
+                        model_name=model_info.get("name", model_id),
+                        api_key=model_info.get("api_key"),
+                        base_url=model_info.get("base_url"),
+                        default_model=model_info.get("model", model_id),
+                    )
+                if hasattr(self.adapters[model_id], "default_model"):
+                    self.adapters[model_id].default_model = model_info.get(
+                        "model", model_id
+                    )
 
             # Auto-Discover Dynamic Models
             if not settings.enable_auto_discovery:
@@ -192,12 +229,28 @@ class RouterCore:
                                     and name not in self.models
                                     and name not in settings.disabled_models
                                 ):
-                                    p_cost, c_cost, supports_function_calling, max_input_tokens, max_tokens = pricing_manager.get_model_pricing(name)
+                                    (
+                                        p_cost,
+                                        c_cost,
+                                        supports_function_calling,
+                                        max_input_tokens,
+                                        max_tokens,
+                                    ) = pricing_manager.get_model_pricing(name)
                                     if p_cost is None:
                                         p_cost, c_cost = 0.0, 0.0
                                     cost = (p_cost + c_cost) / 2
                                     self.add_model(
-                                        name, name, cost, 1.0, 0.8, None, p_cost, c_cost, supports_function_calling, max_input_tokens, max_tokens
+                                        name,
+                                        name,
+                                        cost,
+                                        1.0,
+                                        0.8,
+                                        None,
+                                        p_cost,
+                                        c_cost,
+                                        supports_function_calling,
+                                        max_input_tokens,
+                                        max_tokens,
                                     )
                                     self.load_balancer.add_model(name, name, 1.0)
                                     base = (
@@ -222,12 +275,28 @@ class RouterCore:
                                     and name not in self.models
                                     and name not in settings.disabled_models
                                 ):
-                                    p_cost, c_cost, supports_function_calling, max_input_tokens, max_tokens = pricing_manager.get_model_pricing(name)
+                                    (
+                                        p_cost,
+                                        c_cost,
+                                        supports_function_calling,
+                                        max_input_tokens,
+                                        max_tokens,
+                                    ) = pricing_manager.get_model_pricing(name)
                                     if p_cost is None:
                                         p_cost, c_cost = 0.001, 0.001
                                     cost = (p_cost + c_cost) / 2
                                     self.add_model(
-                                        name, name, cost, 1.0, 0.8, None, p_cost, c_cost, supports_function_calling, max_input_tokens, max_tokens
+                                        name,
+                                        name,
+                                        cost,
+                                        1.0,
+                                        0.8,
+                                        None,
+                                        p_cost,
+                                        c_cost,
+                                        supports_function_calling,
+                                        max_input_tokens,
+                                        max_tokens,
                                     )
                                     self.load_balancer.add_model(name, name, 1.0)
                                     base = (
@@ -260,7 +329,13 @@ class RouterCore:
                                     name not in self.models
                                     and name not in settings.disabled_models
                                 ):
-                                    p_cost, c_cost, supports_function_calling, max_input_tokens, max_tokens = pricing_manager.get_model_pricing(name)
+                                    (
+                                        p_cost,
+                                        c_cost,
+                                        supports_function_calling,
+                                        max_input_tokens,
+                                        max_tokens,
+                                    ) = pricing_manager.get_model_pricing(name)
                                     if p_cost is None:
                                         if "gpt-4o-mini" in name:
                                             p_cost, c_cost = 0.00015, 0.0006
@@ -274,15 +349,29 @@ class RouterCore:
                                             p_cost, c_cost = 0.002, 0.002
                                     cost = (p_cost + c_cost) / 2
                                     self.add_model(
-                                        name, name, cost, 0.5, 0.9, None, p_cost, c_cost, supports_function_calling, max_input_tokens, max_tokens
+                                        name,
+                                        name,
+                                        cost,
+                                        0.5,
+                                        0.9,
+                                        None,
+                                        p_cost,
+                                        c_cost,
+                                        supports_function_calling,
+                                        max_input_tokens,
+                                        max_tokens,
                                     )
                                     self.load_balancer.add_model(name, name, 1.0)
-                                    self.adapters[name] = GenericOpenAIAdapter(
-                                        name,
-                                        openai_key,
-                                        "https://api.openai.com/v1",
-                                        name,
+                                    from src.adapters.openai_adapter import (
+                                        OpenAIAdapter,
                                     )
+
+                                    self.adapters[name] = OpenAIAdapter(
+                                        api_key=openai_key
+                                    )
+                                    # Override model name explicitly
+                                    self.adapters[name].model_name = name
+                                    self.adapters[name].default_model = name
                 except Exception as e:
                     logger.warning(f"Auto-discovery failed for OpenAI: {e}")
 
@@ -307,7 +396,13 @@ class RouterCore:
                                     name not in self.models
                                     and name not in settings.disabled_models
                                 ):
-                                    p_cost, c_cost, supports_function_calling, max_input_tokens, max_tokens = pricing_manager.get_model_pricing(name)
+                                    (
+                                        p_cost,
+                                        c_cost,
+                                        supports_function_calling,
+                                        max_input_tokens,
+                                        max_tokens,
+                                    ) = pricing_manager.get_model_pricing(name)
                                     if p_cost is None:
                                         if "flash" in name:
                                             p_cost, c_cost = 0.000075, 0.0003
@@ -330,12 +425,15 @@ class RouterCore:
                                         max_tokens,
                                     )
                                     self.load_balancer.add_model(name, name, 1.0)
-                                    self.adapters[name] = GenericOpenAIAdapter(
-                                        name,
-                                        gemini_key,
-                                        "https://generativelanguage.googleapis.com/v1beta/openai",
-                                        name,
+                                    from src.adapters.gemini_adapter import (
+                                        GeminiAdapter,
                                     )
+
+                                    self.adapters[name] = GeminiAdapter(
+                                        api_key=gemini_key
+                                    )
+                                    self.adapters[name].model_name = name
+                                    self.adapters[name].default_model = name
                 except Exception as e:
                     logger.warning(f"Auto-discovery failed for Gemini: {e}")
 
@@ -560,13 +658,12 @@ class RouterCore:
 
         return features
 
-
     def _estimate_tokens(self, request: RoutingRequest) -> int:
         """Estimate the number of tokens in the request."""
         total_chars = 0
         if request.query:
             total_chars += len(request.query)
-            
+
         if request.parameters and "messages" in request.parameters:
             for msg in request.parameters["messages"]:
                 content = msg.get("content", "")
@@ -576,7 +673,7 @@ class RouterCore:
                     for item in content:
                         if isinstance(item, dict) and item.get("type") == "text":
                             total_chars += len(item.get("text", ""))
-                            
+
         return total_chars // 4
 
     async def get_ranked_models(
@@ -623,10 +720,16 @@ class RouterCore:
             for mid, info in self.models.items():
                 if tools_requested and not info.get("supports_function_calling", False):
                     continue
-                    
-                if info.get("max_input_tokens") and total_estimated_tokens > info["max_input_tokens"]:
+
+                if (
+                    info.get("max_input_tokens")
+                    and total_estimated_tokens > info["max_input_tokens"]
+                ):
                     continue
-                if info.get("max_tokens") and total_estimated_tokens > info["max_tokens"]:
+                if (
+                    info.get("max_tokens")
+                    and total_estimated_tokens > info["max_tokens"]
+                ):
                     continue
                 recent = (
                     db.query(RoutingLog)
@@ -714,9 +817,13 @@ class RouterCore:
                 utility = self.utility_calculator.calculate_expected_utility(
                     r["cost"], r["time"], r["prob"]
                 )
-                if is_zed and "claude-3" in r["id"].lower() and "sonnet" in r["id"].lower():
+                if (
+                    is_zed
+                    and "claude-3" in r["id"].lower()
+                    and "sonnet" in r["id"].lower()
+                ):
                     utility *= 1.20
-                    
+
                 d = RoutingDecision(
                     model_id=r["id"],
                     expected_utility=utility,
@@ -776,6 +883,18 @@ class RouterCore:
                 if response.get("usage")
                 else 0
             )
+
+            # Fallback estimation for missing completion tokens
+            if (
+                completion_tokens == 0
+                and response
+                and (response.get("text") or response.get("tool_calls"))
+            ):
+                text_len = len(response.get("text") or "")
+                tool_calls_len = len(json.dumps(response.get("tool_calls") or []))
+                completion_tokens = max(1, int((text_len + tool_calls_len) / 4))
+                if prompt_tokens > 0:
+                    total_tokens = prompt_tokens + completion_tokens
 
             req_payload = json.dumps(request.parameters) if request.parameters else "{}"
             resp_payload = json.dumps(response) if response else "{}"
@@ -939,20 +1058,34 @@ class RouterCore:
         db = SessionLocal()
         try:
             # Check for sticky session
-            if request.agent_id and request.parameters and "messages" in request.parameters and request.parameters["messages"]:
+            if (
+                request.agent_id
+                and request.parameters
+                and "messages" in request.parameters
+                and request.parameters["messages"]
+            ):
                 import hashlib
                 import json
+
                 from fastapi import HTTPException
-                first_msg_str = json.dumps(request.parameters["messages"][0], sort_keys=True)
+
+                first_msg_str = json.dumps(
+                    request.parameters["messages"][0], sort_keys=True
+                )
                 session_str = f"{request.agent_id}_{first_msg_str}"
                 session_hash = hashlib.sha256(session_str.encode("utf-8")).hexdigest()
                 session_id = f"zed_{session_hash}"
-                
-                if getattr(self, "active_sessions", None) is not None and session_id in self.active_sessions:
+
+                if (
+                    getattr(self, "active_sessions", None) is not None
+                    and session_id in self.active_sessions
+                ):
                     model_id = self.active_sessions[session_id]
                     if model_id not in self.models:
-                        raise HTTPException(status_code=503, detail="Sticky model unavailable")
-                    
+                        raise HTTPException(
+                            status_code=503, detail="Sticky model unavailable"
+                        )
+
                     adapter = self.adapters.get(model_id)
                     if adapter:
                         response = await adapter.forward_request(request)
@@ -965,7 +1098,7 @@ class RouterCore:
                             time=model_info.get("time", 0.0),
                             probability=model_info.get("probability", 1.0),
                             response=response,
-                            decision_log={}
+                            decision_log={},
                         )
             ranked_decisions = await self.get_ranked_models(request, strategy)
             sentiment = await self.assess_user_sentiment(request)
@@ -1068,20 +1201,33 @@ class RouterCore:
 
                 try:
                     start_time = time.time()
-                    
-                    has_tools = bool(request.parameters and request.parameters.get("tools"))
-                    if has_tools and not self.models[decision.model_id].get("supports_function_calling"):
+
+                    has_tools = bool(
+                        request.parameters and request.parameters.get("tools")
+                    )
+                    if has_tools and not self.models[decision.model_id].get(
+                        "supports_function_calling"
+                    ):
                         import json
+
                         tools_schema = request.parameters["tools"]
                         del request.parameters["tools"]
                         if "tool_choice" in request.parameters:
                             del request.parameters["tool_choice"]
                         sys_msg = {
                             "role": "system",
-                            "content": "The user has MCP tools available. Please respond with a JSON object that matches the following requested tool schemas:\n" + json.dumps(tools_schema, indent=2)
+                            "content": "The user has MCP tools available. Please respond with a JSON object that matches the following requested tool schemas:\n"
+                            + json.dumps(tools_schema, indent=2),
                         }
                         if request.parameters and "messages" in request.parameters:
                             request.parameters["messages"].insert(0, sys_msg)
+
+                    # Check if model is healthy (circuit breaker check)
+                    if not self.load_balancer.is_model_healthy(decision.model_id):
+                        logger.warning(
+                            f"Model {decision.model_id} is currently circuit-tripped. Skipping..."
+                        )
+                        continue
 
                     if semaphore:
                         if semaphore.locked():
@@ -1099,6 +1245,12 @@ class RouterCore:
                     # --- RESPONSE VALIDATION & SMART CONTINUATION ---
                     resp_text = str(response.get("text", "")).strip()
                     finish_reason = response.get("finish_reason")
+
+                    # Record success/failure in circuit breaker
+                    if response:
+                        self.load_balancer.record_success(decision.model_id)
+                    else:
+                        self.load_balancer.record_failure(decision.model_id)
 
                     # Attempt continuation if truncated
                     continuation_count = 0
@@ -1162,9 +1314,11 @@ class RouterCore:
                             continuation_count += 1
                         except Exception as ce:
                             logger.error(f"Continuation failed: {ce}")
+                            # Record failure for circuit breaker
+                            self.load_balancer.record_failure(decision.model_id)
                             break
 
-                    is_empty = not resp_text
+                    is_empty = not resp_text and not response.get("tool_calls")
                     is_truncated = finish_reason == "length"
 
                     # --- FORMATTING & SYNTAX VALIDATION ---
@@ -1373,6 +1527,14 @@ class RouterCore:
                             request, decision.model_id, response
                         )
                         try:
+                            # 0. Fast local confidence check
+                            local_confidence = final_features.get("confidence", 0.0)
+                            if local_confidence > 0.90:
+                                logger.info(
+                                    f"Model {decision.model_id} high confidence ({local_confidence:.4f}). Stopping tiered assessment early."
+                                )
+                                break
+
                             # 1. Calculate p_actual via /decide endpoint (Expert Mode)
                             async with httpx.AsyncClient() as client:
                                 # Post-hoc assessment for tiered rerouting always uses LLM_REROUTING_URL
@@ -1440,8 +1602,65 @@ class RouterCore:
                                     logger.warning(
                                         f"Post-hoc assessment failed with {rc_resp.status_code}: {error_body}"
                                     )
+                                    # Fallback to local confidence if RC fails
+                                    if local_confidence > 0:
+                                        p_actual = local_confidence
+                                        current_idx = ranked_decisions.index(decision)
+                                        if current_idx < len(ranked_decisions) - 1:
+                                            next_best = ranked_decisions[
+                                                current_idx + 1
+                                            ]
+                                            u_stop = (
+                                                p_actual
+                                                * self.utility_calculator.reward
+                                            )
+                                            eu_continue = self.utility_calculator.calculate_expected_utility(
+                                                next_best.cost, next_best.time, 1.0
+                                            )
+                                            if u_stop < eu_continue:
+                                                logger.info(
+                                                    f"Escalating via local fallback from {decision.model_id}: {u_stop:.4f} < {eu_continue:.4f}"
+                                                )
+                                                self.log_routing_decision(
+                                                    decision.model_copy(
+                                                        update={"time": elapsed_time}
+                                                    ),
+                                                    request,
+                                                    response,
+                                                    db,
+                                                    routing_context,
+                                                    final_features,
+                                                    None,
+                                                )
+                                                continue
                         except Exception as ae:
                             logger.error(f"Assessment escalation check failed: {ae}")
+                            # Fallback to local confidence on exception
+                            if final_features.get("confidence", 0.0) > 0:
+                                p_actual = final_features.get("confidence")
+                                current_idx = ranked_decisions.index(decision)
+                                if current_idx < len(ranked_decisions) - 1:
+                                    next_best = ranked_decisions[current_idx + 1]
+                                    u_stop = p_actual * self.utility_calculator.reward
+                                    eu_continue = self.utility_calculator.calculate_expected_utility(
+                                        next_best.cost, next_best.time, 1.0
+                                    )
+                                    if u_stop < eu_continue:
+                                        logger.info(
+                                            f"Escalating via exception fallback from {decision.model_id}: {u_stop:.4f} < {eu_continue:.4f}"
+                                        )
+                                        self.log_routing_decision(
+                                            decision.model_copy(
+                                                update={"time": elapsed_time}
+                                            ),
+                                            request,
+                                            response,
+                                            db,
+                                            routing_context,
+                                            final_features,
+                                            None,
+                                        )
+                                        continue
 
                     final_features = self.extract_coding_features(
                         request, decision.model_id, response
@@ -1573,6 +1792,7 @@ async def chat_completions(
                         "message": {
                             "role": "assistant",
                             "content": response.response.get("text", ""),
+                            **({"tool_calls": response.response.get("tool_calls")} if response.response.get("tool_calls") else {})
                         },
                         "logprobs": None,
                         "finish_reason": response.response.get("finish_reason", "stop"),

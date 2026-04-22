@@ -115,23 +115,3 @@ class CohereAdapter(BaseAdapter):
             "type": "chat",
             "description": "Cohere's Command R+ model for advanced reasoning tasks",
         }
-
-    def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
-        """
-        Estimate cost for Cohere model usage
-
-        Args:
-            input_tokens: Number of input tokens
-            output_tokens: Number of output tokens
-
-        Returns:
-            Estimated cost in USD
-        """
-        # Cost per million tokens (as of April 2024)
-        input_cost_per_million = 1.00  # $1.00 per million tokens
-        output_cost_per_million = 2.00  # $2.00 per million tokens
-
-        input_cost = (input_tokens / 1_000_000) * input_cost_per_million
-        output_cost = (output_tokens / 1_000_000) * output_cost_per_million
-
-        return input_cost + output_cost

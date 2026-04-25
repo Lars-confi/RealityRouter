@@ -2034,13 +2034,13 @@ async def chat_completions(
         params["stream"] = False
         if "stream_options" in params:
             del params["stream_options"]
-        response = await router_core.route_request(
-            RoutingRequest(query=query_text, agent_id=agent_id, parameters=params),
-            strategy=strategy,
-        )
-        created_time = int(datetime.datetime.now().timestamp())
 
         if not is_streaming:
+            response = await router_core.route_request(
+                RoutingRequest(query=query_text, agent_id=agent_id, parameters=params),
+                strategy=strategy,
+            )
+            created_time = int(datetime.datetime.now().timestamp())
             return {
                 "id": f"chatcmpl-{response.model_id}",
                 "object": "chat.completion",
@@ -2052,9 +2052,7 @@ async def chat_completions(
                         "index": 0,
                         "message": {
                             "role": "assistant",
-                            "content": response.response.get("text", "")
-                            if response.response.get("text")
-                            else None,
+                            "content": response.response.get("text", ""),
                             **(
                                 {"tool_calls": response.response.get("tool_calls")}
                                 if response.response.get("tool_calls")
@@ -2069,6 +2067,32 @@ async def chat_completions(
             }
 
         async def stream_generator():
+            import asyncio
+
+            router_task = asyncio.create_task(
+                router_core.route_request(
+                    RoutingRequest(
+                        query=query_text, agent_id=agent_id, parameters=params
+                    ),
+                    strategy=strategy,
+                )
+            )
+
+            # Send SSE keep-alives while waiting for the full response to prevent read timeouts
+            while not router_task.done():
+                keepalive_data = {
+                    "id": "chatcmpl-keepalive",
+                    "object": "chat.completion.chunk",
+                    "created": int(datetime.datetime.now().timestamp()),
+                    "model": "router",
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": None}],
+                }
+                yield f"data: {json.dumps(keepalive_data)}\n\n"
+                await asyncio.sleep(1.0)
+
+            response = router_task.result()
+            created_time = int(datetime.datetime.now().timestamp())
+
             chunk_id = f"chatcmpl-{response.model_id}"
             common = {
                 "id": chunk_id,
@@ -2080,7 +2104,12 @@ async def chat_completions(
 
             content = response.response.get("text", "")
             if content:
-                yield f"data: {json.dumps({**common, 'choices': [{'index': 0, 'delta': {'content': content}, 'finish_reason': None}]})}\n\n"
+                # Stream content in chunks
+                chunk_size = 40
+                for j in range(0, len(content), chunk_size):
+                    text_chunk = content[j : j + chunk_size]
+                    yield f"data: {json.dumps({**common, 'choices': [{'index': 0, 'delta': {'content': text_chunk}, 'finish_reason': None}]})}\n\n"
+                    await asyncio.sleep(0.01)
 
             tool_calls = response.response.get("tool_calls")
             if tool_calls:
@@ -2092,8 +2121,7 @@ async def chat_completions(
                             "id": tc.get("id", ""),
                             "type": "function",
                             "function": {
-                                "name": tc.get("function", {}).get("name", ""),
-                                "arguments": "",
+                                "name": tc.get("function", {}).get("name", "")
                             },
                         }
                     )
@@ -2102,7 +2130,12 @@ async def chat_completions(
                 for i, tc in enumerate(tool_calls):
                     args = tc.get("function", {}).get("arguments", "")
                     if args:
-                        yield f"data: {json.dumps({**common, 'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': i, 'function': {'arguments': args}}]}, 'finish_reason': None}]})}\n\n"
+                        # Stream arguments in chunks to prevent token timeouts in clients
+                        chunk_size = 40
+                        for j in range(0, len(args), chunk_size):
+                            arg_chunk = args[j : j + chunk_size]
+                            yield f"data: {json.dumps({**common, 'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': i, 'function': {'arguments': arg_chunk}}]}, 'finish_reason': None}]})}\n\n"
+                            await asyncio.sleep(0.01)
 
             yield f"data: {json.dumps({**common, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': response.response.get('finish_reason', 'stop')}]})}\n\n"
             yield "data: [DONE]\n\n"
@@ -2140,13 +2173,13 @@ async def completions(
         params["stream"] = False
         if "stream_options" in params:
             del params["stream_options"]
-        response = await router_core.route_request(
-            RoutingRequest(query=query_text, agent_id=agent_id, parameters=params),
-            strategy=strategy,
-        )
-        created_time = int(datetime.datetime.now().timestamp())
 
         if not is_streaming:
+            response = await router_core.route_request(
+                RoutingRequest(query=query_text, agent_id=agent_id, parameters=params),
+                strategy=strategy,
+            )
+            created_time = int(datetime.datetime.now().timestamp())
             return {
                 "id": f"cmpl-{response.model_id}",
                 "object": "text_completion",
@@ -2164,6 +2197,32 @@ async def completions(
             }
 
         async def stream_generator():
+            import asyncio
+
+            router_task = asyncio.create_task(
+                router_core.route_request(
+                    RoutingRequest(
+                        query=query_text, agent_id=agent_id, parameters=params
+                    ),
+                    strategy=strategy,
+                )
+            )
+
+            # Send SSE keep-alives while waiting for the full response to prevent read timeouts
+            while not router_task.done():
+                keepalive_data = {
+                    "id": "cmpl-keepalive",
+                    "object": "text_completion",
+                    "created": int(datetime.datetime.now().timestamp()),
+                    "model": "router",
+                    "choices": [{"text": "", "index": 0, "finish_reason": None}],
+                }
+                yield f"data: {json.dumps(keepalive_data)}\n\n"
+                await asyncio.sleep(1.0)
+
+            response = router_task.result()
+            created_time = int(datetime.datetime.now().timestamp())
+
             chunk_id = f"cmpl-{response.model_id}"
             common = {
                 "id": chunk_id,
@@ -2171,7 +2230,16 @@ async def completions(
                 "created": created_time,
                 "model": response.model_name,
             }
-            yield f"data: {json.dumps({**common, 'choices': [{'text': response.response.get('text', ''), 'index': 0, 'logprobs': None, 'finish_reason': response.response.get('finish_reason', 'stop')}]})}\n\n"
+
+            content = response.response.get("text", "")
+            if content:
+                chunk_size = 40
+                for j in range(0, len(content), chunk_size):
+                    text_chunk = content[j : j + chunk_size]
+                    yield f"data: {json.dumps({**common, 'choices': [{'text': text_chunk, 'index': 0, 'finish_reason': None}]})}\n\n"
+                    await asyncio.sleep(0.01)
+
+            yield f"data: {json.dumps({**common, 'choices': [{'text': '', 'index': 0, 'finish_reason': response.response.get('finish_reason', 'stop')}]})}\n\n"
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(stream_generator(), media_type="text/event-stream")

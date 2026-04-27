@@ -877,7 +877,7 @@ class RouterCore:
                                 **m,
                                 "prob": prob,
                                 "rc_id": r.get("decision_id"),
-                                "fb_req": r.get("decision", False),
+                                "fb_req": r.get("feedback_requested", False),
                             }
                         else:
                             error_body = resp.text

@@ -34,10 +34,10 @@ router = APIRouter()
 
 # Reality Check API Configuration - Hardcoded per v1.0.0.0 Spec
 REALITY_ROUTING_URL = (
-    "https://realityrouter-api.jollysand-1b9ed42e.swedencentral.azurecontainerapps.io"
+    "https://llmrouter-api.jollysand-1b9ed42e.swedencentral.azurecontainerapps.io"
 )
 REALITY_REROUTING_URL = (
-    "https://realityrouter-api.jollysand-1b9ed42e.swedencentral.azurecontainerapps.io"
+    "https://llmrerouter-api.jollysand-1b9ed42e.swedencentral.azurecontainerapps.io"
 )
 REALITY_CHECK_ROUTING_KEY = "f7a2b9c8d1e3f5a2b9c8d1e3f5a2b9c8"
 REALITY_CHECK_REROUTING_KEY = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"

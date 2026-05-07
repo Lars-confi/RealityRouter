@@ -1,0 +1,57 @@
+"""
+Logging utilities for Reality Router system
+"""
+
+import logging
+import os
+from datetime import datetime
+
+
+def setup_logger(name, level=logging.INFO):
+    """
+    Set up a logger with the specified name and level
+
+    Args:
+        name: Logger name
+        level: Logging level
+
+    Returns:
+        Configured logger
+    """
+    # Create logger
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+
+    # Prevent adding multiple handlers if function is called multiple times
+    if not logger.handlers:
+        # Create console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(level)
+
+        # Create file handler
+        log_dir = os.getenv("LOG_DIR")
+        if not log_dir:
+            app_home = os.getenv("REALITY_ROUTER_HOME", os.path.expanduser("~/.reality_router"))
+            log_dir = os.path.join(app_home, "logs")
+
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+
+        log_file = os.path.join(
+            log_dir, f"reality_router_{datetime.now().strftime('%Y%m%d')}.log"
+        )
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(level)
+
+        # Create formatter
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        console_handler.setFormatter(formatter)
+        file_handler.setFormatter(formatter)
+
+        # Add handlers to logger
+        logger.addHandler(console_handler)
+        logger.addHandler(file_handler)
+
+    return logger

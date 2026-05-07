@@ -10,43 +10,43 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}       LLM Rerouter Initialization      ${NC}"
+echo -e "${BLUE}       Reality Router Initialization      ${NC}"
 echo -e "${BLUE}========================================${NC}"
 
 # Define App Home
-export LLM_REROUTER_HOME="${LLM_REROUTER_HOME:-$HOME/.llm_rerouter}"
-mkdir -p "$LLM_REROUTER_HOME"
-mkdir -p "$LLM_REROUTER_HOME/config"
-mkdir -p "$LLM_REROUTER_HOME/logs"
+export REALITY_ROUTER_HOME="${REALITY_ROUTER_HOME:-$HOME/.reality_router}"
+mkdir -p "$REALITY_ROUTER_HOME"
+mkdir -p "$REALITY_ROUTER_HOME/config"
+mkdir -p "$REALITY_ROUTER_HOME/logs"
 
-# Optional: Migrate existing files if they exist in the current directory and not in LLM_REROUTER_HOME
-for file in .env disabled_models.json user_models.json llm_router.db; do
+# Optional: Migrate existing files if they exist in the current directory and not in REALITY_ROUTER_HOME
+for file in .env disabled_models.json user_models.json reality_router.db; do
     if [ -f "$file" ]; then
-        if [ ! -f "$LLM_REROUTER_HOME/$file" ]; then
-            echo -e "${YELLOW}Migrating $file to $LLM_REROUTER_HOME...${NC}"
-            cp "$file" "$LLM_REROUTER_HOME/"
+        if [ ! -f "$REALITY_ROUTER_HOME/$file" ]; then
+            echo -e "${YELLOW}Migrating $file to $REALITY_ROUTER_HOME...${NC}"
+            cp "$file" "$REALITY_ROUTER_HOME/"
         fi
         rm "$file"
     fi
 done
 
-if [ -d "llm-router/config" ]; then
-    for file in llm-router/config/*.json; do
+if [ -d "reality-router/config" ]; then
+    for file in reality-router/config/*.json; do
         if [ -f "$file" ]; then
-            if [ ! -f "$LLM_REROUTER_HOME/config/$(basename "$file")" ]; then
-                echo -e "${YELLOW}Migrating $(basename "$file") to $LLM_REROUTER_HOME/config...${NC}"
-                cp "$file" "$LLM_REROUTER_HOME/config/"
+            if [ ! -f "$REALITY_ROUTER_HOME/config/$(basename "$file")" ]; then
+                echo -e "${YELLOW}Migrating $(basename "$file") to $REALITY_ROUTER_HOME/config...${NC}"
+                cp "$file" "$REALITY_ROUTER_HOME/config/"
             fi
         fi
     done
-    rm -rf "llm-router/config"
+    rm -rf "reality-router/config"
 fi
 
 if [ -d "logs" ]; then
     for file in logs/*.log; do
         if [ -f "$file" ]; then
-            if [ ! -f "$LLM_REROUTER_HOME/logs/$(basename "$file")" ]; then
-                cp "$file" "$LLM_REROUTER_HOME/logs/"
+            if [ ! -f "$REALITY_ROUTER_HOME/logs/$(basename "$file")" ]; then
+                cp "$file" "$REALITY_ROUTER_HOME/logs/"
             fi
             rm "$file"
         fi
@@ -82,15 +82,15 @@ fi
 
 # 4. Install Dependencies
 echo -e "${GREEN}Checking and installing dependencies...${NC}"
-cd llm-router
+cd reality-router
 # Upgrade pip to prevent older pip issues
 pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
 cd ..
 
 # 5. Launch the Python TUI
-echo -e "${GREEN}Launching LLM Rerouter Setup Wizard...${NC}"
-export LOG_DIR="$LLM_REROUTER_HOME/logs"
+echo -e "${GREEN}Launching Reality Router Setup Wizard...${NC}"
+export LOG_DIR="$REALITY_ROUTER_HOME/logs"
 python3 start_router.py
 
 # Deactivate venv upon exit

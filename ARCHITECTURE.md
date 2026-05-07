@@ -1,14 +1,14 @@
 # Project Architecture
 
 ## Overview
-This project is designed as a modular LLM routing system that allows for intelligent routing of requests to different language models based on various criteria such as model capabilities, cost, performance, and availability.
+This project is designed as a modular Reality routing system that allows for intelligent routing of requests to different language models based on various criteria such as model capabilities, cost, performance, and availability.
 
 ## Directory Structure
 ```
 .
 ├── ARCHITECTURE.md          # This file
 ├── README.md                # Project overview and documentation
-├── llm-router/              # Main project source code
+├── reality-router/          # Main project source code
 │   ├── src/                 # Source code
 │   ├── tests/               # Test files
 │   ├── config/              # Configuration files
@@ -57,7 +57,7 @@ The project requires the following Python dependencies (listed in requirements.t
 - pytest-asyncio==0.21.0
 
 ## Development Workflow
-1. Code changes in the `llm-router` directory
+1. Code changes in the `reality-router` directory
 2. Run tests to ensure functionality
 3. Update documentation in the `docs` directory
 4. Commit changes to Git
@@ -115,7 +115,7 @@ The system is designed to be deployed as a microservice that can be scaled horiz
 
 ## Architecture Summary
 
-This LLM Router project is designed as a modular, scalable system for intelligent routing of requests to different language models. The architecture follows Python best practices with:
+This Reality Router project is designed as a modular, scalable system for intelligent routing of requests to different language models. The architecture follows Python best practices with:
 
 1. **Modular Design**: Each component (router, adapters, load balancer, etc.) is separated into distinct modules
 2. **Extensible Framework**: Easy to add new LLM providers through adapter pattern
@@ -239,24 +239,24 @@ Instead of using a local model, we can actually use the users' LLMs to judge whe
 
 ## Tool Integration
 
-This LLM Code Rerouter can be used directly by editors like VS Codium and Zed or by agent systems like openclaw by pointing them to the /v1/completions or `/v1/chat/completions endpoints.
+This Reality Code Rerouter can be used directly by editors like VS Codium and Zed or by agent systems like openclaw by pointing them to the /v1/completions or `/v1/chat/completions endpoints.
 
 For VS Codium/VS Code:
 ```json
 {
-  "llm.rerouter.url": "http://localhost:3000/v1/completions"
+  "reality.rerouter.url": "http://localhost:3000/v1/completions"
 }
 ```
 
 For Zed Editor:
-In Zed, you can configure multiple LLM providers by setting up the LLM Code Rerouter as your backend. The configuration file (config/config.json) allows you to add any LLM provider you want to use.
+In Zed, you can configure multiple LLM providers by setting up the Reality Code Rerouter as your backend. The configuration file (config/config.json) allows you to add any LLM provider you want to use.
 
-To configure Zed to use your LLM Code Rerouter:
+To configure Zed to use your Reality Code Rerouter:
 1. Set up your LLM providers in config/config.json with their respective API keys as environment variables
-2. Point Zed to your LLM Code Rerouter endpoint:
+2. Point Zed to your Reality Code Rerouter endpoint:
 ```json
 {
-  "llm.codeRerouter.url": "http://localhost:3000/v1/completions"
+  "reality.codeRerouter.url": "http://localhost:3000/v1/completions"
 }
 ```
 
@@ -337,7 +337,7 @@ This database approach ensures that developers can analyze system behavior and o
 
 ### setup.py
 The project uses a standard Python setup.py file with:
-- Package name: llm-router
+- Package name: reality-router
 - Version: 1.0.0
 - Entry points for CLI tools
 - Dependency management

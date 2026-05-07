@@ -1,10 +1,10 @@
-# LLMRerouter by Confidentia AI and friends powered by Reality Check
+# RealityRouter by Confidentia AI and friends powered by Reality Check
 
 A smart rerouter designed to maximize utility for LLM usage across various tools and agents. This system intelligently routes requests to different language models based on **Expected Utility Theory (EUT)**, optimizing for cost, time, and accuracy without requiring users to manually select models for every task.
 
 ## Overview
 
-The LLMRerouter acts as a transparent proxy between your AI clients (agents, IDEs, scripts) and multiple LLM providers. By analyzing the complexity of each request and tracking historical performance, it ensures that high-stakes tasks get the best models while simple tasks use faster, cheaper alternatives.
+The RealityRouter acts as a transparent proxy between your AI clients (agents, IDEs, scripts) and multiple LLM providers. By analyzing the complexity of each request and tracking historical performance, it ensures that high-stakes tasks get the best models while simple tasks use faster, cheaper alternatives.
 
 ## API Endpoints
 
@@ -31,7 +31,7 @@ $$EU(m_i) = p_i \cdot R - \alpha \cdot c_i - \beta \cdot t_i$$
 
 ### Automatic Probability Updates
 
-The core intelligence of the LLMRerouter lies in how it updates $p_i$ (the probability of success) automatically:
+The core intelligence of the RealityRouter lies in how it updates $p_i$ (the probability of success) automatically:
 
 1.  **Unified Feature Extraction**: Every request—regardless of strategy—is analyzed for a consistent set of structural and semantic features (e.g., AST complexity, trace frequencies, and agent fingerprints).
 2.  **Reality Check Calibration**: These features are sent to a calibration service that compares the current request against historical outcomes for similar tasks.
@@ -48,7 +48,7 @@ To accurately calculate Expected Utility and track your actual spend in the Web 
 
 ## Agent Protocol Validation
 
-To ensure autonomous agents (like OpenClaw, AutoGPT, etc.) don't crash from broken responses, the LLMRerouter includes an active **Formatting & Syntax Validator**.
+To ensure autonomous agents (like OpenClaw, AutoGPT, etc.) don't crash from broken responses, the RealityRouter includes an active **Formatting & Syntax Validator**.
 
 Before returning an answer to your client, the router inspects the raw output for:
 
@@ -70,7 +70,7 @@ The router distinguishes between model "quality" and system "infrastructure":
 
 ## Multi-Agent Protocol Support
 
-The LLMRerouter features a sophisticated **Protocol Identification & Transformation Layer** that goes beyond simple headers to natively support complex agentic workflows across different environments.
+The RealityRouter features a sophisticated **Protocol Identification & Transformation Layer** that goes beyond simple headers to natively support complex agentic workflows across different environments.
 
 ### Protocol Identification Layer
 The router natively detects and adapts to specific clients like **Zed**, **VSCodium/Continue**, and **OpenClaw**. This allows the system to apply client-specific routing rules, format responses correctly, and manage state in a way that matches the expectations of the calling agent.
@@ -90,7 +90,7 @@ Different models have varying levels of support for function calling and specifi
 
 ## Routing Strategies
 
-The LLMRerouter supports two distinct strategies for model selection, selectable during setup:
+The RealityRouter supports two distinct strategies for model selection, selectable during setup:
 
 ### 1. LLM Routing (Single-shot)
 
@@ -115,10 +115,10 @@ A multi-stage approach where the system attempts to solve the query with cheaper
 
 ## Latest Improvements & Enhancements
 
-This section highlights the significant advancements made to the LLMRerouter's core intelligence and reliability.
+This section highlights the significant advancements made to the RealityRouter's core intelligence and reliability.
 
 ### Circuit Breaker Pattern
-The LLMRerouter now incorporates a robust Circuit Breaker pattern to enhance system resilience and prevent cascading failures due to unreliable LLM providers.
+The RealityRouter now incorporates a robust Circuit Breaker pattern to enhance system resilience and prevent cascading failures due to unreliable LLM providers.
 
 -   **Automatic Failure Detection**: The system continuously monitors the health of each configured model. If a model consistently fails (e.g., connection timeouts, API 500 errors, or repeated invalid responses), its circuit "trips."
 -   **Temporary Isolation**: When a circuit trips, the problematic model is temporarily isolated, and the router automatically bypasses it for subsequent requests, preventing further errors and maintaining overall system availability.
@@ -134,7 +134,7 @@ To ensure optimal routing and prevent agent failures, the router now dynamically
 -   **Adaptive Routing**: The router uses this real-time capability data to make smarter routing decisions, ensuring that tool-intensive requests are only sent to capable models or gracefully handled by the MCP/ACP Translation Layer if native support is absent.
 
 ### Enhanced User Experience & Debugging
-The CLI Dashboard (`llm-router/event_viewer.py`) has been upgraded to provide deeper insights into system health and routing decisions:
+The CLI Dashboard (`reality-router/event_viewer.py`) has been upgraded to provide deeper insights into system health and routing decisions:
 
 -   **System Health Report (`[h]`)**: A new dedicated command in the CLI viewer displays a comprehensive overview of all models, including:
     -   🟢 Green, 🟡 Yellow, or 🔴 Red indicators for overall reliability.
@@ -143,15 +143,15 @@ The CLI Dashboard (`llm-router/event_viewer.py`) has been upgraded to provide de
 -   **Model Exclusion**: The interactive setup wizard (`./start.sh`) provides clear options to toggle auto-discovered models ON or OFF, giving you granular control over which LLMs participate in routing.
 
 ### Centralized User Configuration & Logs
-All user-specific data (API keys, disabled models, database, logs, and capability cache) are now stored securely and cleanly in a dedicated user home directory: `~/.llm_rerouter/`. This ensures a clean project workspace and easy management of your personal settings across deployments.
+All user-specific data (API keys, disabled models, database, logs, and capability cache) are now stored securely and cleanly in a dedicated user home directory: `~/.reality_router/`. This ensures a clean project workspace and easy management of your personal settings across deployments.
 
 ---
 
 ## Installation & Setup
 
-The LLMRerouter features an interactive setup wizard to configure your environment in minutes.
+The RealityRouter features an interactive setup wizard to configure your environment in minutes.
 
-1.  **Initialize**: Run the startup script `./start.sh`. This will also migrate any existing configuration files to `~/.llm_rerouter/` if found in the project root.
+1.  **Initialize**: Run the startup script `./start.sh`. This will also migrate any existing configuration files to `~/.reality_router/` if found in the project root.
 2.  **Select Strategy**: Choose between **LLM Routing** (Single-shot) or **LLM Rerouting** (Sequential).
 3.  **Tune Coefficients**: Set your sensitivities for Reward ($R$), Cost ($\alpha$), and Time ($\beta$).
 4.  **Connect Providers**: Enter API keys for your preferred LLM providers (OpenAI, Anthropic, Gemini, etc.).
@@ -159,7 +159,7 @@ The LLMRerouter features an interactive setup wizard to configure your environme
 
 ### Concurrency Limits (Thread Limits)
 
-To prevent overwhelming specific providers or local instances (like Ollama), you can set a `thread_limit` or `concurrency_limit` per model in your `~/.llm_rerouter/user_models.json`.
+To prevent overwhelming specific providers or local instances (like Ollama), you can set a `thread_limit` or `concurrency_limit` per model in your `~/.reality_router/user_models.json`.
 
 -   **Behavior**: The router maintains an internal semaphore for each model.
 -   **Auto-Bypass**: If a model has reached its maximum number of concurrent requests, the router will **automatically skip** it and route to the next best available model in the ranked list. This ensures high availability even when specific models are busy.
@@ -197,7 +197,7 @@ If no identification is found, it defaults to `default`. You can monitor these I
 
 ## Dashboard & Debugging
 
-The LLMRerouter includes a built-in CLI dashboard for real-time monitoring of routing decisions.
+The RealityRouter includes a built-in CLI dashboard for real-time monitoring of routing decisions.
 
 ### Launching the Dashboard
 
@@ -205,7 +205,7 @@ To see the utility calculations and routing decisions in real-time, open a **sep
 
 ```bash
 source venv/bin/activate
-python llm-router/event_viewer.py
+python reality-router/event_viewer.py
 ```
 
 ### Web Dashboard
@@ -232,7 +232,7 @@ While the dashboard is active, you can interact with it using:
 To reset all historical performance data and logs, you can run:
 
 ```bash
-python llm-router/event_viewer.py --clear
+python reality-router/event_viewer.py --clear
 ```
 
 ### Features

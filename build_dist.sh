@@ -8,10 +8,10 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-ZIP_NAME="llm_rerouter_dist.zip"
+ZIP_NAME="reality_router_dist.zip"
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}   Building LLM Rerouter Distribution   ${NC}"
+echo -e "${BLUE}   Building Reality Router Distribution   ${NC}"
 echo -e "${BLUE}========================================${NC}"
 
 # Check if zip command is installed
@@ -33,7 +33,7 @@ echo "Excluding: testing scripts, venv/, .git/, __pycache__/, and sensitive conf
 zip -r "$ZIP_NAME" . \
     -x "venv/*" \
     -x ".env" \
-    -x "llm_router.db" \
+    -x "reality_router.db" \
     -x "disabled_models.json" \
     -x "user_models.json" \
     -x "test_*.py" \

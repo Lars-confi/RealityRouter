@@ -2,6 +2,9 @@
 LiteLLM adapter for routing requests to various LLM providers using the litellm library.
 """
 
+import json
+import re
+import time
 from typing import Any, Dict, Optional
 
 import litellm
@@ -125,6 +128,8 @@ class LiteLLMAdapter(BaseAdapter):
 
             # Parse tool calls into the standard dictionary format expected by the router core
             tool_calls = []
+
+            # 1. Handle standard structured tool calls
             if hasattr(message, "tool_calls") and message.tool_calls:
                 for tc in message.tool_calls:
                     tool_calls.append(
@@ -136,6 +141,89 @@ class LiteLLMAdapter(BaseAdapter):
                                 "arguments": tc.function.arguments,
                             },
                         }
+                    )
+
+            # 2. Parse DeepSeek-style raw tags if no standard tool calls were found
+            # Format: <｜tool calls begin｜><｜tool call begin｜>function<｜tool sep｜>name<｜tool sep｜>{"arg": "val"}<｜tool call end｜>
+            if (
+                not tool_calls
+                and text
+                and (
+                    "<｜tool calls begin｜>" in text or "<｜tool call begin｜>" in text
+                )
+            ):
+                try:
+                    # Handle both closed and potentially unclosed (truncated) blocks
+                    call_blocks = re.findall(
+                        r"<｜tool call begin｜>(.*?)<｜tool call end｜>",
+                        text,
+                        re.DOTALL,
+                    )
+
+                    # If no complete blocks but we have a start tag, it might be truncated
+                    if not call_blocks and "<｜tool call begin｜>" in text:
+                        unclosed = text.split("<｜tool call begin｜>")[-1]
+                        if unclosed:
+                            call_blocks = [unclosed]
+
+                    for i, block in enumerate(call_blocks):
+                        # DeepSeek format uses <｜tool sep｜> to separate type, name, and args
+                        parts = block.split("<｜tool sep｜>")
+                        t_type, t_name, t_args = "function", "", "{}"
+
+                        if len(parts) >= 3:
+                            t_type = parts[0].strip() or "function"
+                            t_name = parts[1].strip()
+                            t_args = parts[2].strip()
+                        elif len(parts) == 2:
+                            p1, p2 = parts[0].strip(), parts[1].strip()
+                            if p1 == "function":
+                                t_name = p2
+                            else:
+                                t_name = p1
+                                t_args = p2
+                        elif len(parts) == 1:
+                            t_name = parts[0].strip()
+
+                        if t_name:
+                            t_args = t_args.strip()
+                            if not t_args.startswith("{"):
+                                # Attempt to extract just the JSON part from arguments
+                                start_idx, end_idx = t_args.find("{"), t_args.rfind("}")
+                                if start_idx != -1 and end_idx != -1:
+                                    t_args = t_args[start_idx : end_idx + 1]
+
+                            tool_calls.append(
+                                {
+                                    "id": f"call_{i}_{int(time.time())}",
+                                    "type": t_type,
+                                    "function": {"name": t_name, "arguments": t_args},
+                                }
+                            )
+
+                    # Strip the tags from the visible text
+                    tag_patterns = [
+                        r"<｜tool calls begin｜>.*<｜tool calls end｜>",
+                        r"<｜tool call begin｜>.*<｜tool call end｜>",
+                        r"<｜tool calls begin｜>.*",
+                        r"<｜tool call begin｜>.*",
+                    ]
+                    for pattern in tag_patterns:
+                        new_text = re.sub(pattern, "", text, flags=re.DOTALL).strip()
+                        if new_text != text:
+                            text = new_text
+                            break
+
+                    if not text and tool_calls:
+                        text = ""
+
+                    if tool_calls:
+                        finish_reason = "tool_calls"
+                except Exception as e:
+                    import logging
+
+                    logging.getLogger(__name__).error(
+                        f"Failed to parse DeepSeek tool tags: {e}"
                     )
 
             # Extract usage statistics

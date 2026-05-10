@@ -870,14 +870,15 @@ class RouterCore:
                     )
                 ]
 
-            tools_requested = request.parameters and request.parameters.get("tools")
+            tools_requested = bool(
+                request.parameters and request.parameters.get("tools")
+            )
 
             model_tasks = []
             for mid, info in self.models.items():
+                # If tools are requested, only include models that strictly support them
                 if tools_requested and not info.get("supports_function_calling", False):
-                    # We added the fallback interceptor for this exact scenario so it strips tools automatically if unsupported!
-                    # Do NOT drop it from the leaderboard, just let the interceptor handle it.
-                    pass
+                    continue
 
                 if (
                     info.get("max_input_tokens")
@@ -1609,6 +1610,133 @@ class RouterCore:
                         response = await adapter.forward_request(current_request)
                     elapsed_time = time.time() - start_time
 
+                    # --- HEURISTIC TOOL RESCUE ---
+                    # Some models (like Nemotron or DeepSeek) might output tool calls as JSON text
+                    # in the content block instead of using the API correctly. We try to rescue these.
+                    if (
+                        response
+                        and isinstance(response, dict)
+                        and not response.get("tool_calls")
+                    ):
+                        resp_text = str(response.get("text", "")).strip()
+                        rescued_calls = []
+
+                        # 1. Look for DeepSeek-style tags
+                        if (
+                            "<｜tool call begin｜>" in resp_text
+                            or "<｜tool calls begin｜>" in resp_text
+                        ):
+                            ds_blocks = re.findall(
+                                r"<｜tool call begin｜>(.*?)<｜tool call end｜>",
+                                resp_text,
+                                re.DOTALL,
+                            )
+                            if not ds_blocks and "<｜tool call begin｜>" in resp_text:
+                                ds_blocks = [
+                                    resp_text.split("<｜tool call begin｜>")[-1]
+                                ]
+
+                            for i, block in enumerate(ds_blocks):
+                                parts = block.split("<｜tool sep｜>")
+                                t_type, t_name, t_args = "function", "", "{}"
+                                if len(parts) >= 3:
+                                    t_type, t_name, t_args = (
+                                        parts[0].strip() or "function",
+                                        parts[1].strip(),
+                                        parts[2].strip(),
+                                    )
+                                elif len(parts) == 2:
+                                    p1, p2 = parts[0].strip(), parts[1].strip()
+                                    if p1 == "function":
+                                        t_name = p2
+                                    else:
+                                        t_name, t_args = p1, p2
+                                elif len(parts) == 1:
+                                    t_name = parts[0].strip()
+
+                                if t_name:
+                                    rescued_calls.append(
+                                        {
+                                            "id": f"rescued_ds_{int(time.time())}_{i}",
+                                            "type": t_type,
+                                            "function": {
+                                                "name": t_name,
+                                                "arguments": t_args,
+                                            },
+                                        }
+                                    )
+
+                        # 2. Look for markdown JSON blocks
+                        json_blocks = re.findall(
+                            r"```json\s*\n?(.*?)\n?```", resp_text, re.DOTALL
+                        )
+
+                        # 3. Look for bare JSON objects (balanced braces)
+                        if (
+                            not json_blocks
+                            and not rescued_calls
+                            and "{" in resp_text
+                            and "}" in resp_text
+                        ):
+                            for i in range(len(resp_text)):
+                                if resp_text[i] == "{":
+                                    balance = 0
+                                    for j in range(i, len(resp_text)):
+                                        if resp_text[j] == "{":
+                                            balance += 1
+                                        elif resp_text[j] == "}":
+                                            balance -= 1
+                                        if balance == 0:
+                                            json_blocks.append(resp_text[i : j + 1])
+                                            break
+
+                        for block in json_blocks:
+                            try:
+                                data = json.loads(block.strip())
+                                if isinstance(data, dict):
+                                    # Handle various common pseudo-JSON formats
+                                    name = (
+                                        data.get("name")
+                                        or data.get("action")
+                                        or data.get("tool")
+                                        or data.get("function")
+                                    )
+                                    args = (
+                                        data.get("parameters")
+                                        or data.get("arguments")
+                                        or data.get("args")
+                                        or data.get("input")
+                                    )
+
+                                    # Support specific "tool": "name" format
+                                    if not name and "tool" in data:
+                                        name = data["tool"]
+
+                                    if name:
+                                        rescued_calls.append(
+                                            {
+                                                "id": f"rescued_{int(time.time())}_{len(rescued_calls)}",
+                                                "type": "function",
+                                                "function": {
+                                                    "name": str(name),
+                                                    "arguments": json.dumps(args)
+                                                    if isinstance(args, (dict, list))
+                                                    else str(args or "{}"),
+                                                },
+                                            }
+                                        )
+                            except:
+                                continue
+
+                        if rescued_calls:
+                            logger.info(
+                                f"Rescued {len(rescued_calls)} tool calls from text in model {decision.model_id}"
+                            )
+                            response["tool_calls"] = rescued_calls
+                            # Clear leaked syntax from text so it doesn't trigger "Content Leak" validation
+                            response["text"] = ""
+                            response["finish_reason"] = "tool_calls"
+
                     # --- RESPONSE VALIDATION (STRICT GATEWAY) ---
                     is_valid = True
                     failure_reason = None
@@ -2168,7 +2296,19 @@ class RouterCore:
         for model_id, adapter in self.adapters.items():
             try:
                 # This will probe and update the capability_manager cache
-                await capability_manager.probe_model(model_id, adapter)
+                caps = await capability_manager.probe_model(model_id, adapter)
+
+                # Update model info with discovered capabilities
+                if model_id in self.models and caps:
+                    self.models[model_id]["supports_function_calling"] = caps.get(
+                        "supports_tools", False
+                    )
+                    self.models[model_id]["supports_logprobs"] = caps.get(
+                        "supports_logprobs", False
+                    )
+                    logger.debug(
+                        f"Updated capabilities for {model_id}: tools={caps.get('supports_tools')}, logprobs={caps.get('supports_logprobs')}"
+                    )
             except Exception as e:
                 logger.error(f"Failed to probe capabilities for {model_id}: {e}")
         logger.info("Capability probing cycle complete.")

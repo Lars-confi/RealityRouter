@@ -1557,28 +1557,37 @@ class RouterCore:
                         current_request.parameters
                         and current_request.parameters.get("tools")
                     )
-                    if has_tools and not self.models[decision.model_id].get(
-                        "supports_function_calling"
-                    ):
-                        import json
-
-                        tools_schema = current_request.parameters["tools"]
-                        del current_request.parameters["tools"]
-                        if "tool_choice" in current_request.parameters:
-                            del current_request.parameters["tool_choice"]
-                        sys_msg = {
+                    if has_tools:
+                        # Inject a system override that forces models into standard OpenAI tool format.
+                        # Most modern models (like DeepSeek) switch to raw JSON when they see
+                        # tools/tool_choice parameters combined with a forceful system nudge.
+                        tools_schema = current_request.parameters.get("tools")
+                        format_nudge = {
                             "role": "system",
-                            "content": "The user has MCP tools available. Please respond with a JSON object that matches the following requested tool schemas:\n"
-                            + json.dumps(tools_schema, indent=2),
+                            "content": (
+                                "COMMAND: You MUST use the standard OpenAI tool-calling JSON format for all tool usage. "
+                                "Do NOT use internal tags like <｜tool calls begin｜> or custom XML-like syntax. "
+                                "Respond with valid tool calls using the 'tool_calls' field if available. "
+                                f"Available tools:\n{json.dumps(tools_schema, indent=2)}"
+                            ),
                         }
+
                         if (
                             current_request.parameters
                             and "messages" in current_request.parameters
                         ):
-                            # Use a new list to avoid any potential shared reference issues
-                            current_request.parameters["messages"] = [sys_msg] + list(
-                                current_request.parameters["messages"]
-                            )
+                            # Prepend nudge to message history
+                            current_request.parameters["messages"] = [
+                                format_nudge
+                            ] + list(current_request.parameters["messages"])
+
+                        if not self.models[decision.model_id].get(
+                            "supports_function_calling"
+                        ):
+                            # Even if the model metadata suggests no native support, we keep tools
+                            # in the request for custom/local providers (vLLM/Ollama) to handle,
+                            # while relying on the system nudge for pure text models.
+                            pass
 
                     # Check if model is healthy (circuit breaker check)
                     if not self.load_balancer.is_model_healthy(decision.model_id):

@@ -14,7 +14,7 @@ import time
 from typing import Any, Dict, List, Optional, Union
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -31,6 +31,21 @@ from src.utils.pricing import pricing_manager
 logger = setup_logger(__name__)
 
 router = APIRouter()
+
+
+def resolve_agent_id(request_body_agent_id: Optional[str], headers: Any) -> str:
+    """Resolve agent_id from body or headers (User-Agent, X-Agent-ID)"""
+    if request_body_agent_id and request_body_agent_id != "default":
+        return request_body_agent_id
+
+    # Check for identifying headers
+    for header in ["X-Agent-ID", "X-Client-ID", "User-Agent"]:
+        val = headers.get(header)
+        if val:
+            return val
+
+    return "default"
+
 
 # Reality Check API Configuration - Hardcoded per v1.0.0.0 Spec
 REALITY_ROUTING_URL = (
@@ -2474,6 +2489,7 @@ async def get_agent_card():
 @router.post("/chat/completions")
 async def chat_completions(
     request: ChatCompletionRequest,
+    fastapi_request: Request,
     Authorization: str = Header(None),
 ):
     try:
@@ -2493,7 +2509,7 @@ async def chat_completions(
 
         routing_req = RoutingRequest(
             query=query_text,
-            agent_id=request.agent_id,
+            agent_id=resolve_agent_id(request.agent_id, fastapi_request.headers),
             parameters=request.model_dump(exclude={"agent_id"}),
         )
 
@@ -2612,6 +2628,7 @@ async def chat_completions(
 @router.post("/completions")
 async def completions(
     request: CompletionRequest,
+    fastapi_request: Request,
     Authorization: str = Header(None),
 ):
     try:
@@ -2623,7 +2640,7 @@ async def completions(
         )
         routing_req = RoutingRequest(
             query=prompt_text,
-            agent_id=request.agent_id,
+            agent_id=resolve_agent_id(request.agent_id, fastapi_request.headers),
             parameters=request.model_dump(exclude={"agent_id"}),
         )
 

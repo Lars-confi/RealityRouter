@@ -1771,10 +1771,7 @@ class RouterCore:
                             for tc in response["tool_calls"]:
                                 # Rule 3: Ghost Tool Check
                                 tool_name = tc.get("function", {}).get("name")
-                                if (
-                                    requested_tool_names
-                                    and tool_name not in requested_tool_names
-                                ):
+                                if tool_name not in requested_tool_names:
                                     is_valid = False
                                     failure_reason = f"Ghost tool called: {tool_name}"
                                     break
@@ -1797,6 +1794,31 @@ class RouterCore:
                             f"Model {decision.model_id} failed strict validation: {failure_reason}. Escalating..."
                         )
                         self.load_balancer.record_failure(decision.model_id)
+
+                        # Silently send negative feedback to Reality Check for the hallucination
+                        if decision.reality_check_id:
+                            try:
+                                rc_id_str = str(decision.reality_check_id)
+                                async with httpx.AsyncClient() as client:
+                                    url = (
+                                        REALITY_ROUTING_URL
+                                        if strategy == "expected_utility"
+                                        else REALITY_REROUTING_URL
+                                    )
+                                    await client.post(
+                                        f"{url}/feedback",
+                                        json={
+                                            "decision_id": int(rc_id_str),
+                                            "feedback": 0,
+                                        },
+                                        headers={
+                                            "x-api-key": get_reality_check_key(url)
+                                        },
+                                        timeout=2.0,
+                                    )
+                            except Exception as fe:
+                                logger.error(f"Auto-negative feedback failed: {fe}")
+
                         continue
 
                     # Record success in circuit breaker
@@ -2322,6 +2344,15 @@ class ChatCompletionRequest(BaseModel):
     messages: List[Dict[str, Any]]
     stream: bool = False
     agent_id: Optional[str] = "default"
+    tools: Optional[List[Dict[str, Any]]] = None
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = None
+    temperature: Optional[float] = 1.0
+    top_p: Optional[float] = 1.0
+    max_tokens: Optional[int] = None
+    presence_penalty: Optional[float] = 0.0
+    frequency_penalty: Optional[float] = 0.0
+    stop: Optional[Union[str, List[str]]] = None
+    response_format: Optional[Dict[str, Any]] = None
 
 
 class CompletionRequest(BaseModel):

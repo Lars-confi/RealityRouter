@@ -143,57 +143,42 @@ class LiteLLMAdapter(BaseAdapter):
                         }
                     )
 
-            # 2. Parse DeepSeek-style raw tags if no standard tool calls were found
-            # Format: <｜tool calls begin｜><｜tool call begin｜>function<｜tool sep｜>name<｜tool sep｜>{"arg": "val"}<｜tool call end｜>
-            if (
-                not tool_calls
-                and text
-                and (
-                    "<｜tool calls begin｜>" in text or "<｜tool call begin｜>" in text
-                )
-            ):
+            # 2. Parse DeepSeek-style raw tags, JSON blocks, or other pseudo-tool calls
+            if not tool_calls and text:
                 try:
-                    # Handle both closed and potentially unclosed (truncated) blocks
-                    call_blocks = re.findall(
-                        r"<｜tool call begin｜>(.*?)<｜tool call end｜>",
-                        text,
-                        re.DOTALL,
-                    )
+                    # Case A: DeepSeek tags (<｜tool call begin｜>...)
+                    if (
+                        "<｜tool call begin｜>" in text
+                        or "<｜tool calls begin｜>" in text
+                    ):
+                        call_blocks = re.findall(
+                            r"<｜tool call begin｜>(.*?)<｜tool call end｜>",
+                            text,
+                            re.DOTALL,
+                        )
+                        if not call_blocks and "<｜tool call begin｜>" in text:
+                            call_blocks = [text.split("<｜tool call begin｜>")[-1]]
 
-                    # If no complete blocks but we have a start tag, it might be truncated
-                    if not call_blocks and "<｜tool call begin｜>" in text:
-                        unclosed = text.split("<｜tool call begin｜>")[-1]
-                        if unclosed:
-                            call_blocks = [unclosed]
+                        for i, block in enumerate(call_blocks):
+                            parts = block.split("<｜tool sep｜>")
+                            t_type, t_name, t_args = "function", "", "{}"
+                            if len(parts) >= 3:
+                                t_type, t_name, t_args = (
+                                    parts[0].strip() or "function",
+                                    parts[1].strip(),
+                                    parts[2].strip(),
+                                )
+                            elif len(parts) == 2:
+                                p1, p2 = parts[0].strip(), parts[1].strip()
+                                if p1 == "function":
+                                    t_name = p2
+                                else:
+                                    t_name, t_args = p1, p2
+                            elif len(parts) == 1:
+                                t_name = parts[0].strip()
 
-                    for i, block in enumerate(call_blocks):
-                        # DeepSeek format uses <｜tool sep｜> to separate type, name, and args
-                        parts = block.split("<｜tool sep｜>")
-                        t_type, t_name, t_args = "function", "", "{}"
-
-                        if len(parts) >= 3:
-                            t_type = parts[0].strip() or "function"
-                            t_name = parts[1].strip()
-                            t_args = parts[2].strip()
-                        elif len(parts) == 2:
-                            p1, p2 = parts[0].strip(), parts[1].strip()
-                            if p1 == "function":
-                                t_name = p2
-                            else:
-                                t_name = p1
-                                t_args = p2
-                        elif len(parts) == 1:
-                            t_name = parts[0].strip()
-
-                        if t_name:
-                            # If name contains newlines, backticks or JSON, it likely merged arguments
-                            if (
-                                "\n" in t_name
-                                or "```" in t_name
-                                or "{" in t_name
-                                or "(" in t_name
-                            ):
-                                # Try to extract a clean name (alphanumeric only)
+                            if t_name:
+                                # Clean name/args merger
                                 name_match = re.search(
                                     r"^([a-zA-Z0-9_-]+)", t_name.strip()
                                 )
@@ -210,64 +195,122 @@ class LiteLLMAdapter(BaseAdapter):
                                             else f"{remaining}\n{t_args}"
                                         )
 
-                            t_args = t_args.strip()
-                            if not t_args.startswith("{"):
-                                # If it's wrapped in backticks, extract content
-                                t_args = re.sub(
-                                    r"```[a-z]*\n?(.*?)\n?```",
-                                    r"\1",
-                                    t_args,
-                                    flags=re.DOTALL,
-                                ).strip()
-
-                                # Wrap in JSON based on common tool names
-                                if t_name == "shell_execute":
-                                    t_args = json.dumps({"command": t_args})
-                                elif t_name in ["python_execute", "python", "run_code"]:
-                                    t_args = json.dumps({"code": t_args})
-                                else:
-                                    # Attempt to find JSON in the remaining text
-                                    start_idx, end_idx = (
-                                        t_args.find("{"),
-                                        t_args.rfind("}"),
-                                    )
-                                    if start_idx != -1 and end_idx != -1:
-                                        t_args = t_args[start_idx : end_idx + 1]
+                                # Extract JSON from args
+                                t_args = t_args.strip()
+                                if not t_args.startswith("{"):
+                                    t_args = re.sub(
+                                        r"```[a-z]*\n?(.*?)\n?```",
+                                        r"\1",
+                                        t_args,
+                                        flags=re.DOTALL,
+                                    ).strip()
+                                    if (
+                                        t_name == "shell_execute"
+                                        or t_name == "terminal"
+                                    ):
+                                        t_args = json.dumps({"command": t_args})
+                                    elif t_name in [
+                                        "python_execute",
+                                        "python",
+                                        "run_code",
+                                    ]:
+                                        t_args = json.dumps({"code": t_args})
                                     else:
-                                        # Generic fallback
-                                        t_args = json.dumps({"arguments": t_args})
+                                        s, e = t_args.find("{"), t_args.rfind("}")
+                                        if s != -1 and e != -1:
+                                            t_args = t_args[s : e + 1]
+                                        else:
+                                            t_args = json.dumps({"arguments": t_args})
 
-                            tool_calls.append(
-                                {
-                                    "id": f"call_{i}_{int(time.time())}",
-                                    "type": t_type,
-                                    "function": {"name": t_name, "arguments": t_args},
-                                }
+                                tool_calls.append(
+                                    {
+                                        "id": f"call_{i}_{int(time.time())}",
+                                        "type": t_type,
+                                        "function": {
+                                            "name": t_name,
+                                            "arguments": t_args,
+                                        },
+                                    }
+                                )
+
+                    # Case B: Standard Markdown JSON block (common for non-tagged models)
+                    json_blocks = re.findall(
+                        r"```json\s*\n?(.*?)\n?```", text, re.DOTALL
+                    )
+                    for i, block in enumerate(json_blocks):
+                        try:
+                            data = json.loads(block.strip())
+                            # Recognize common formats: {"action": "name", "arguments": {...}} or {"name": "name", "parameters": {...}}
+                            name = (
+                                data.get("action")
+                                or data.get("name")
+                                or data.get("tool")
+                                or data.get("function")
                             )
+                            args = (
+                                data.get("arguments")
+                                or data.get("parameters")
+                                or data.get("args")
+                                or data.get("input")
+                            )
+                            if name:
+                                tool_calls.append(
+                                    {
+                                        "id": f"json_call_{i}_{int(time.time())}",
+                                        "type": "function",
+                                        "function": {
+                                            "name": str(name),
+                                            "arguments": json.dumps(args)
+                                            if isinstance(args, dict)
+                                            else str(args),
+                                        },
+                                    }
+                                )
+                        except:
+                            continue
 
-                    # Strip the tags from the visible text
-                    tag_patterns = [
-                        r"<｜tool calls begin｜>.*<｜tool calls end｜>",
-                        r"<｜tool call begin｜>.*<｜tool call end｜>",
-                        r"<｜tool calls begin｜>.*",
-                        r"<｜tool call begin｜>.*",
-                    ]
-                    for pattern in tag_patterns:
-                        new_text = re.sub(pattern, "", text, flags=re.DOTALL).strip()
-                        if new_text != text:
-                            text = new_text
-                            break
-
-                    if not text and tool_calls:
-                        text = ""
+                    # Case C: Bare JSON object at the end of text
+                    if not tool_calls:
+                        stripped_text = text.strip()
+                        if stripped_text.startswith("{") and stripped_text.endswith(
+                            "}"
+                        ):
+                            try:
+                                data = json.loads(stripped_text)
+                                name = data.get("action") or data.get("name")
+                                args = data.get("arguments") or data.get("parameters")
+                                if name:
+                                    tool_calls.append(
+                                        {
+                                            "id": f"bare_call_{int(time.time())}",
+                                            "type": "function",
+                                            "function": {
+                                                "name": str(name),
+                                                "arguments": json.dumps(args)
+                                                if isinstance(args, dict)
+                                                else str(args),
+                                            },
+                                        }
+                                    )
+                            except:
+                                pass
 
                     if tool_calls:
                         finish_reason = "tool_calls"
+                        # Clean up text if possible (strip the blocks and tags)
+                        text = re.sub(
+                            r"<｜tool calls begin｜>.*", "", text, flags=re.DOTALL
+                        )
+                        text = re.sub(
+                            r"```json.*```", "", text, flags=re.DOTALL
+                        ).strip()
+                        if not text:
+                            text = ""
                 except Exception as e:
                     import logging
 
                     logging.getLogger(__name__).error(
-                        f"Failed to parse DeepSeek tool tags: {e}"
+                        f"Heuristic tool parsing failed: {e}"
                     )
 
             # Extract usage statistics

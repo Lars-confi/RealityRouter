@@ -1824,6 +1824,28 @@ class RouterCore:
                     # Record success in circuit breaker
                     self.load_balancer.record_success(decision.model_id)
 
+                    # Automatically give happy feedback to successful tool calls
+                    if response.get("tool_calls") and decision.reality_check_id:
+                        try:
+                            rc_id_str = str(decision.reality_check_id)
+                            async with httpx.AsyncClient() as client:
+                                url = (
+                                    REALITY_ROUTING_URL
+                                    if strategy == "expected_utility"
+                                    else REALITY_REROUTING_URL
+                                )
+                                await client.post(
+                                    f"{url}/feedback",
+                                    json={
+                                        "decision_id": int(rc_id_str),
+                                        "feedback": 1,
+                                    },
+                                    headers={"x-api-key": get_reality_check_key(url)},
+                                    timeout=2.0,
+                                )
+                        except Exception as fe:
+                            logger.error(f"Auto-positive feedback failed: {fe}")
+
                     # --- STRIP FRAGILE THOUGHT SIGNATURES ---
                     if response.get("tool_calls"):
                         for tc in response["tool_calls"]:

@@ -46,20 +46,17 @@ To accurately calculate Expected Utility and track your actual spend in the Web 
 -   **Manual Configuration**: You can still explicitly set `prompt_cost` and `completion_cost` (price per 1k tokens) for custom or local models in your `user_models.json`. These manual settings will take priority over the automated web registry.
 -   **Context-Aware Utility**: Before making a routing decision, the system estimates the input token count of your query and combines it with the model's historical output lengths to accurately estimate and penalize the cost ($c_i$) of large context windows based on its specific pricing tier.
 
-## Agent Protocol Validation
+## Strict Validation Gateway (Protocol Enforcement)
 
-To ensure autonomous agents (like OpenClaw, AutoGPT, etc.) don't crash from broken responses, the RealityRouter includes an active **Formatting & Syntax Validator**.
+To ensure autonomous agents (like OpenClaw, AutoGPT, etc.) don't crash from broken responses, the RealityRouter includes a **Strict Validation Gateway**. This gateway enforces the OpenAI v1 protocol and performs silent escalations when models fail to comply.
 
-Before returning an answer to your client, the router inspects the raw output for:
+Before returning an answer to your client, the router applies the **Three Strict Rules**:
 
--   **Unclosed Markdown**: Broken code blocks (` ``` `).
--   **Malformed JSON**: Invalid tool calls or JSON data blocks.
--   **Broken Agent Tags**: Unclosed XML elements (e.g., `<thought>`, `<command>`).
--   **"Laziness"**: Skipping code with `// ... existing code ...`.
--   **AI Refusals**: Responses like *"As an AI language model..."*.
--   **Heuristic Truncation**: Abrupt endings in the middle of words or conjunctions (e.g., ending with "the", "and").
+1.  **Content Leak Check**: Scans for native tool tags (e.g., `<｜tool`, `<function`, `✿`). If a model leaks internal tool syntax into the conversational text block, the response is discarded.
+2.  **JSON Arguments Check**: Performs a strict `json.loads()` on every tool argument. If the model outputs malformed JSON or raw text in the arguments field, it triggers an escalation.
+3.  **Ghost Tool Check**: Verifies that every tool called by the model exists in the original request's tools array. Hallucinated tool calls (like `llm-market-researcher`) are blocked.
 
-If any of these are detected, the router treats the response as an objective failure, instantly sends negative feedback to Reality Check, and **automatically escalates** to a better model without the agent ever seeing the broken text.
+If any of these rules are violated, the router treats the response as a failure, instantly sends **unhappy feedback** to Reality Check, and **automatically escalates** to the next best model in the ranked list without the client ever seeing the failure.
 
 ### Infrastructure vs. Quality Failures
 
@@ -132,6 +129,15 @@ To ensure optimal routing and prevent agent failures, the router now dynamically
     -   Whether the model provides `logprobs` for advanced confidence scoring.
 -   **Metrics Protection**: These capability probes are performed out-of-band and do **not** affect your historical performance metrics, costs, or database logs.
 -   **Adaptive Routing**: The router uses this real-time capability data to make smarter routing decisions, ensuring that tool-intensive requests are only sent to capable models or gracefully handled by the MCP/ACP Translation Layer if native support is absent.
+
+### Heuristic Tool Rescue & Automatic Feedback
+The router now includes a sophisticated "rescue" layer that attempts to salvage model output before escalating, while rewarding high-quality responses.
+
+-   **Heuristic Tool Rescue**: If a model (like Nemotron) types its intent into the chat block instead of using the API correctly, the router uses a **Balanced Brace Scanner** to find and extract JSON blocks. It then dynamically builds a valid OpenAI `tool_calls` object, wipes the leaked text, and returns a clean API response.
+-   **Automated Feedback Loop**: The system now provides high-speed reinforcement learning for the routing engine:
+    -   **Positive Feedback**: Successfully validated tool calls automatically receive a `happy` signal.
+    -   **Negative Feedback**: Protocol violations or tool hallucinations receive an `unhappy` signal.
+-   **Streaming Keep-Alives**: To prevent timeouts in terminal-based agents (like Hermes) during complex routing or slow model generations, the router now sends invisible `: ping` SSE comments every 2 seconds. This keeps the connection alive while the router performs background assessments.
 
 ### Enhanced User Experience & Debugging
 The CLI Dashboard (`reality-router/event_viewer.py`) has been upgraded to provide deeper insights into system health and routing decisions:

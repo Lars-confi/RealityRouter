@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environments
+venv/
+.env
+.venv
+env/
+ENV/
+
+# Databases & Local Data
+*.db
+*.sqlite3
+.reality_router/
+reality-router/config/capabilities.json
+reality-router/config/model_prices.json
+
+# Logs
+*.log
+logs/
+
+# Build & Dist
+dist/
+build/
+*.zip
+*.tar.gz
+reality_router_dist.zip
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store

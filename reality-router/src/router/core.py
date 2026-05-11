@@ -428,11 +428,9 @@ class RouterCore:
             # 3. Gemini
             gemini_key = settings.gemini_api_key
             if gemini_key and gemini_key != "dummy":
+                gemini_discovered = []
+                # A. Compat API
                 try:
-                    # Merge both compat and native lists to catch missing bleeding edge models
-                    gemini_discovered = []
-
-                    # A. Compat API
                     resp1 = httpx.get(
                         "https://generativelanguage.googleapis.com/v1beta/openai/models",
                         headers={"Authorization": f"Bearer {gemini_key}"},
@@ -450,8 +448,11 @@ class RouterCore:
                             ):
                                 if name not in gemini_discovered:
                                     gemini_discovered.append(name)
+                except Exception as e:
+                    logger.warning(f"Gemini Compat discovery failed: {e}")
 
-                    # B. Native API
+                # B. Native API
+                try:
                     resp2 = httpx.get(
                         f"https://generativelanguage.googleapis.com/v1beta/models?key={gemini_key}",
                         timeout=3,
@@ -468,7 +469,10 @@ class RouterCore:
                             ):
                                 if name not in gemini_discovered:
                                     gemini_discovered.append(name)
+                except Exception as e:
+                    logger.warning(f"Gemini Native discovery failed: {e}")
 
+                try:
                     for name in gemini_discovered:
                         if name not in self.models and (
                             name not in settings.disabled_models
@@ -513,7 +517,7 @@ class RouterCore:
                             )
                             self.load_balancer.add_model(name, name, 1.0)
                 except Exception as e:
-                    logger.warning(f"Auto-discovery failed for Gemini: {e}")
+                    logger.warning(f"Gemini model registration failed: {e}")
 
             logger.info(f"Total configured and discovered models: {len(self.models)}")
 
@@ -1324,11 +1328,12 @@ class RouterCore:
             settings = get_settings()
             sentiment_id = settings.sentiment_model_id
 
+            # Allow using a model from adapters even if it is disabled for general routing
             if not sentiment_id or sentiment_id not in self.adapters:
-                # Fallback to the cheapest model, assuming it's capable enough for sentiment
                 sentiment_id = min(
                     self.models.keys(), key=lambda m: self.models[m].get("cost", 0)
                 )
+
             adapter = self.adapters.get(sentiment_id)
             if not adapter:
                 return None

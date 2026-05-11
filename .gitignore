@@ -31,6 +31,9 @@ build/
 *.tar.gz
 reality_router_dist.zip
 
+# Project Meta
+plans/
+
 # IDEs
 .vscode/
 .idea/

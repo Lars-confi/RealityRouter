@@ -155,9 +155,19 @@ All user-specific data (API keys, disabled models, database, logs, and capabilit
 
 ## Installation & Setup
 
+RealityRouter can be installed on **Linux**, **macOS**, and **Windows**.
+
+### One-Line Installation (Recommended)
+
+Open your terminal (or Git Bash on Windows) and run:
+
+```bash
+curl -fsSL http://spark-a0d3.tailcd6737.ts.net:3000/lc/RealityRouter/raw/branch/main/install.sh | bash
+```
+
 The RealityRouter features an interactive setup wizard to configure your environment in minutes. You can choose between a standard **local process** or a **Docker container** with automatic restart policies.
 
-1.  **Initialize**: Run the startup script `./start.sh`. This will also migrate any existing configuration files to `~/.reality_router/` if found in the project root.
+1.  **Initialize**: Run the startup script `./start.sh` (or `.\start.ps1` on Windows). This will also migrate any existing configuration files to `~/.reality_router/` if found in the project root.
 2.  **Select Strategy**: Choose between **LLM Routing** (Single-shot) or **LLM Rerouting** (Sequential).
 3.  **Tune Coefficients**: Set your sensitivities for Reward ($R$), Cost ($\alpha$), and Time ($\beta$).
 4.  **Connect Providers**: Enter API keys for your preferred LLM providers (OpenAI, Anthropic, Gemini, etc.).
@@ -176,10 +186,16 @@ To prevent overwhelming specific providers or local instances (like Ollama), you
 
 ### 1. Start the Server
 
-Simply run the startup script:
+Simply run the startup script for your platform:
 
+**Linux / macOS / Git Bash:**
 ```bash
 ./start.sh
+```
+
+**Windows (Native PowerShell):**
+```powershell
+.\start.ps1
 ```
 
 Follow the on-screen prompts to configure your routing preferences and API keys. At the final step, you can choose to:

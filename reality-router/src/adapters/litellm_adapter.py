@@ -86,6 +86,26 @@ class LiteLLMAdapter(BaseAdapter):
             if key in params:
                 litellm_args[key] = params[key]
 
+        # Fix logprobs mapping specifically for Gemini
+        # LiteLLM/OpenAI expects 'logprobs: True', but Gemini expects 'logprobs: <int>'
+        # and 'responseLogprobs: True' inside generationConfig.
+        if "gemini" in self.model_name.lower():
+            if litellm_args.get("logprobs") is True:
+                top_logprobs = litellm_args.pop("top_logprobs", 1)
+                # Remove the boolean logprobs so it doesn't crash Google's API
+                litellm_args.pop("logprobs", None) 
+                
+                # Explicitly pass Gemini's generationConfig via LiteLLM extra_body
+                if "extra_body" not in litellm_args:
+                    litellm_args["extra_body"] = {}
+                
+                # We nest it inside generationConfig to ensure it bypasses any faulty LiteLLM parsing
+                if "generationConfig" not in litellm_args["extra_body"]:
+                    litellm_args["extra_body"]["generationConfig"] = {}
+                    
+                litellm_args["extra_body"]["generationConfig"]["responseLogprobs"] = True
+                litellm_args["extra_body"]["generationConfig"]["logprobs"] = top_logprobs
+
         # Force stream=False internally for the router's logic to work correctly.
         # This prevents 'CustomStreamWrapper' attribute errors and allows the router
         # to assess responses before sending them back to the client.

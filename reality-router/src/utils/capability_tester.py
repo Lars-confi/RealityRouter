@@ -44,7 +44,7 @@ class CapabilityManager:
         supports_tools = False
         supports_logprobs = False
 
-        # Test 1: Tools + Logprobs
+        # Test 1: Tools (Independent Test)
         req_tools = RoutingRequest(
             query="test",
             parameters={
@@ -55,50 +55,42 @@ class CapabilityManager:
                     "type": "function",
                     "function": {
                         "name": "dummy_tool",
-                        "description": "dummy", "parameters": {"type": "object", "properties": {}}
+                        "description": "A dummy tool", 
+                        "parameters": {
+                            "type": "object", 
+                            "properties": {
+                                "dummy_param": {"type": "string", "description": "dummy parameter"}
+                            }
+                        }
                     }
-                }],
+                }]
+            }
+        )
+
+        try:
+            await adapter.forward_request(req_tools)
+            supports_tools = True
+        except Exception as e:
+            logger.debug(f"Tools probe failed for {model_id}: {e}")
+
+        # Test 2: Logprobs (Independent Test)
+        req_logprobs = RoutingRequest(
+            query="test",
+            parameters={
+                "model": model_id,
+                "messages": [{"role": "user", "content": "Reply with exactly 'test', no other text."}],
+                "max_tokens": 10,
                 "logprobs": True,
                 "top_logprobs": 2
             }
         )
 
         try:
-            resp = await adapter.forward_request(req_tools)
-            supports_tools = True
+            resp = await adapter.forward_request(req_logprobs)
             if resp.get("logprobs_mean", 0.0) != 0.0 or resp.get("entropy", 0.0) != 0.0:
                 supports_logprobs = True
         except Exception as e:
-            # Fallback Test 2: No Tools, just Logprobs
-            req_logprobs = RoutingRequest(
-                query="test",
-                parameters={
-                    "model": model_id,
-                    "messages": [{"role": "user", "content": "Reply with exactly 'test', no other text."}],
-                    "max_tokens": 10,
-                    "logprobs": True,
-                    "top_logprobs": 2
-                }
-            )
-            try:
-                resp = await adapter.forward_request(req_logprobs)
-                supports_tools = False
-                if resp.get("logprobs_mean", 0.0) != 0.0 or resp.get("entropy", 0.0) != 0.0:
-                    supports_logprobs = True
-            except Exception:
-                # Fallback Test 3: Vanilla request (just to see if it works at all)
-                req_vanilla = RoutingRequest(
-                    query="test",
-                    parameters={
-                        "model": model_id,
-                        "messages": [{"role": "user", "content": "Reply with exactly 'test', no other text."}],
-                        "max_tokens": 10
-                    }
-                )
-                try:
-                    await adapter.forward_request(req_vanilla)
-                except Exception as e2:
-                    logger.warning(f"Model {model_id} completely failed capability probe: {e2}")
+            logger.debug(f"Logprobs probe failed for {model_id}: {e}")
 
         caps = {
             "supports_tools": supports_tools,

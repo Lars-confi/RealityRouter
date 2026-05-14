@@ -2,6 +2,7 @@
 Metrics collection for LLM routing system
 """
 
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -47,6 +48,7 @@ class MetricsSummary(BaseModel):
     success_rate: float
     models: Dict[str, Dict]
     agents: Dict[str, Dict]
+    recent_events: List[Dict]
     timestamp: str
 
 
@@ -345,6 +347,32 @@ async def get_metrics_summary(db: Session = Depends(get_db)):
             for log in logs
         )
 
+        # Get recent events (last 5)
+        recent_logs = (
+            db.query(RoutingLog).order_by(RoutingLog.timestamp.desc()).limit(5).all()
+        )
+        recent_events = []
+        for log in recent_logs:
+            event = {
+                "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                if log.timestamp
+                else None,
+                "success": log.success,
+                "agent_id": log.agent_id or "default",
+                "model_name": log.model_name,
+                "model_id": log.model_id,
+                "time": log.time,
+                "cost": log.cost,
+                "expected_utility": log.expected_utility or 0.0,
+                "prompt_tokens": log.prompt_tokens or 0,
+                "completion_tokens": log.completion_tokens or 0,
+                "total_tokens": log.total_tokens or 0,
+                "routing_context": json.loads(log.routing_context)
+                if log.routing_context
+                else [],
+            }
+            recent_events.append(event)
+
         return MetricsSummary(
             total_requests=total_requests,
             total_cost=total_cost,
@@ -358,6 +386,7 @@ async def get_metrics_summary(db: Session = Depends(get_db)):
             success_rate=success_rate,
             models=model_stats,
             agents=agent_stats,
+            recent_events=recent_events,
             timestamp=datetime.utcnow().isoformat(),
         )
     except Exception as e:
@@ -579,6 +608,29 @@ async def get_dashboard():
                 </div>
             </div>
 
+            <div id="models" class="card">
+                <h2>Model Performance & Unit Economics</h2>
+                <div class="table-container">
+                    <table id="models-table">
+                        <thead>
+                            <tr>
+                                <th>Intelligence Provider</th>
+                                <th>Calls</th>
+                                <th>Positive Feedback</th>
+                                <th>Total Cost & Dist</th>
+                                <th>Avg Latency & Dist</th>
+                                <th>Throughput (Tokens)</th>
+                                <th>Avg Utility & Prob Dist</th>
+                            </tr>
+                        </thead>
+                        <tbody id="models-body"></tbody>
+                    </table>
+                </div>
+                <div style="text-align: right; margin-top: 10px; font-size: 0.8em; color: #7f8c8d;">
+                    *Pricing data provided by <a href="https://github.com/BerriAI/litellm" target="_blank" style="color: #3498db; text-decoration: none;">LiteLLM</a>
+                </div>
+            </div>
+
             <div class="dashboard-row">
                 <div id="agents" class="card">
                     <h2>Agent Activity</h2>
@@ -598,26 +650,12 @@ async def get_dashboard():
                     </div>
                 </div>
 
-                <div id="models" class="card">
-                    <h2>Model Performance & Unit Economics</h2>
-                    <div class="table-container">
-                        <table id="models-table">
-                            <thead>
-                                <tr>
-                                    <th>Intelligence Provider</th>
-                                    <th>Calls</th>
-                                    <th>Positive Feedback</th>
-                                    <th>Total Cost & Dist</th>
-                                    <th>Avg Latency & Dist</th>
-                                    <th>Throughput (Tokens)</th>
-                                    <th>Avg Utility & Prob Dist</th>
-                                </tr>
-                            </thead>
-                            <tbody id="models-body"></tbody>
-                        </table>
+                <div id="recent-events" class="card">
+                    <h2>Recent Events Trace</h2>
+                    <div class="table-container" id="events-container">
+                        <!-- Events will be injected here -->
                     </div>
                 </div>
-            </div>
             </div>
         </div>
 
@@ -831,6 +869,83 @@ async def get_dashboard():
                             </td>
                         `;
                         modelsBody.appendChild(row);
+                    }
+
+                    // Update Recent Events
+                    const eventsContainer = document.getElementById('events-container');
+                    eventsContainer.innerHTML = '';
+
+                    if (data.recent_events && data.recent_events.length > 0) {
+                        for (const event of data.recent_events) {
+                            const eventDiv = document.createElement('div');
+                            eventDiv.style.marginBottom = '30px';
+                            eventDiv.style.padding = '20px';
+                            eventDiv.style.border = '1px solid #444';
+                            eventDiv.style.borderRadius = '8px';
+                            eventDiv.style.background = '#111';
+                            eventDiv.style.fontFamily = "'Courier New', Courier, monospace";
+
+                            let html = `
+                                <div style="color: #555; text-align: center; margin-bottom: 4px;">=====================================================</div>
+                                <div style="color: #fff; text-align: center; font-weight: bold; margin-bottom: 4px; letter-spacing: 2px;">Event Detail View</div>
+                                <div style="color: #555; text-align: center; margin-bottom: 12px;">=====================================================</div>
+
+                                <div style="font-size: 0.9em; line-height: 1.4; margin-bottom: 20px; color: #ccc;">
+                                    <strong>Timestamp:</strong> ${event.timestamp}<br>
+                                    <strong>Status:</strong>    <span style="color: ${event.success ? '#2ecc71' : '#e74c3c'};">${event.success ? '✅ SUCCESS' : '❌ FAILED'}</span><br>
+                                    <strong>Agent:</strong>     ${event.agent_id}<br>
+                                    <strong>Model:</strong>     ${event.model_name} (${event.model_id})<br>
+                                    <strong>Metrics:</strong>   Time: ${event.time.toFixed(2)}s | Cost: $${event.cost.toFixed(6)} | Utility: ${event.expected_utility.toFixed(4)}<br>
+                                    <strong>Tokens:</strong>    ${event.prompt_tokens} prompt + ${event.completion_tokens} completion = ${event.total_tokens} total
+                                </div>
+
+                                <div style="color: #5dade2; font-weight: bold; margin-bottom: 8px;">[MODEL COMPARISON]</div>
+                                <table style="font-size: 0.85em; width: 100%; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="border-bottom: 1px solid #333; color: #95a5a6;">
+                                            <th style="text-align: left; padding: 4px;">Model Name</th>
+                                            <th style="text-align: right; padding: 4px;">Utility</th>
+                                            <th style="text-align: right; padding: 4px;">Prob</th>
+                                            <th style="text-align: right; padding: 4px;">Cost</th>
+                                            <th style="text-align: right; padding: 4px;">Time</th>
+                                            <th style="text-align: right; padding: 4px;">Uncert</th>
+                                            <th style="text-align: center; padding: 4px;">FB</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                            `;
+
+                            if (event.routing_context && event.routing_context.length > 0) {
+                                for (const d of event.routing_context) {
+                                    const isSelected = d.model_id === event.model_id;
+                                    html += `
+                                        <tr style="${isSelected ? 'color: #fff; font-weight: bold;' : 'color: #777;'}">
+                                            <td style="padding: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">
+                                                ${isSelected ? '>> ' : '   '}${d.name || d.model_id}
+                                            </td>
+                                            <td style="padding: 4px; text-align: right;">${d.expected_utility.toFixed(4)}</td>
+                                            <td style="padding: 4px; text-align: right;">${d.probability.toFixed(2)}</td>
+                                            <td style="padding: 4px; text-align: right;">$${(d.cost || 0).toFixed(4)}</td>
+                                            <td style="padding: 4px; text-align: right;">${(d.time || 0).toFixed(1)}s</td>
+                                            <td style="padding: 4px; text-align: right;">${(d.uncertainty || 0).toFixed(2)}</td>
+                                            <td style="padding: 4px; text-align: center;">${d.feedback_required ? '❌' : ''}</td>
+                                        </tr>
+                                    `;
+                                }
+                            } else {
+                                html += '<tr><td colspan="7" style="text-align: center; color: #555; padding: 10px;">(No pool context available)</td></tr>';
+                            }
+
+                            html += `
+                                    </tbody>
+                                </table>
+                                <div style="color: #444; margin-top: 10px;">----------------------------------------------------------------------</div>
+                            `;
+                            eventDiv.innerHTML = html;
+                            eventsContainer.appendChild(eventDiv);
+                        }
+                    } else {
+                        eventsContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #7f8c8d;">No events recorded in this session...</div>';
                     }
                 } catch (e) {
                     console.error("Dashboard sync failed", e);

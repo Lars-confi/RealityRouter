@@ -9,7 +9,7 @@ python-dotenv>=1.0.0
 litellm
 openai>=1.3.5
 anthropic>=0.7.0
-cohere>=5.0.0
+mistralai>=1.0.0
 
 # Utilities
 requests>=2.31.0

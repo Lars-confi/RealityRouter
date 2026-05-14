@@ -8,7 +8,7 @@ description: 60-second install + your first routed request
 Install the router, configure your providers, and route your first request — in about 60 seconds.
 
 > [!NOTE]
-> Requires Python 3.10+ and an API key from at least one LLM provider (OpenAI, Anthropic, Gemini, Cohere, HuggingFace, or a local Ollama instance).
+> Requires Python 3.10+ and an API key from at least one LLM provider (OpenAI, Anthropic, Gemini, Mistral, HuggingFace, or a local Ollama instance).
 
 ## 1. Install
 
@@ -50,7 +50,7 @@ Paste API keys for the providers you want available:
 - `OPENAI_API_KEY` — OpenAI
 - `ANTHROPIC_API_KEY` — Anthropic
 - `GEMINI_API_KEY` — Google Gemini
-- `COHERE_API_KEY` — Cohere
+- `MISTRAL_API_KEY` — Mistral
 - `HUGGINGFACE_API_KEY` — Hugging Face
 - `CUSTOM_LLM_BASE_URL` + `CUSTOM_LLM_API_KEY` — local Ollama, vLLM, or any OpenAI-compatible endpoint
 

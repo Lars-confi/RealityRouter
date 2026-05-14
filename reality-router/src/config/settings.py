@@ -39,12 +39,14 @@ class Settings(BaseModel):
     debug: bool = Field(default=False)
 
     # Database settings
-    database_url: str = Field(default=f"sqlite:///{os.path.join(APP_HOME, 'reality_router.db')}")
+    database_url: str = Field(
+        default=f"sqlite:///{os.path.join(APP_HOME, 'reality_router.db')}"
+    )
 
     # API keys
     openai_api_key: Optional[str] = Field(default=None)
     anthropic_api_key: Optional[str] = Field(default=None)
-    cohere_api_key: Optional[str] = Field(default=None)
+    mistral_api_key: Optional[str] = Field(default=None)
     gemini_api_key: Optional[str] = Field(default=None)
     custom_llm_base_url: Optional[str] = Field(default=None)
     custom_llm_api_key: Optional[str] = Field(default=None)

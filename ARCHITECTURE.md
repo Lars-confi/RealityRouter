@@ -49,7 +49,7 @@ The project requires the following Python dependencies (listed in requirements.t
 - python-dotenv==1.0.0
 - openai==1.3.5
 - anthropic==0.7.0
-- cohere==5.0.0
+- mistralai>=1.0.0
 - requests==2.31.0
 - numpy==1.24.3
 - pandas==2.0.3
@@ -86,7 +86,7 @@ The main routing logic implemented as a FastAPI application with:
 Python classes for each LLM provider:
 - OpenAI adapter
 - Anthropic adapter
-- Cohere adapter
+- Mistral adapter
 - Generic adapter framework
 
 ### 3. Load Balancer
@@ -359,7 +359,7 @@ src/
 │   ├── __init__.py
 │   ├── openai_adapter.py
 │   ├── anthropic_adapter.py
-│   └── cohere_adapter.py
+└── mistral_adapter.py
 ├── config/
 │   ├── __init__.py
 │   ├── settings.py      # Configuration management

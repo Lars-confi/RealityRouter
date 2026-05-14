@@ -721,8 +721,8 @@ class RouterCore:
                     provider = "anthropic"
                 elif provider_str.startswith("gemini/"):
                     provider = "gemini"
-                elif provider_str.startswith("cohere/"):
-                    provider = "cohere"
+                elif provider_str.startswith("mistral/"):
+                    provider = "mistral"
                 elif provider_str.startswith("ollama/"):
                     provider = "ollama"
                     is_local = 1.0

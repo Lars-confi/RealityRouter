@@ -33,18 +33,65 @@ logger = setup_logger(__name__)
 router = APIRouter()
 
 
-def resolve_agent_id(request_body_agent_id: Optional[str], headers: Any) -> str:
-    """Resolve agent_id from body or headers (User-Agent, X-Agent-ID)"""
+def resolve_agent_id(
+    request_body_agent_id: Optional[str],
+    headers: Any,
+    messages: List[Dict] = None,
+    prompt: str = None,
+) -> str:
+    """Resolve agent_id from body, headers, or heuristic prompt scanning"""
     if request_body_agent_id and request_body_agent_id != "default":
         return request_body_agent_id
 
     # Check for identifying headers
+    header_val = None
     for header in ["X-Agent-ID", "X-Client-ID", "User-Agent"]:
         val = headers.get(header)
         if val:
-            return val
+            # If it's not a generic library name, return it immediately
+            generic_libs = [
+                "openai-",
+                "openai/",
+                "python-requests",
+                "axios",
+                "undici",
+                "node-fetch",
+            ]
+            if not any(x in val.lower() for x in generic_libs):
+                return val
+            header_val = val
 
-    return "default"
+    # Heuristic scanning of the system prompt or raw prompt if we only found generic headers
+    heuristic_context = ""
+    if messages and len(messages) > 0:
+        # The system message is usually the first one
+        first_msg = messages[0]
+        if isinstance(first_msg, dict) and first_msg.get("role") == "system":
+            content = first_msg.get("content", "")
+            if isinstance(content, list):
+                heuristic_context = " ".join(
+                    [
+                        str(c.get("text", ""))
+                        for c in content
+                        if isinstance(c, dict) and "text" in c
+                    ]
+                ).lower()
+            else:
+                heuristic_context = str(content).lower()
+    elif prompt:
+        heuristic_context = str(prompt).lower()
+
+    if heuristic_context:
+        if "openclaw" in heuristic_context:
+            return "OpenClaw"
+        if "hermes" in heuristic_context:
+            return "Hermes"
+        if "aider" in heuristic_context:
+            return "Aider"
+        if "roo code" in heuristic_context.replace(" ", "").replace("-", ""):
+            return "RooCode"
+
+    return header_val if header_val else "default"
 
 
 # Reality Check API Configuration - Hardcoded per v1.0.0.0 Spec
@@ -2524,7 +2571,11 @@ async def chat_completions(
 
         routing_req = RoutingRequest(
             query=query_text,
-            agent_id=resolve_agent_id(request.agent_id, fastapi_request.headers),
+            agent_id=resolve_agent_id(
+                request.agent_id,
+                fastapi_request.headers,
+                messages=request.messages,
+            ),
             parameters=request.model_dump(exclude={"agent_id"}),
         )
 
@@ -2696,7 +2747,9 @@ async def completions(
         )
         routing_req = RoutingRequest(
             query=prompt_text,
-            agent_id=resolve_agent_id(request.agent_id, fastapi_request.headers),
+            agent_id=resolve_agent_id(
+                request.agent_id, fastapi_request.headers, prompt=prompt_text
+            ),
             parameters=request.model_dump(exclude={"agent_id"}),
         )
 

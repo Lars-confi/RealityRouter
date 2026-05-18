@@ -2365,7 +2365,7 @@ class RouterCore:
                             logger.error(f"Post-hoc tiered assessment failed: {e}")
 
                         # If we reached here, this model is deemed sufficient, stop escalation.
-                        break
+                        pass
 
                     # Log successful decision
                     actual_cost = (
@@ -2595,7 +2595,20 @@ async def chat_completions(
                 yield ": ping\n\n"
                 await asyncio.sleep(2)
 
-            routing_rsp = await routing_task
+            try:
+                routing_rsp = await routing_task
+            except Exception as e:
+                error_chunk = {
+                    "error": {
+                        "message": f"Routing failed: {str(e)}",
+                        "type": "server_error",
+                        "param": None,
+                        "code": None,
+                    }
+                }
+                yield f"data: {json.dumps(error_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
 
             # Extract content and tool calls
             content = (
@@ -2766,7 +2779,20 @@ async def completions(
                 yield ": ping\n\n"
                 await asyncio.sleep(2)
 
-            routing_rsp = await routing_task
+            try:
+                routing_rsp = await routing_task
+            except Exception as e:
+                error_chunk = {
+                    "error": {
+                        "message": f"Routing failed: {str(e)}",
+                        "type": "server_error",
+                        "param": None,
+                        "code": None,
+                    }
+                }
+                yield f"data: {json.dumps(error_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
 
             content = (
                 routing_rsp.response.get("text", "")

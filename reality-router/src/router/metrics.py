@@ -542,14 +542,17 @@ async def get_dashboard():
             <h1 style="text-align: center; margin-bottom: 40px; letter-spacing: 2px;">REALITY ROUTER CONTROL CENTER</h1>
 
             <div id="preferences" class="card">
-                <h2>Routing Preferences</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Routing Preferences</h2>
+                    <div id="ratio-display" style="font-family: monospace; color: #70b1ff; font-weight: bold; font-size: 1.1em; background: rgba(112, 177, 255, 0.1); padding: 4px 12px; border-radius: 20px; border: 1px solid rgba(112, 177, 255, 0.2);">Ratio: 1:1</div>
+                </div>
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 20px;">
                     <div style="font-weight: bold; color: #e6edf3; width: 140px; text-align: right;">Cost</div>
                     <div style="flex-grow: 1; margin: 0 20px; text-align: center;">
                         <input type="range" id="pref-slider" min="0" max="100" value="50" style="width: 100%; cursor: pointer;">
                         <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: #8b949e; margin-top: 8px;">
                             <span>100:1</span>
-                            <span>1:1</span>
+                            <span id="reset-btn" style="cursor: pointer; color: #70b1ff; text-decoration: underline;">1:1 (Reset)</span>
                             <span>1:100</span>
                         </div>
                     </div>
@@ -624,37 +627,60 @@ async def get_dashboard():
             async function initPreferences() {
                 const slider = document.getElementById('pref-slider');
                 const statusEl = document.getElementById('pref-status');
+                const ratioDisplay = document.getElementById('ratio-display');
+                const resetBtn = document.getElementById('reset-btn');
+
+                function updateRatioDisplay(val) {
+                    if (val <= 50) {
+                        const ratio = 100 - (99 * val / 50.0);
+                        ratioDisplay.innerText = `Ratio: ${Math.round(ratio)}:1`;
+                    } else {
+                        const ratio = 1 + (99 * (val - 50) / 50.0);
+                        ratioDisplay.innerText = `Ratio: 1:${Math.round(ratio)}`;
+                    }
+                }
 
                 try {
                     const res = await fetch('/metrics/preferences');
                     const data = await res.json();
                     if (data && data.value !== undefined) {
                         slider.value = data.value;
+                        updateRatioDisplay(data.value);
                     }
                 } catch (e) { console.error("Failed to load preferences", e); }
 
                 let timeout = null;
+
+                const savePreferences = async () => {
+                    statusEl.innerText = "Saving...";
+                    try {
+                        const res = await fetch('/metrics/preferences', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ value: parseInt(slider.value) })
+                        });
+                        if (res.ok) {
+                            statusEl.innerText = "Preferences updated successfully!";
+                            setTimeout(() => statusEl.innerText = "", 2000);
+                        } else {
+                            statusEl.innerText = "Failed to update.";
+                        }
+                    } catch (err) {
+                        statusEl.innerText = "Error communicating with server.";
+                    }
+                };
+
                 slider.addEventListener('input', () => {
+                    updateRatioDisplay(slider.value);
                     statusEl.innerText = "Pending update...";
                     clearTimeout(timeout);
-                    timeout = setTimeout(async () => {
-                        statusEl.innerText = "Saving...";
-                        try {
-                            const res = await fetch('/metrics/preferences', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ value: parseInt(slider.value) })
-                            });
-                            if (res.ok) {
-                                statusEl.innerText = "Preferences updated successfully!";
-                                setTimeout(() => statusEl.innerText = "", 2000);
-                            } else {
-                                statusEl.innerText = "Failed to update.";
-                            }
-                        } catch (err) {
-                            statusEl.innerText = "Error communicating with server.";
-                        }
-                    }, 300);
+                    timeout = setTimeout(savePreferences, 300);
+                });
+
+                resetBtn.addEventListener('click', () => {
+                    slider.value = 50;
+                    updateRatioDisplay(50);
+                    savePreferences();
                 });
             }
             initPreferences();

@@ -50,6 +50,7 @@ class Settings(BaseModel):
     gemini_api_key: Optional[str] = Field(default=None)
     custom_llm_base_url: Optional[str] = Field(default=None)
     custom_llm_api_key: Optional[str] = Field(default=None)
+    reality_check_token: Optional[str] = Field(default=None)
 
     # Model settings
     disabled_models: List[str] = Field(default_factory=list)

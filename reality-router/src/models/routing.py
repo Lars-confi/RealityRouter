@@ -14,6 +14,7 @@ class RoutingRequest(BaseModel):
     query: str
     agent_id: Optional[str] = "default"
     parameters: Optional[Dict[str, Any]] = None
+    authorization: Optional[str] = None
     timestamp: Optional[datetime.datetime] = None
 
     class Config:

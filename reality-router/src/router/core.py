@@ -1002,9 +1002,18 @@ class RouterCore:
                             if strategy == "expected_utility"
                             else REALITY_REROUTING_URL
                         )
+                        # Use stored token from settings or forwarded header
+                        auth_token = (
+                            request.authorization or settings.reality_check_token
+                        )
+                        headers = {}
+                        if auth_token:
+                            headers["Authorization"] = auth_token
+
                         resp = await client.post(
                             f"{url}/decide",
                             json={"features": m["features"]},
+                            headers=headers,
                             timeout=5.0,
                         )
                         if resp.status_code == 200:
@@ -1390,6 +1399,7 @@ class RouterCore:
                         "max_tokens": 256,
                         "temperature": 0,
                     },
+                    authorization=request.authorization,
                 )
             )
 
@@ -1549,9 +1559,19 @@ class RouterCore:
                                 f"Sending feedback to Reality Check ({fb_strategy}) for decision {rc_id_str}: {sentiment} (Payload: {fb_payload})"
                             )
                             async with httpx.AsyncClient() as client:
+                                # Use stored token from settings or forwarded header
+                                auth_token = (
+                                    request.authorization
+                                    or settings.reality_check_token
+                                )
+                                headers = {}
+                                if auth_token:
+                                    headers["Authorization"] = auth_token
+
                                 fb_resp = await client.post(
                                     f"{url}/feedback",
                                     json=fb_payload,
+                                    headers=headers,
                                     timeout=3.0,
                                 )
                                 fb_status = fb_resp.status_code
@@ -1868,12 +1888,21 @@ class RouterCore:
                                         if strategy == "expected_utility"
                                         else REALITY_REROUTING_URL
                                     )
+                                    auth_token = (
+                                        request.authorization
+                                        or settings.reality_check_token
+                                    )
+                                    headers = {}
+                                    if auth_token:
+                                        headers["Authorization"] = auth_token
+
                                     await client.post(
                                         f"{url}/feedback",
                                         json={
                                             "decision_id": int(rc_id_str),
                                             "feedback": 0,
                                         },
+                                        headers=headers,
                                         timeout=2.0,
                                     )
                             except Exception as fe:
@@ -1894,12 +1923,21 @@ class RouterCore:
                                     if strategy == "expected_utility"
                                     else REALITY_REROUTING_URL
                                 )
+                                auth_token = (
+                                    request.authorization
+                                    or settings.reality_check_token
+                                )
+                                headers = {}
+                                if auth_token:
+                                    headers["Authorization"] = auth_token
+
                                 await client.post(
                                     f"{url}/feedback",
                                     json={
                                         "decision_id": int(rc_id_str),
                                         "feedback": 1,
                                     },
+                                    headers=headers,
                                     timeout=2.0,
                                 )
                         except Exception as fe:
@@ -1970,6 +2008,7 @@ class RouterCore:
                             }
                             if request.parameters
                             else {"messages": cont_messages},
+                            authorization=request.authorization,
                         )
 
                         try:
@@ -2201,12 +2240,21 @@ class RouterCore:
                                         if strategy == "expected_utility"
                                         else REALITY_REROUTING_URL
                                     )
+                                    auth_token = (
+                                        request.authorization
+                                        or settings.reality_check_token
+                                    )
+                                    headers = {}
+                                    if auth_token:
+                                        headers["Authorization"] = auth_token
+
                                     fb_resp = await client.post(
                                         f"{url}/feedback",
                                         json={
                                             "decision_id": int(rc_id_str),
                                             "feedback": 0,
                                         },
+                                        headers=headers,
                                         timeout=2.0,
                                     )
                                     fb_status = fb_resp.status_code
@@ -2265,9 +2313,18 @@ class RouterCore:
                             # 1. Calculate p_actual via /decide endpoint (Expert Mode)
                             async with httpx.AsyncClient() as client:
                                 # Post-hoc assessment for tiered rerouting always uses REALITY_REROUTING_URL
+                                auth_token = (
+                                    request.authorization
+                                    or settings.reality_check_token
+                                )
+                                headers = {}
+                                if auth_token:
+                                    headers["Authorization"] = auth_token
+
                                 rc_resp = await client.post(
                                     f"{REALITY_REROUTING_URL}/decide",
                                     json={"features": final_features},
+                                    headers=headers,
                                     timeout=3.0,
                                 )
                                 if rc_resp.status_code == 200:
@@ -2551,6 +2608,7 @@ async def chat_completions(
                 messages=request.messages,
             ),
             parameters=request.model_dump(exclude={"agent_id"}),
+            authorization=Authorization,
         )
 
         # Use the global router_core instance
@@ -2738,6 +2796,7 @@ async def completions(
                 request.agent_id, fastapi_request.headers, prompt=prompt_text
             ),
             parameters=request.model_dump(exclude={"agent_id"}),
+            authorization=Authorization,
         )
 
         core = router_core

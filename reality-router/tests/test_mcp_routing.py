@@ -359,7 +359,7 @@ async def test_integration_reality_check_feedback_loop(mock_router):
 
             # Verify the feedback API was called
             mock_client_instance.post.assert_called_once_with(
-                "https://snap-api.swedencentral.azurecontainerapps.io/feedback",
+                "https://snap-api.jollysand-1b9ed42e.swedencentral.azurecontainerapps.io/feedback",
                 json={
                     "decision_id": 12345,
                     "feedback": 1,  # 1 for happy sentiment

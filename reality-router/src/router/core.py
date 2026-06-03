@@ -95,8 +95,12 @@ def resolve_agent_id(
 
 
 # Reality Check API Configuration - Hardcoded per v1.0.0.0 Spec
-REALITY_ROUTING_URL = "https://snap-api.swedencentral.azurecontainerapps.io"
-REALITY_REROUTING_URL = "https://ladder-api.swedencentral.azurecontainerapps.io"
+REALITY_ROUTING_URL = (
+    "https://snap-api.jollysand-1b9ed42e.swedencentral.azurecontainerapps.io"
+)
+REALITY_REROUTING_URL = (
+    "https://ladder-api.jollysand-1b9ed42e.swedencentral.azurecontainerapps.io"
+)
 
 # Infrastructure failure detection patterns
 INFRA_FAILURE_PATTERNS = [

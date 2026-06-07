@@ -1052,7 +1052,9 @@ class RouterCore:
                                 f"Reality Check API returned {resp.status_code} for {m['id']}: {error_body}"
                             )
                 except Exception as e:
-                    logger.error(f"Reality Check call failed for {m['id']}: {e}")
+                    logger.exception(
+                        f"Reality Check call failed for {m['id']}: {repr(e)}"
+                    )
 
                 return {
                     **m,
@@ -2397,7 +2399,9 @@ class RouterCore:
                                         current_idx = ranked_decisions.index(decision)
 
                         except Exception as e:
-                            logger.error(f"Post-hoc tiered assessment failed: {e}")
+                            logger.exception(
+                                f"Post-hoc tiered assessment failed: {repr(e)}"
+                            )
 
                         # If we reached here, this model is deemed sufficient, stop escalation.
                         pass

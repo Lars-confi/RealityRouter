@@ -998,13 +998,17 @@ class RouterCore:
                     }
                 )
 
-            async def call_rc(client, m):
+            async def call_rc(m):
                 # Initial model ranking always uses the Snap endpoint
                 url = REALITY_ROUTING_URL
                 try:
                     # Use stored token from settings or forwarded header
                     auth_token = request.authorization or settings.reality_check_token
-                    headers = {}
+                    headers = {
+                        "Content-Type": "application/json",
+                        "User-Agent": "curl/7.68.0",
+                        "Connection": "close",
+                    }
                     if auth_token:
                         if not auth_token.startswith(
                             "Bearer "
@@ -1013,12 +1017,14 @@ class RouterCore:
                         else:
                             headers["Authorization"] = auth_token
 
-                    resp = await client.post(
-                        f"{url}/decide",
-                        json={"features": m["features"]},
-                        headers=headers,
-                        timeout=30.0,
-                    )
+                    # Match curl behavior: fresh connection per request, no HTTP/2
+                    async with httpx.AsyncClient(http2=False) as client:
+                        resp = await client.post(
+                            f"{url}/decide",
+                            json={"features": m["features"]},
+                            headers=headers,
+                            timeout=30.0,
+                        )
                     if resp.status_code == 200:
                         r = resp.json()
                         # Support multiple possible keys for probability and uncertainty
@@ -1063,10 +1069,10 @@ class RouterCore:
                     "fb_req": False,
                 }
 
-            async with httpx.AsyncClient() as client:
-                results = await asyncio.gather(
-                    *[call_rc(client, m) for m in model_tasks]
-                )
+            results = []
+            for m in model_tasks:
+                res = await call_rc(m)
+                results.append(res)
 
             decisions = []
             feedback_candidates = []
@@ -1566,23 +1572,24 @@ class RouterCore:
                             logger.info(
                                 f"Sending feedback to Reality Check ({fb_strategy}) for decision {rc_id_str}: {sentiment} (Payload: {fb_payload})"
                             )
-                            async with httpx.AsyncClient() as client:
-                                # Use stored token from settings or forwarded header
-                                auth_token = (
-                                    request.authorization
-                                    or settings.reality_check_token
-                                )
-                                headers = {}
-                                if auth_token:
-                                    if not auth_token.startswith(
-                                        "Bearer "
-                                    ) and not auth_token.startswith("Basic "):
-                                        headers["Authorization"] = (
-                                            f"Bearer {auth_token}"
-                                        )
-                                    else:
-                                        headers["Authorization"] = auth_token
+                            # Use stored token from settings or forwarded header
+                            auth_token = (
+                                request.authorization or settings.reality_check_token
+                            )
+                            headers = {
+                                "Content-Type": "application/json",
+                                "User-Agent": "curl/7.68.0",
+                                "Connection": "close",
+                            }
+                            if auth_token:
+                                if not auth_token.startswith(
+                                    "Bearer "
+                                ) and not auth_token.startswith("Basic "):
+                                    headers["Authorization"] = f"Bearer {auth_token}"
+                                else:
+                                    headers["Authorization"] = auth_token
 
+                            async with httpx.AsyncClient(http2=False) as client:
                                 fb_resp = await client.post(
                                     f"{url}/feedback",
                                     json=fb_payload,
@@ -1897,7 +1904,8 @@ class RouterCore:
                         if decision.reality_check_id:
                             try:
                                 rc_id_str = str(decision.reality_check_id)
-                                async with httpx.AsyncClient() as client:
+                                # Match sequential curl behavior with fresh connection
+                                async with httpx.AsyncClient(http2=False) as client:
                                     url = (
                                         REALITY_ROUTING_URL
                                         if strategy == "expected_utility"
@@ -1907,7 +1915,11 @@ class RouterCore:
                                         request.authorization
                                         or settings.reality_check_token
                                     )
-                                    headers = {}
+                                    headers = {
+                                        "Content-Type": "application/json",
+                                        "User-Agent": "curl/7.68.0",
+                                        "Connection": "close",
+                                    }
                                     if auth_token:
                                         if not auth_token.startswith(
                                             "Bearer "
@@ -1939,7 +1951,8 @@ class RouterCore:
                     if response.get("tool_calls") and decision.reality_check_id:
                         try:
                             rc_id_str = str(decision.reality_check_id)
-                            async with httpx.AsyncClient() as client:
+                            # Match sequential curl behavior with fresh connection
+                            async with httpx.AsyncClient(http2=False) as client:
                                 url = (
                                     REALITY_ROUTING_URL
                                     if strategy == "expected_utility"
@@ -1949,7 +1962,11 @@ class RouterCore:
                                     request.authorization
                                     or settings.reality_check_token
                                 )
-                                headers = {}
+                                headers = {
+                                    "Content-Type": "application/json",
+                                    "User-Agent": "curl/7.68.0",
+                                    "Connection": "close",
+                                }
                                 if auth_token:
                                     if not auth_token.startswith(
                                         "Bearer "
@@ -1960,15 +1977,15 @@ class RouterCore:
                                     else:
                                         headers["Authorization"] = auth_token
 
-                                await client.post(
-                                    f"{url}/feedback",
-                                    json={
-                                        "decision_id": int(rc_id_str),
-                                        "feedback": 1,
-                                    },
-                                    headers=headers,
-                                    timeout=30.0,
-                                )
+                                    await client.post(
+                                        f"{url}/feedback",
+                                        json={
+                                            "decision_id": int(rc_id_str),
+                                            "feedback": 1,
+                                        },
+                                        headers=headers,
+                                        timeout=30.0,
+                                    )
                         except Exception as fe:
                             logger.error(f"Auto-positive feedback failed: {fe}")
 
@@ -2263,7 +2280,8 @@ class RouterCore:
                                 logger.info(
                                     f"Sending auto-negative feedback for {status} response (decision {rc_id_str})"
                                 )
-                                async with httpx.AsyncClient() as client:
+                                # Match sequential curl behavior with fresh connection
+                                async with httpx.AsyncClient(http2=False) as client:
                                     url = (
                                         REALITY_ROUTING_URL
                                         if strategy == "expected_utility"
@@ -2273,7 +2291,11 @@ class RouterCore:
                                         request.authorization
                                         or settings.reality_check_token
                                     )
-                                    headers = {}
+                                    headers = {
+                                        "Content-Type": "application/json",
+                                        "User-Agent": "curl/7.68.0",
+                                        "Connection": "close",
+                                    }
                                     if auth_token:
                                         if not auth_token.startswith(
                                             "Bearer "
@@ -2347,13 +2369,18 @@ class RouterCore:
                                 break
 
                             # 1. Calculate p_actual via /decide endpoint (Expert Mode)
-                            async with httpx.AsyncClient() as client:
+                            # Match sequential curl behavior with fresh connection
+                            async with httpx.AsyncClient(http2=False) as client:
                                 # Post-hoc assessment for tiered rerouting always uses REALITY_REROUTING_URL
                                 auth_token = (
                                     request.authorization
                                     or settings.reality_check_token
                                 )
-                                headers = {}
+                                headers = {
+                                    "Content-Type": "application/json",
+                                    "User-Agent": "curl/7.68.0",
+                                    "Connection": "close",
+                                }
                                 if auth_token:
                                     if not auth_token.startswith(
                                         "Bearer "

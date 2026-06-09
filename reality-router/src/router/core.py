@@ -904,6 +904,7 @@ class RouterCore:
         self, request: RoutingRequest, strategy: str = "expected_utility"
     ) -> List[RoutingDecision]:
         """Select models and rank them using Reality Check calibration"""
+        settings = get_settings()
         logger.debug(f"Ranking models using strategy: {strategy}")
         if not self.models:
             raise HTTPException(
@@ -1005,13 +1006,18 @@ class RouterCore:
                     auth_token = request.authorization or settings.reality_check_token
                     headers = {}
                     if auth_token:
-                        headers["Authorization"] = auth_token
+                        if not auth_token.startswith(
+                            "Bearer "
+                        ) and not auth_token.startswith("Basic "):
+                            headers["Authorization"] = f"Bearer {auth_token}"
+                        else:
+                            headers["Authorization"] = auth_token
 
                     resp = await client.post(
                         f"{url}/decide",
                         json={"features": m["features"]},
                         headers=headers,
-                        timeout=15.0,
+                        timeout=30.0,
                     )
                     if resp.status_code == 200:
                         r = resp.json()
@@ -1568,13 +1574,20 @@ class RouterCore:
                                 )
                                 headers = {}
                                 if auth_token:
-                                    headers["Authorization"] = auth_token
+                                    if not auth_token.startswith(
+                                        "Bearer "
+                                    ) and not auth_token.startswith("Basic "):
+                                        headers["Authorization"] = (
+                                            f"Bearer {auth_token}"
+                                        )
+                                    else:
+                                        headers["Authorization"] = auth_token
 
                                 fb_resp = await client.post(
                                     f"{url}/feedback",
                                     json=fb_payload,
                                     headers=headers,
-                                    timeout=10.0,
+                                    timeout=30.0,
                                 )
                                 fb_status = fb_resp.status_code
                                 fb_text = fb_resp.text
@@ -1896,7 +1909,14 @@ class RouterCore:
                                     )
                                     headers = {}
                                     if auth_token:
-                                        headers["Authorization"] = auth_token
+                                        if not auth_token.startswith(
+                                            "Bearer "
+                                        ) and not auth_token.startswith("Basic "):
+                                            headers["Authorization"] = (
+                                                f"Bearer {auth_token}"
+                                            )
+                                        else:
+                                            headers["Authorization"] = auth_token
 
                                     await client.post(
                                         f"{url}/feedback",
@@ -1905,7 +1925,7 @@ class RouterCore:
                                             "feedback": 0,
                                         },
                                         headers=headers,
-                                        timeout=10.0,
+                                        timeout=30.0,
                                     )
                             except Exception as fe:
                                 logger.error(f"Auto-negative feedback failed: {fe}")
@@ -1931,7 +1951,14 @@ class RouterCore:
                                 )
                                 headers = {}
                                 if auth_token:
-                                    headers["Authorization"] = auth_token
+                                    if not auth_token.startswith(
+                                        "Bearer "
+                                    ) and not auth_token.startswith("Basic "):
+                                        headers["Authorization"] = (
+                                            f"Bearer {auth_token}"
+                                        )
+                                    else:
+                                        headers["Authorization"] = auth_token
 
                                 await client.post(
                                     f"{url}/feedback",
@@ -1940,7 +1967,7 @@ class RouterCore:
                                         "feedback": 1,
                                     },
                                     headers=headers,
-                                    timeout=10.0,
+                                    timeout=30.0,
                                 )
                         except Exception as fe:
                             logger.error(f"Auto-positive feedback failed: {fe}")
@@ -2248,7 +2275,14 @@ class RouterCore:
                                     )
                                     headers = {}
                                     if auth_token:
-                                        headers["Authorization"] = auth_token
+                                        if not auth_token.startswith(
+                                            "Bearer "
+                                        ) and not auth_token.startswith("Basic "):
+                                            headers["Authorization"] = (
+                                                f"Bearer {auth_token}"
+                                            )
+                                        else:
+                                            headers["Authorization"] = auth_token
 
                                     fb_resp = await client.post(
                                         f"{url}/feedback",
@@ -2257,7 +2291,7 @@ class RouterCore:
                                             "feedback": 0,
                                         },
                                         headers=headers,
-                                        timeout=10.0,
+                                        timeout=30.0,
                                     )
                                     fb_status = fb_resp.status_code
                                     fb_text = fb_resp.text
@@ -2321,13 +2355,20 @@ class RouterCore:
                                 )
                                 headers = {}
                                 if auth_token:
-                                    headers["Authorization"] = auth_token
+                                    if not auth_token.startswith(
+                                        "Bearer "
+                                    ) and not auth_token.startswith("Basic "):
+                                        headers["Authorization"] = (
+                                            f"Bearer {auth_token}"
+                                        )
+                                    else:
+                                        headers["Authorization"] = auth_token
 
                                 rc_resp = await client.post(
                                     f"{REALITY_REROUTING_URL}/decide",
                                     json={"features": final_features},
                                     headers=headers,
-                                    timeout=10.0,
+                                    timeout=30.0,
                                 )
                                 if rc_resp.status_code == 200:
                                     rc_data = rc_resp.json()

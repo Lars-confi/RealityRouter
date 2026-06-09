@@ -1004,8 +1004,16 @@ class RouterCore:
                 try:
                     # Use stored token from settings or forwarded header
                     auth_token = request.authorization or settings.reality_check_token
+                    logger.debug(
+                        f"RC Call Token source: {'request' if request.authorization else 'settings'}"
+                    )
+                    if auth_token:
+                        logger.debug(f"RC Call Token starts with: {auth_token[:15]}...")
+
                     headers = {
                         "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "Expect": "",
                         "User-Agent": "curl/7.68.0",
                         "Connection": "close",
                     }
@@ -1017,14 +1025,18 @@ class RouterCore:
                         else:
                             headers["Authorization"] = auth_token
 
-                    # Match curl behavior: fresh connection per request, no HTTP/2
-                    async with httpx.AsyncClient(http2=False) as client:
+                    # Match curl behavior: fresh connection per request, no HTTP/1.1
+                    async with httpx.AsyncClient(
+                        http2=False, trust_env=False
+                    ) as client:
+                        logger.info(f"Reality Check POST starting for {m['id']}...")
                         resp = await client.post(
                             f"{url}/decide",
                             json={"features": m["features"]},
                             headers=headers,
                             timeout=30.0,
                         )
+                        logger.info(f"Reality Check POST finished for {m['id']}.")
                     if resp.status_code == 200:
                         r = resp.json()
                         # Support multiple possible keys for probability and uncertainty
@@ -1070,8 +1082,15 @@ class RouterCore:
                 }
 
             results = []
+            import time
+
             for m in model_tasks:
+                start_rc = time.time()
                 res = await call_rc(m)
+                duration = time.time() - start_rc
+                logger.info(
+                    f"Reality Check total call time for {m['id']}: {duration:.4f}s"
+                )
                 results.append(res)
 
             decisions = []
@@ -1578,6 +1597,8 @@ class RouterCore:
                             )
                             headers = {
                                 "Content-Type": "application/json",
+                                "Accept": "application/json",
+                                "Expect": "",
                                 "User-Agent": "curl/7.68.0",
                                 "Connection": "close",
                             }
@@ -1589,7 +1610,9 @@ class RouterCore:
                                 else:
                                     headers["Authorization"] = auth_token
 
-                            async with httpx.AsyncClient(http2=False) as client:
+                            async with httpx.AsyncClient(
+                                http2=False, trust_env=False
+                            ) as client:
                                 fb_resp = await client.post(
                                     f"{url}/feedback",
                                     json=fb_payload,
@@ -1905,7 +1928,9 @@ class RouterCore:
                             try:
                                 rc_id_str = str(decision.reality_check_id)
                                 # Match sequential curl behavior with fresh connection
-                                async with httpx.AsyncClient(http2=False) as client:
+                                async with httpx.AsyncClient(
+                                    http2=False, trust_env=False
+                                ) as client:
                                     url = (
                                         REALITY_ROUTING_URL
                                         if strategy == "expected_utility"
@@ -1917,6 +1942,8 @@ class RouterCore:
                                     )
                                     headers = {
                                         "Content-Type": "application/json",
+                                        "Accept": "application/json",
+                                        "Expect": "",
                                         "User-Agent": "curl/7.68.0",
                                         "Connection": "close",
                                     }
@@ -1952,7 +1979,9 @@ class RouterCore:
                         try:
                             rc_id_str = str(decision.reality_check_id)
                             # Match sequential curl behavior with fresh connection
-                            async with httpx.AsyncClient(http2=False) as client:
+                            async with httpx.AsyncClient(
+                                http2=False, trust_env=False
+                            ) as client:
                                 url = (
                                     REALITY_ROUTING_URL
                                     if strategy == "expected_utility"
@@ -1964,6 +1993,8 @@ class RouterCore:
                                 )
                                 headers = {
                                     "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                    "Expect": "",
                                     "User-Agent": "curl/7.68.0",
                                     "Connection": "close",
                                 }
@@ -1977,15 +2008,15 @@ class RouterCore:
                                     else:
                                         headers["Authorization"] = auth_token
 
-                                    await client.post(
-                                        f"{url}/feedback",
-                                        json={
-                                            "decision_id": int(rc_id_str),
-                                            "feedback": 1,
-                                        },
-                                        headers=headers,
-                                        timeout=30.0,
-                                    )
+                                await client.post(
+                                    f"{url}/feedback",
+                                    json={
+                                        "decision_id": int(rc_id_str),
+                                        "feedback": 1,
+                                    },
+                                    headers=headers,
+                                    timeout=30.0,
+                                )
                         except Exception as fe:
                             logger.error(f"Auto-positive feedback failed: {fe}")
 
@@ -2281,7 +2312,9 @@ class RouterCore:
                                     f"Sending auto-negative feedback for {status} response (decision {rc_id_str})"
                                 )
                                 # Match sequential curl behavior with fresh connection
-                                async with httpx.AsyncClient(http2=False) as client:
+                                async with httpx.AsyncClient(
+                                    http2=False, trust_env=False
+                                ) as client:
                                     url = (
                                         REALITY_ROUTING_URL
                                         if strategy == "expected_utility"
@@ -2293,6 +2326,8 @@ class RouterCore:
                                     )
                                     headers = {
                                         "Content-Type": "application/json",
+                                        "Accept": "application/json",
+                                        "Expect": "",
                                         "User-Agent": "curl/7.68.0",
                                         "Connection": "close",
                                     }

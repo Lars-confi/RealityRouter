@@ -1034,7 +1034,7 @@ class RouterCore:
                             f"{url}/decide",
                             json={"features": m["features"]},
                             headers=headers,
-                            timeout=30.0,
+                            timeout=60.0,
                         )
                         logger.info(f"Reality Check POST finished for {m['id']}.")
                     if resp.status_code == 200:
@@ -1617,7 +1617,7 @@ class RouterCore:
                                     f"{url}/feedback",
                                     json=fb_payload,
                                     headers=headers,
-                                    timeout=30.0,
+                                    timeout=60.0,
                                 )
                                 fb_status = fb_resp.status_code
                                 fb_text = fb_resp.text
@@ -1964,7 +1964,7 @@ class RouterCore:
                                             "feedback": 0,
                                         },
                                         headers=headers,
-                                        timeout=30.0,
+                                        timeout=60.0,
                                     )
                             except Exception as fe:
                                 logger.error(f"Auto-negative feedback failed: {fe}")
@@ -2015,7 +2015,7 @@ class RouterCore:
                                         "feedback": 1,
                                     },
                                     headers=headers,
-                                    timeout=30.0,
+                                    timeout=60.0,
                                 )
                         except Exception as fe:
                             logger.error(f"Auto-positive feedback failed: {fe}")
@@ -2348,7 +2348,7 @@ class RouterCore:
                                             "feedback": 0,
                                         },
                                         headers=headers,
-                                        timeout=30.0,
+                                        timeout=60.0,
                                     )
                                     fb_status = fb_resp.status_code
                                     fb_text = fb_resp.text
@@ -2430,7 +2430,7 @@ class RouterCore:
                                     f"{REALITY_REROUTING_URL}/decide",
                                     json={"features": final_features},
                                     headers=headers,
-                                    timeout=30.0,
+                                    timeout=60.0,
                                 )
                                 if rc_resp.status_code == 200:
                                     rc_data = rc_resp.json()

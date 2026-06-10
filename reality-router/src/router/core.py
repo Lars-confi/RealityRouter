@@ -2643,10 +2643,17 @@ async def get_agent_card():
         if capability_manager.get_capabilities(m)
     )
 
+    contexts = []
+    for m in discovered_models:
+        tokens = router_core.models.get(m, {}).get("max_input_tokens")
+        contexts.append(tokens if tokens is not None else 8192)
+    max_context = max(contexts) if contexts else 8192
+
     return {
         "name": "RealityRouter",
         "description": "Intelligent routing system for LLM requests with MCP support",
         "version": "0.0.1",
+        "context_length": max_context,
         "capabilities": {
             "routing_strategies": ["expected_utility", "round_robin", "weighted"],
             "mcp_translation": True,

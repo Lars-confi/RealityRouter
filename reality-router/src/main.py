@@ -23,7 +23,7 @@ init_db()
 app = FastAPI(
     title="Reality Router",
     description="Intelligent routing system for Language Model requests",
-    version="0.0.1",
+    version="0.0.2",
 )
 
 # Add CORS middleware

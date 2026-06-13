@@ -52,6 +52,11 @@ class Settings(BaseModel):
     custom_llm_api_key: Optional[str] = Field(default=None)
     reality_check_token: Optional[str] = Field(default=None)
 
+    # User Profile settings
+    user_email: str = Field(default="anonymous")
+    user_location: str = Field(default="unknown")
+    sso_email: str = Field(default="anonymous")
+
     # Model settings
     disabled_models: List[str] = Field(default_factory=list)
     sentiment_model_id: Optional[str] = Field(default=None)

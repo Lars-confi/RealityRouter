@@ -677,9 +677,13 @@ class RouterCore:
         """Extract agent features for Reality Check™ calibration"""
         query = request.query or ""
         agent_id = request.agent_id or "default"
+        settings = get_settings()
         features = {
             "model_id": "unknown",
             "agent_id": "default",
+            "user_id": "anonymous",
+            "user_location": "unknown",
+            "sso_email": "anonymous",
             "model_provider": "unknown",
             "struct_nodes": 0.0,
             "struct_height": 0.0,
@@ -742,6 +746,9 @@ class RouterCore:
         # Categorical Features
         features["model_id"] = model_id
         features["agent_id"] = agent_id
+        features["user_id"] = settings.user_email
+        features["user_location"] = settings.user_location
+        features["sso_email"] = settings.sso_email
 
         # Model Capabilities
         m_info = self.models.get(model_id, {})

@@ -172,6 +172,7 @@ class RouterCore:
 
     def __init__(self):
         self.models = {}
+        self.all_discovered_models = []
         self.metrics = {}
         self.models_to_probe = []
         self.translated_languages = set(["english"])
@@ -193,12 +194,23 @@ class RouterCore:
 
     def load_configured_models(self):
         """Load models from configuration and dynamically discover them"""
+        self.all_discovered_models = []
+        self.models = {}
+        self.load_balancer.models = {}
         try:
             settings = get_settings()
 
             # Load static user models if any
             config_models = load_models_from_config()
             for model_id, model_info in config_models.items():
+                self.all_discovered_models.append(
+                    {
+                        "id": model_id,
+                        "name": model_info.get("name", model_id),
+                        "provider": "config",
+                        "enabled": model_id not in settings.disabled_models,
+                    }
+                )
                 if model_id in settings.disabled_models:
                     continue
                 (
@@ -295,6 +307,19 @@ class RouterCore:
                             )
                             for m in ollama_models:
                                 name = m.get("name")
+                                if name and not any(
+                                    d.get("id") == name
+                                    for d in self.all_discovered_models
+                                ):
+                                    self.all_discovered_models.append(
+                                        {
+                                            "id": name,
+                                            "name": name,
+                                            "provider": "ollama",
+                                            "enabled": name
+                                            not in settings.disabled_models,
+                                        }
+                                    )
                                 if (
                                     name
                                     and name not in self.models
@@ -353,6 +378,19 @@ class RouterCore:
                         if resp.status_code == 200:
                             for m in resp.json().get("data", []):
                                 name = m.get("id")
+                                if name and not any(
+                                    d.get("id") == name
+                                    for d in self.all_discovered_models
+                                ):
+                                    self.all_discovered_models.append(
+                                        {
+                                            "id": name,
+                                            "name": name,
+                                            "provider": "custom",
+                                            "enabled": name
+                                            not in settings.disabled_models,
+                                        }
+                                    )
                                 if (
                                     name
                                     and name not in self.models
@@ -425,6 +463,19 @@ class RouterCore:
                                 or "o1" in name
                                 or name == sentiment_model_id
                             ):
+                                if name and not any(
+                                    d.get("id") == name
+                                    for d in self.all_discovered_models
+                                ):
+                                    self.all_discovered_models.append(
+                                        {
+                                            "id": name,
+                                            "name": name,
+                                            "provider": "openai",
+                                            "enabled": name
+                                            not in settings.disabled_models,
+                                        }
+                                    )
                                 if name not in self.models and (
                                     name not in settings.disabled_models
                                     or name == sentiment_model_id
@@ -525,6 +576,17 @@ class RouterCore:
 
                 try:
                     for name in gemini_discovered:
+                        if name and not any(
+                            d.get("id") == name for d in self.all_discovered_models
+                        ):
+                            self.all_discovered_models.append(
+                                {
+                                    "id": name,
+                                    "name": name,
+                                    "provider": "gemini",
+                                    "enabled": name not in settings.disabled_models,
+                                }
+                            )
                         if name not in self.models and (
                             name not in settings.disabled_models
                             or name == sentiment_model_id
@@ -621,6 +683,20 @@ class RouterCore:
 
         except Exception as e:
             logger.error(f"Error loading models: {str(e)}")
+
+    def reload(self):
+        """Reload models and settings"""
+        from src.config.settings import reload_settings
+
+        reload_settings()
+        self.models = {}
+        self.adapters = {}
+        self.load_balancer.models = {}
+        self.concurrency_limits = {}
+        self.load_configured_models()
+        import asyncio
+
+        asyncio.create_task(self.run_capability_probes())
 
     def add_model(
         self,

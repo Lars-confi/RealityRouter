@@ -495,6 +495,30 @@ async def update_preferences(pref: PreferenceUpdate):
     return {"status": "success", "alpha": alpha, "beta": beta}
 
 
+class ModelToggleRequest(BaseModel):
+    model_id: str
+
+
+@router.get("/models/all")
+async def get_all_models():
+    from src.router.core import router_core
+
+    return {"models": getattr(router_core, "all_discovered_models", [])}
+
+
+@router.post("/models/toggle")
+async def toggle_model_endpoint(req: ModelToggleRequest):
+    from src.config.settings import toggle_model
+    from src.router.core import router_core
+
+    toggle_model(req.model_id)
+    router_core.reload()
+    return {
+        "status": "success",
+        "models": getattr(router_core, "all_discovered_models", []),
+    }
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def get_dashboard():
     """
@@ -534,6 +558,15 @@ async def get_dashboard():
             .dashboard-row { display: flex; gap: 20px; margin-bottom: 30px; }
             .dashboard-row .card { flex: 1; min-width: 0; margin-bottom: 0; display: flex; flex-direction: column; max-height: 700px; }
             .table-container { overflow: auto; flex-grow: 1; }
+            .tabs { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; }
+            .tab-btn { background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: all 0.2s; }
+            .tab-btn:hover { background: rgba(255, 255, 255, 0.2); }
+            .tab-btn.active { background: #70b1ff; color: #000; border-color: #70b1ff; }
+            .tab-content { display: none; }
+            .tab-content.active { display: block; }
+            .toggle-btn { padding: 6px 12px; border-radius: 4px; border: none; cursor: pointer; font-weight: bold; }
+            .toggle-on { background: rgba(26, 188, 156, 0.2); color: #1abc9c; border: 1px solid #1abc9c; }
+            .toggle-off { background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; }
             @media (max-width: 1100px) { .dashboard-row { flex-direction: column; } .dashboard-row .card { max-height: none; } }
         </style>
     </head>
@@ -547,30 +580,13 @@ async def get_dashboard():
                 </div>
             </div>
 
-            <div id="preferences" class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h2>Routing Preferences</h2>
-                    <div id="ratio-display" style="font-family: monospace; color: #70b1ff; font-weight: bold; font-size: 1.1em; background: rgba(112, 177, 255, 0.1); padding: 4px 12px; border-radius: 20px; border: 1px solid rgba(112, 177, 255, 0.2);">Ratio: 1:1</div>
-                </div>
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 20px;">
-                    <div style="font-weight: bold; color: #e6edf3; width: 140px; text-align: right;">Cost</div>
-                    <div style="flex-grow: 1; margin: 0 20px; text-align: center;">
-                        <input type="range" id="pref-slider" min="0" max="100" value="50" style="width: 100%; cursor: pointer;">
-                        <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: #8b949e; margin-top: 8px;">
-                            <span>100:1</span>
-                            <span id="reset-btn" style="cursor: pointer; color: #70b1ff; text-decoration: underline;">1:1 (Reset)</span>
-                            <span>1:100</span>
-                        </div>
-                    </div>
-                    <div style="font-weight: bold; color: #e6edf3; width: 140px; text-align: left;">Time</div>
-                </div>
-                <div style="text-align: center; margin-top: 15px; font-size: 0.9em; color: #8b949e; font-style: italic;">
-                    Prioritize your objective: lower cost on the left, or faster response on the right.
-                </div>
-                <div id="pref-status" style="text-align: center; font-size: 0.85em; color: #70b1ff; margin-top: 10px; height: 1em;"></div>
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('performance', event)">Performance</button>
+                <button class="tab-btn" onclick="switchTab('settings', event)">Settings</button>
             </div>
 
-            <div id="summary" class="card">
+            <div id="tab-performance" class="tab-content active">
+                <div id="summary" class="card">
                 <h2>System Health & Usage</h2>
                 <div class="grid" id="summary-grid">
                     <div class="stat">Loading stats...</div>
@@ -626,10 +642,62 @@ async def get_dashboard():
                     </div>
                 </div>
             </div>
-        </div>
+        </div> <!-- End tab-performance -->
 
-        <script>
-            // Load and handle preferences
+        <div id="tab-settings" class="tab-content">
+            <div id="preferences" class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Routing Preferences</h2>
+                    <div id="ratio-display" style="font-family: monospace; color: #70b1ff; font-weight: bold; font-size: 1.1em; background: rgba(112, 177, 255, 0.1); padding: 4px 12px; border-radius: 20px; border: 1px solid rgba(112, 177, 255, 0.2);">Ratio: 1:1</div>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 20px;">
+                    <div style="font-weight: bold; color: #e6edf3; width: 140px; text-align: right;">Cost</div>
+                    <div style="flex-grow: 1; margin: 0 20px; text-align: center;">
+                        <input type="range" id="pref-slider" min="0" max="100" value="50" style="width: 100%; cursor: pointer;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: #8b949e; margin-top: 8px;">
+                            <span>100:1</span>
+                            <span id="reset-btn" style="cursor: pointer; color: #70b1ff; text-decoration: underline;">1:1 (Reset)</span>
+                            <span>1:100</span>
+                        </div>
+                    </div>
+                    <div style="font-weight: bold; color: #e6edf3; width: 140px; text-align: left;">Time</div>
+                </div>
+                <div style="text-align: center; margin-top: 15px; font-size: 0.9em; color: #8b949e; font-style: italic;">
+                    Prioritize your objective: lower cost on the left, or faster response on the right.
+                </div>
+                <div id="pref-status" style="text-align: center; font-size: 0.85em; color: #70b1ff; margin-top: 10px; height: 1em;"></div>
+            </div>
+
+            <div class="card">
+                <h2>Available Models</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Model Name</th>
+                                <th>Provider</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="all-models-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div> <!-- End tab-settings -->
+    </div>
+
+    <script>
+        // Tab switching logic
+        function switchTab(tabId, event) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            if (event) event.target.classList.add('active');
+            document.getElementById('tab-' + tabId).classList.add('active');
+        }
+
+        // Load and handle preferences
             async function initPreferences() {
                 const slider = document.getElementById('pref-slider');
                 const statusEl = document.getElementById('pref-status');
@@ -691,6 +759,50 @@ async def get_dashboard():
             }
             initPreferences();
 
+            async function loadAllModels() {
+                try {
+                    const res = await fetch('/metrics/models/all');
+                    const data = await res.json();
+
+                    const tbody = document.getElementById('all-models-body');
+                    tbody.innerHTML = '';
+
+                    if (data.models && data.models.length > 0) {
+                        data.models.forEach(m => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td><strong>${m.name}</strong><br><small style="color:#8b949e;">${m.id}</small></td>
+                                <td><span class="badge" style="background: rgba(255,255,255,0.1); color: #ccc;">${m.provider}</span></td>
+                                <td><span class="badge ${m.enabled ? 'badge-success' : ''}" style="${!m.enabled ? 'background: rgba(231, 76, 60, 0.2); color: #e74c3c;' : ''}">${m.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                                <td><button class="toggle-btn ${m.enabled ? 'toggle-off' : 'toggle-on'}" onclick="toggleModel('${m.id}')">${m.enabled ? 'Disable' : 'Enable'}</button></td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #8b949e;">No models configured...</td></tr>';
+                    }
+                } catch (e) {
+                    console.error("Failed to load models list", e);
+                }
+            }
+
+            async function toggleModel(modelId) {
+                try {
+                    const res = await fetch('/metrics/models/toggle', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ model_id: modelId })
+                    });
+                    if (res.ok) {
+                        loadAllModels();
+                    }
+                } catch (e) {
+                    console.error("Failed to toggle model", e);
+                }
+            }
+
+            loadAllModels();
+
             async function checkVersion() {
                 try {
                     const response = await fetch('https://api.github.com/repos/Lars-confi/RealityRouterTemp/tags');
@@ -699,7 +811,7 @@ async def get_dashboard():
                         // Strip 'v' prefix if it exists (e.g. 'v0.0.1' -> '0.0.1')
                         const latestVersion = tags[0].name.replace(/^v/, '');
                         const currentVersion = document.getElementById('current-version').innerText.replace(/^v/, '');
-                        
+
                         if (latestVersion !== currentVersion) {
                             const alertEl = document.getElementById('update-alert');
                             alertEl.style.display = 'inline-block';

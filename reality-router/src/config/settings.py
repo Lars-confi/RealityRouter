@@ -97,6 +97,45 @@ def get_settings() -> Settings:
     return settings
 
 
+def reload_settings() -> Settings:
+    """Reload settings from the environment and configuration files"""
+    global settings, _env_vars, _settings_data
+    _env_vars = _load_env_file(_env_path)
+    _settings_data = {k.lower(): v for k, v in _env_vars.items()}
+
+    if "disabled_models" in _settings_data and isinstance(
+        _settings_data["disabled_models"], str
+    ):
+        val = _settings_data["disabled_models"].strip()
+        _settings_data["disabled_models"] = (
+            [x.strip() for x in val.split(",")] if val else []
+        )
+
+    settings = Settings(**_settings_data)
+    return settings
+
+
+def toggle_model(model_id: str) -> None:
+    """Toggle a model's enabled/disabled state in the configuration"""
+    disabled = set(settings.disabled_models)
+    if model_id in disabled:
+        disabled.remove(model_id)
+    else:
+        disabled.add(model_id)
+
+    settings.disabled_models = list(disabled)
+
+    # Save back to .env
+    env_vars = _load_env_file(_env_path)
+    env_vars["DISABLED_MODELS"] = ",".join(settings.disabled_models)
+
+    with open(_env_path, "w") as f:
+        for k, v in env_vars.items():
+            f.write(f"{k}={v}\n")
+
+    reload_settings()
+
+
 def load_models_from_config() -> Dict[str, Dict[str, Any]]:
     """Load model configurations from settings"""
     models = {}

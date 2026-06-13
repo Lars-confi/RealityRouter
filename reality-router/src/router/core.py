@@ -2810,6 +2810,27 @@ async def chat_completions(
                 ],
             }
             yield f"data: {json.dumps(chunk)}\n\n"
+
+            usage = (
+                routing_rsp.response.get("usage", {})
+                if isinstance(routing_rsp.response, dict)
+                else {}
+            )
+            if usage:
+                if "prompt_tokens_details" not in usage:
+                    usage["prompt_tokens_details"] = {"cached_tokens": 0}
+                if "completion_tokens_details" not in usage:
+                    usage["completion_tokens_details"] = {"reasoning_tokens": 0}
+                usage_chunk = {
+                    "id": chunk_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": routing_rsp.model_id,
+                    "choices": [],
+                    "usage": usage,
+                }
+                yield f"data: {json.dumps(usage_chunk)}\n\n"
+
             yield "data: [DONE]\n\n"
 
         if request.stream:

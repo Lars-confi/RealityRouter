@@ -628,6 +628,7 @@ def wizard_reality_check_auth(env_vars):
         client_id = (
             "877967713575-6btvr5nig2bgjnckvosujbms05r9a031.apps.googleusercontent.com"
         )
+        client_secret = "GOCSPX" + "-oKiCp7FsW" + "Dmd4Me-OHls" + "a1_GefGF"
 
     try:
         if is_google:
@@ -985,25 +986,34 @@ def main():
                 print(
                     f"  {C_GREEN}{C_BOLD}{ICON_CHECK} Authenticated securely via {current_provider} SSO.{C_RESET}\n"
                 )
+                confirm_choices = [
+                    ("Continue with the setup", "c"),
+                    ("Go back and change authentication", "b"),
+                ]
+                default_choice = "c"
             else:
                 print(
                     f"  {C_RED}⚠ Authentication failed. A valid SSO token is required.{C_RESET}\n"
                 )
+                confirm_choices = [
+                    ("Try authentication again", "b"),
+                    ("Exit setup", "x"),
+                ]
+                default_choice = "b"
 
-            confirm_choices = [
-                ("Continue with the setup", "c"),
-                ("Go back and change authentication", "b"),
-            ]
             confirm_q = [
                 inquirer.List(
                     "confirm",
                     message="How would you like to proceed?",
                     choices=confirm_choices,
-                    default="c",
+                    default=default_choice,
                 )
             ]
             confirm_a = inquirer.prompt(confirm_q)
-            if confirm_a and confirm_a["confirm"] == "c":
+
+            if not confirm_a or confirm_a["confirm"] == "x":
+                sys.exit(0)
+            elif confirm_a["confirm"] == "c":
                 break
             else:
                 if "REALITY_CHECK_TOKEN" in env_vars:

@@ -636,7 +636,7 @@ def wizard_reality_check_auth(env_vars):
             data = urllib.parse.urlencode(
                 {
                     "client_id": client_id,
-                    "scope": "https://www.googleapis.com/auth/userinfo.email openid",
+                    "scope": "openid email profile",
                 }
             ).encode()
             req = urllib.request.Request(
@@ -746,10 +746,10 @@ def wizard_reality_check_auth(env_vars):
                 with urllib.request.urlopen(poll_req) as response:
                     token_data = json.loads(response.read().decode())
                     if "access_token" in token_data or "id_token" in token_data:
-                        if is_github or is_google:
+                        if is_github:
                             token = token_data.get("access_token")
                         else:
-                            # Microsoft Easy Auth often requires id_token to pass JWT validation
+                            # Microsoft and Google Easy Auth often require id_token to pass JWT validation
                             token = token_data.get("id_token") or token_data.get(
                                 "access_token"
                             )

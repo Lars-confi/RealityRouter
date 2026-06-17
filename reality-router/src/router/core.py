@@ -1204,9 +1204,9 @@ class RouterCore:
                         if not auth_token.startswith(
                             "Bearer "
                         ) and not auth_token.startswith("Basic "):
-                            headers["Authorization"] = f"Bearer {auth_token}"
+                            headers["X-Reality-Check-Token"] = f"Bearer {auth_token}"
                         else:
-                            headers["Authorization"] = auth_token
+                            headers["X-Reality-Check-Token"] = auth_token
 
                     # Match curl behavior: fresh connection per request, no HTTP/1.1
                     async with httpx.AsyncClient(
@@ -1827,9 +1827,9 @@ class RouterCore:
                                 if not auth_token.startswith(
                                     "Bearer "
                                 ) and not auth_token.startswith("Basic "):
-                                    headers["Authorization"] = f"Bearer {auth_token}"
+                                    headers["X-Reality-Check-Token"] = f"Bearer {auth_token}"
                                 else:
-                                    headers["Authorization"] = auth_token
+                                    headers["X-Reality-Check-Token"] = auth_token
 
                             async with httpx.AsyncClient(
                                 http2=False, trust_env=False
@@ -2176,11 +2176,11 @@ class RouterCore:
                                         if not auth_token.startswith(
                                             "Bearer "
                                         ) and not auth_token.startswith("Basic "):
-                                            headers["Authorization"] = (
+                                            headers["X-Reality-Check-Token"] = (
                                                 f"Bearer {auth_token}"
                                             )
                                         else:
-                                            headers["Authorization"] = auth_token
+                                            headers["X-Reality-Check-Token"] = auth_token
 
                                     await client.post(
                                         f"{url}/feedback",
@@ -2227,11 +2227,11 @@ class RouterCore:
                                     if not auth_token.startswith(
                                         "Bearer "
                                     ) and not auth_token.startswith("Basic "):
-                                        headers["Authorization"] = (
+                                        headers["X-Reality-Check-Token"] = (
                                             f"Bearer {auth_token}"
                                         )
                                     else:
-                                        headers["Authorization"] = auth_token
+                                        headers["X-Reality-Check-Token"] = auth_token
 
                                 await client.post(
                                     f"{url}/feedback",
@@ -2562,11 +2562,11 @@ class RouterCore:
                                         if not auth_token.startswith(
                                             "Bearer "
                                         ) and not auth_token.startswith("Basic "):
-                                            headers["Authorization"] = (
+                                            headers["X-Reality-Check-Token"] = (
                                                 f"Bearer {auth_token}"
                                             )
                                         else:
-                                            headers["Authorization"] = auth_token
+                                            headers["X-Reality-Check-Token"] = auth_token
 
                                     fb_resp = await client.post(
                                         f"{url}/feedback",
@@ -2647,11 +2647,11 @@ class RouterCore:
                                     if not auth_token.startswith(
                                         "Bearer "
                                     ) and not auth_token.startswith("Basic "):
-                                        headers["Authorization"] = (
+                                        headers["X-Reality-Check-Token"] = (
                                             f"Bearer {auth_token}"
                                         )
                                     else:
-                                        headers["Authorization"] = auth_token
+                                        headers["X-Reality-Check-Token"] = auth_token
 
                                 rc_resp = await client.post(
                                     f"{REALITY_REROUTING_URL}/decide",

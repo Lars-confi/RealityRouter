@@ -68,6 +68,7 @@ PROVIDER_KEYS = {
     "openai": [("OPENAI_API_KEY", "OpenAI API Key")],
     "anthropic": [("ANTHROPIC_API_KEY", "Anthropic API Key")],
     "mistral": [("MISTRAL_API_KEY", "Mistral API Key")],
+    "deepseek": [("DEEPSEEK_API_KEY", "DeepSeek API Key")],
     "huggingface": [("HUGGINGFACE_API_KEY", "Hugging Face API Key")],
     "gemini": [("GEMINI_API_KEY", "Google Gemini API Key")],
     "custom/local": [
@@ -364,6 +365,15 @@ def get_all_models(env_vars):
     if mi_key and mi_key != "dummy":
         models.extend(
             sync_discover_openai_compat("https://api.mistral.ai/v1", mi_key, "mistral")
+        )
+
+    # DeepSeek
+    ds_key = env_vars.get("DEEPSEEK_API_KEY")
+    if ds_key and ds_key != "dummy":
+        models.extend(
+            sync_discover_openai_compat(
+                "https://api.deepseek.com/v1", ds_key, "deepseek"
+            )
         )
 
     logger.debug(f"Found {len(models)} models.")

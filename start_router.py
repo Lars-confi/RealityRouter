@@ -463,6 +463,7 @@ def wizard_providers(env_vars):
         ("gemini", "Google Gemini"),
         ("anthropic", "Anthropic"),
         ("mistral", "Mistral"),
+        ("deepseek", "DeepSeek"),
         ("custom/local", "Custom/Ollama"),
     ]
 

@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import socket
 import ssl
 import subprocess
 import sys
@@ -78,6 +79,18 @@ PROVIDER_KEYS = {
 }
 
 # --- Utility Functions ---
+
+
+def is_port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("0.0.0.0", port)) == 0
+
+
+def find_available_port(start_port=8000, max_attempts=100):
+    for port in range(start_port, start_port + max_attempts):
+        if not is_port_in_use(port):
+            return port
+    return start_port
 
 
 def load_env():
@@ -841,7 +854,11 @@ def start_server(env_vars):
     # Ensure PYTHONPATH includes the absolute path to the core source
     env["PYTHONPATH"] = os.path.abspath(REALITY_ROUTER_DIR)
 
-    print(f"\n  {C_GREEN}{C_BOLD}Server active at http://0.0.0.0:8000{C_RESET}")
+    port = find_available_port(8000)
+    if port != 8000:
+        print_status(f"Port 8000 in use, automatically switched to {port}", "warn")
+
+    print(f"\n  {C_GREEN}{C_BOLD}Server active at http://0.0.0.0:{port}{C_RESET}")
     sentiment_model = env_vars.get("SENTIMENT_MODEL_ID", "Not Configured")
     print(f"  {C_YELLOW}Sentiment Model: {sentiment_model}{C_RESET}")
     print(f"  {C_CYAN}Press [CTRL+C] to stop the process.{C_RESET}\n")
@@ -857,7 +874,7 @@ def start_server(env_vars):
                 "--host",
                 "0.0.0.0",
                 "--port",
-                "8000",
+                str(port),
                 "--no-access-log",
             ],
             cwd=REALITY_ROUTER_DIR,
@@ -879,6 +896,10 @@ def deploy_docker(env_vars):
     # Use absolute path for volumes to avoid Docker mounting issues
     abs_app_home = os.path.abspath(APP_HOME)
 
+    port = find_available_port(8000)
+    if port != 8000:
+        print_status(f"Port 8000 in use, mapping Docker to host port {port}", "warn")
+
     compose_content = f"""services:
   reality-router:
     build: .
@@ -886,7 +907,7 @@ def deploy_docker(env_vars):
     container_name: reality-router
     restart: always
     ports:
-      - "8000:8000"
+      - "{port}:8000"
     volumes:
       - {abs_app_home}:/root/.reality_router
     environment:
@@ -905,7 +926,7 @@ def deploy_docker(env_vars):
         subprocess.run(cmd, cwd=SCRIPT_DIR, check=True)
 
         print(f"\n  {C_GREEN}{C_BOLD}RealityRouter is now running in Docker!{C_RESET}")
-        print(f"  {C_CYAN}Endpoint: http://localhost:8000{C_RESET}")
+        print(f"  {C_CYAN}Endpoint: http://localhost:{port}{C_RESET}")
         print(f"  {C_CYAN}Auto-restart: ENABLED{C_RESET}")
         print(f"\n  {C_YELLOW}Useful commands:{C_RESET}")
         print(f"  - View Logs:  docker logs -f reality-router")

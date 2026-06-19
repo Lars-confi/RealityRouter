@@ -508,6 +508,7 @@ class ModelPreferenceRequest(BaseModel):
 async def get_all_models():
     from src.config.settings import get_settings
     from src.router.core import router_core
+    from src.utils.model_info import model_info_manager
 
     settings = get_settings()
     prefs = getattr(settings, "model_preferences", {})
@@ -521,9 +522,11 @@ async def get_all_models():
         pref = prefs.get(m_id)
 
         # Inject extra info for tooltips
+        description = model_info_manager.get_model_description(m_id)
         if m_id in active_pool:
             info = active_pool[m_id]
             m_copy["details"] = {
+                "description": description,
                 "prompt_cost": f"${info.get('prompt_cost', 0):.6f}/1k",
                 "completion_cost": f"${info.get('completion_cost', 0):.6f}/1k",
                 "max_tokens": info.get("max_tokens", "Unknown"),
@@ -532,6 +535,8 @@ async def get_all_models():
                 else "No",
                 "supports_logprobs": "Yes" if info.get("supports_logprobs") else "No",
             }
+        else:
+            m_copy["details"] = {"description": description}
 
         # Determine status and reason
         if m_id in active_pool:
@@ -847,11 +852,14 @@ async def get_dashboard():
                             if (m.details) {
                                 detailsHtml = `
                                     <div class="tooltiptext">
+                                        <div style="margin-bottom: 8px; color: #bdc3c7; line-height: 1.4; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">${m.details.description}</div>
+                                        ${m.details.prompt_cost ? `
                                         <div><b>In Cost:</b> <span>${m.details.prompt_cost}</span></div>
                                         <div><b>Out Cost:</b> <span>${m.details.completion_cost}</span></div>
                                         <div><b>Max Tokens:</b> <span>${m.details.max_tokens}</span></div>
                                         <div><b>Tools:</b> <span>${m.details.supports_tools}</span></div>
                                         <div><b>Logprobs:</b> <span>${m.details.supports_logprobs}</span></div>
+                                        ` : ''}
                                     </div>
                                 `;
                             }

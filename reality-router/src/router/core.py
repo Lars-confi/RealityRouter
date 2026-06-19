@@ -526,10 +526,156 @@ class RouterCore:
                                         max_tokens,
                                     )
                                     self.load_balancer.add_model(name, name, 1.0)
+                    else:
+                        logger.warning(
+                            f"OpenAI discovery returned status {resp.status_code}: {resp.text}"
+                        )
                 except Exception as e:
                     logger.warning(f"Auto-discovery failed for OpenAI: {e}")
+                    if hasattr(e, "response") and e.response:
+                        logger.warning(f"OpenAI error response: {e.response.text}")
 
-            # 3. Gemini
+            # 3. Anthropic
+            anthropic_key = settings.anthropic_api_key
+            if anthropic_key and anthropic_key != "dummy":
+                try:
+                    # Anthropic doesn't have a public models list API in the same way,
+                    # so we register common models if the key is present.
+                    anthropic_models = [
+                        "claude-3-5-sonnet-20240620",
+                        "claude-3-5-sonnet-latest",
+                        "claude-3-opus-20240229",
+                        "claude-3-sonnet-20240229",
+                        "claude-3-haiku-20240307",
+                    ]
+                    for name in anthropic_models:
+                        if name and not any(
+                            d.get("id") == name for d in self.all_discovered_models
+                        ):
+                            self.all_discovered_models.append(
+                                {
+                                    "id": name,
+                                    "name": name,
+                                    "provider": "anthropic",
+                                    "enabled": name not in settings.disabled_models,
+                                }
+                            )
+                        if name not in self.models and (
+                            name not in settings.disabled_models
+                            or name == sentiment_model_id
+                        ):
+                            if name not in self.adapters:
+                                from src.adapters.litellm_adapter import LiteLLMAdapter
+
+                                self.adapters[name] = LiteLLMAdapter(
+                                    model_name=f"anthropic/{name}",
+                                    api_key=anthropic_key,
+                                )
+                            if name in settings.disabled_models:
+                                continue
+                            (
+                                p_cost,
+                                c_cost,
+                                supports_function_calling,
+                                max_input_tokens,
+                                max_tokens,
+                            ) = pricing_manager.get_model_pricing(name)
+                            if p_cost is None:
+                                if "sonnet" in name:
+                                    p_cost, c_cost = 0.003, 0.015
+                                elif "opus" in name:
+                                    p_cost, c_cost = 0.015, 0.075
+                                else:
+                                    p_cost, c_cost = 0.00025, 0.00125
+                            supports_function_calling = True
+                            cost = (p_cost + c_cost) / 2
+                            self.add_model(
+                                name,
+                                name,
+                                cost,
+                                1.2,
+                                0.95,
+                                None,
+                                p_cost,
+                                c_cost,
+                                supports_function_calling,
+                                max_input_tokens,
+                                max_tokens,
+                            )
+                            self.load_balancer.add_model(name, name, 1.0)
+                except Exception as e:
+                    logger.warning(f"Auto-discovery failed for Anthropic: {e}")
+
+            # 4. Mistral
+            mistral_key = settings.mistral_api_key
+            if mistral_key and mistral_key != "dummy":
+                try:
+                    resp = httpx.get(
+                        "https://api.mistral.ai/v1/models",
+                        headers={"Authorization": f"Bearer {mistral_key}"},
+                        timeout=3,
+                    )
+                    if resp.status_code == 200:
+                        for m in resp.json().get("data", []):
+                            name = m.get("id")
+                            if name and not any(
+                                d.get("id") == name for d in self.all_discovered_models
+                            ):
+                                self.all_discovered_models.append(
+                                    {
+                                        "id": name,
+                                        "name": name,
+                                        "provider": "mistral",
+                                        "enabled": name not in settings.disabled_models,
+                                    }
+                                )
+                            if name not in self.models and (
+                                name not in settings.disabled_models
+                                or name == sentiment_model_id
+                            ):
+                                if name not in self.adapters:
+                                    from src.adapters.litellm_adapter import (
+                                        LiteLLMAdapter,
+                                    )
+
+                                    self.adapters[name] = LiteLLMAdapter(
+                                        model_name=f"mistral/{name}",
+                                        api_key=mistral_key,
+                                    )
+                                if name in settings.disabled_models:
+                                    continue
+                                (
+                                    p_cost,
+                                    c_cost,
+                                    supports_function_calling,
+                                    max_input_tokens,
+                                    max_tokens,
+                                ) = pricing_manager.get_model_pricing(name)
+                                if p_cost is None:
+                                    if "large" in name:
+                                        p_cost, c_cost = 0.002, 0.006
+                                    else:
+                                        p_cost, c_cost = 0.0001, 0.0003
+                                supports_function_calling = True
+                                cost = (p_cost + c_cost) / 2
+                                self.add_model(
+                                    name,
+                                    name,
+                                    cost,
+                                    0.8,
+                                    0.85,
+                                    None,
+                                    p_cost,
+                                    c_cost,
+                                    supports_function_calling,
+                                    max_input_tokens,
+                                    max_tokens,
+                                )
+                                self.load_balancer.add_model(name, name, 1.0)
+                except Exception as e:
+                    logger.warning(f"Auto-discovery failed for Mistral: {e}")
+
+            # 5. Gemini
             gemini_key = settings.gemini_api_key
             if gemini_key and gemini_key != "dummy":
                 gemini_discovered = []
@@ -636,7 +782,7 @@ class RouterCore:
                 except Exception as e:
                     logger.warning(f"Gemini model registration failed: {e}")
 
-            # 4. DeepSeek
+            # 6. DeepSeek
             deepseek_key = settings.deepseek_api_key
             if deepseek_key and deepseek_key != "dummy":
                 try:

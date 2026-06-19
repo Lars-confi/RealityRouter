@@ -537,10 +537,17 @@ async def get_all_models():
 
         models.append(m_copy)
 
-    # Sort: 1. Active with high preference, 2. Unavailable, 3. Disabled
+    # Sort: 1. Active (Pref > 0), 2. Active (Pref == 0/None), 3. Unavailable, 4. Disabled
     def sort_key(m):
-        category_order = {"active": 0, "unavailable": 1, "disabled": 2}
-        return (category_order.get(m["status_category"], 3), -(m["preference"] or 0))
+        if m["status_category"] == "active":
+            # Active and turned on (Pref > 0)
+            if (m["preference"] or 0) > 0:
+                return (0, -(m["preference"] or 0))
+            # Active but "None" (Pref == 0)
+            return (1, 0)
+
+        category_order = {"unavailable": 2, "disabled": 3}
+        return (category_order.get(m["status_category"], 4), 0)
 
     models.sort(key=sort_key)
 

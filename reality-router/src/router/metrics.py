@@ -631,7 +631,7 @@ async def get_dashboard():
             .model-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: #ffffff; border-radius: 50%; cursor: pointer; box-shadow: 0 0 5px rgba(26, 188, 156, 0.8); }
 
             .tooltip { position: relative; display: inline-block; cursor: help; border-bottom: 1px dotted rgba(255,255,255,0.3); }
-            .tooltip .tooltiptext { visibility: hidden; width: 350px; background-color: #2c3e50; color: #fff; text-align: left; border-radius: 8px; padding: 15px; position: absolute; z-index: 100; bottom: 125%; left: 50%; margin-left: -175px; opacity: 0; transition: opacity 0.3s; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 8px 25px rgba(0,0,0,0.5); font-size: 0.9em; pointer-events: none; white-space: normal; line-height: 1.4; word-wrap: break-word; }
+            .tooltip .tooltiptext { visibility: hidden; width: 400px; background-color: #1c2a36; color: #fff; text-align: left; border-radius: 10px; padding: 18px; position: absolute; z-index: 1000; top: -10px; left: 105%; opacity: 0; transition: opacity 0.3s; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 10px 30px rgba(0,0,0,0.6); font-size: 0.95em; pointer-events: auto; white-space: normal; line-height: 1.6; word-wrap: break-word; max-height: 400px; overflow: auto; scrollbar-width: thin; }
             .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
             .tooltiptext div { margin-bottom: 4px; display: flex; justify-content: space-between; }
             .tooltiptext b { color: #70b1ff; }

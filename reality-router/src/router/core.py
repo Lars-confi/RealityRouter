@@ -3002,6 +3002,9 @@ class RouterCore:
         """Background task to probe model capabilities and update local cache."""
         logger.info(f"Starting capability probes for {len(self.adapters)} models...")
         for model_id, adapter in self.adapters.items():
+            if model_id not in self.models:
+                continue
+
             try:
                 # This will probe and update the capability_manager cache
                 caps = await capability_manager.probe_model(model_id, adapter)

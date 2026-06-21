@@ -510,16 +510,82 @@ def wizard_providers(env_vars):
         print(f"\n  {C_MAGENTA}--- {choice.upper()} CONFIGURATION ---{C_RESET}")
 
         for env_key, desc in PROVIDER_KEYS[choice]:
-            cur = env_vars.get(env_key, "")
-            masked = (
-                cur
-                if "URL" in env_key
-                else (cur[:4] + "*" * 12 if len(cur) > 8 else "None")
-            )
+            while True:
+                cur = env_vars.get(env_key, "")
+                masked = (
+                    cur
+                    if "URL" in env_key
+                    else (cur[:4] + "*" * 12 if len(cur) > 8 else "None")
+                )
 
-            new_val = stable_prompt(f"{desc} (Current: {masked})")
-            if new_val:
-                env_vars[env_key] = new_val
+                new_val = stable_prompt(f"{desc} (Current: {masked})")
+
+                # If user didn't enter anything, keep current and move on
+                if not new_val:
+                    break
+
+                # Test the new key/URL
+                print_status(f"Testing connection to {choice}...", "info")
+
+                # Temporarily update env_vars for testing
+                temp_env = env_vars.copy()
+                temp_env[env_key] = new_val
+
+                # Special case: if we are setting a key, we need the base URL too (and vice versa)
+                test_models = []
+                if choice == "openai":
+                    test_models = sync_discover_openai_compat(
+                        "https://api.openai.com/v1", new_val, "openai"
+                    )
+                elif choice == "gemini":
+                    # Simple check for gemini discovery
+                    test_models = sync_discover_openai_compat(
+                        "https://generativelanguage.googleapis.com/v1beta/openai",
+                        new_val,
+                        "gemini",
+                    )
+                elif choice == "anthropic":
+                    test_models = sync_discover_openai_compat(
+                        "https://api.anthropic.com/v1", new_val, "anthropic"
+                    )
+                elif choice == "mistral":
+                    test_models = sync_discover_openai_compat(
+                        "https://api.mistral.ai/v1", new_val, "mistral"
+                    )
+                elif choice == "deepseek":
+                    test_models = sync_discover_openai_compat(
+                        "https://api.deepseek.com/v1", new_val, "deepseek"
+                    )
+                elif choice == "custom/local":
+                    # We need both URL and Key to test. If we only have one, skip validation for now.
+                    test_url = temp_env.get("CUSTOM_LLM_BASE_URL")
+                    test_key = temp_env.get("CUSTOM_LLM_API_KEY", "dummy")
+                    if test_url:
+                        if "11434" in test_url:
+                            test_models = sync_discover_ollama(test_url)
+                        else:
+                            test_models = sync_discover_openai_compat(
+                                test_url, test_key, "custom"
+                            )
+                    else:
+                        break  # Can't test yet
+
+                if test_models:
+                    print_status(
+                        f"Success! Discovered {len(test_models)} models.", "success"
+                    )
+                    env_vars[env_key] = new_val
+                    break
+                else:
+                    print_status(
+                        f"Connection test failed for {choice}. Check your credentials/URL.",
+                        "error",
+                    )
+                    retry = stable_prompt("Save anyway? (y/n)", default="n")
+                    if retry.lower() == "y":
+                        env_vars[env_key] = new_val
+                        break
+                    # Otherwise loop back and ask again
         save_env(env_vars)
 
 

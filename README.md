@@ -1,96 +1,118 @@
-# 🚀 Reality Router
+# RealityRouter
 
-### **The Intelligent Decision Engine for AI Agents**
-*Eliminate Model Lock-in. Automate Intelligence. Optimize for the User.*
+**The Intelligent Decision Engine for AI Agents.**
 
-**Reality Router** is a high-performance LLM routing gateway designed for the agentic era. While standard proxies simply pass requests through, Reality Router uses **Expected Utility Theory** and real-time calibration to choose the perfect model for every single prompt. 
+RealityRouter is a high-performance LLM routing gateway designed for the
+agentic era. Standard proxies pass requests through; RealityRouter uses
+**Expected Utility Theory** and real-time calibration to choose the best model
+for every individual prompt — balancing accuracy, cost, and latency.
 
-In a world where model performance fluctuates and costs vary by orders of magnitude, Reality Router puts the power back in the hands of the user—ensuring you always get the best "bang for your buck" without manual switching.
-
----
-
-## 🧠 Why Reality Router?
-
-For developers building AI Agents (Roo Code, OpenClaw, AutoGPT), picking a model is usually a trade-off between "Too Expensive" (GPT-4o/Claude 3.5 Sonnet) and "Too Unreliable" (Small local models). 
-
-Reality Router solves this by acting as a **Smart Middleware** that:
-1. **Evaluates Intelligence:** Uses the **Reality Check API** to predict the success probability of a model for a specific task.
-2. **Calculates Utility:** Applies a mathematical formula to balance Accuracy, Cost, and Speed.
-3. **Enforces Quality:** Acts as a "Guardian" to fix malformed tool calls and prevent hallucinated syntax.
+In a world where model performance fluctuates and costs vary by orders of
+magnitude, RealityRouter puts the choice back in the hands of the user.
 
 ---
 
-## ⚙️ The Core Engine: Expected Utility Theory (EUT)
+## Why RealityRouter?
 
-Every request is passed through our decision-theoretic engine. We calculate the utility of every model $m$ in your pool:
+For developers building AI agents (Zed, Cursor, Claude Code, Roo Code,
+OpenClaw, AutoGPT), picking a model is usually a trade-off between
+"too expensive" (flagship models on every query) and "too unreliable"
+(small local models that miss). RealityRouter solves this by acting as
+smart middleware that:
 
-$$EU(m) = p \cdot 100 - \alpha \cdot cost - \beta \cdot time$$
-
-- **$p$ (Probability):** The calibrated likelihood of success for the given prompt.
-- **$100$ (Constant Reward):** Success is weighted as a constant value of 100 units.
-- **$\alpha$ (Cost Sensitivity):** Your preference for saving money.
-- **$\beta$ (Time Sensitivity):** Your preference for low latency.
-
-> **Dynamic Tuning:** Use the interactive Dashboard slider to shift priorities in real-time. Slide left for maximum frugality; slide right for raw speed.
-
----
-
-## 🛡️ Strict Validation Gateway (The "Guardian")
-
-Reality Router doesn't just route; it protects. It sits between the model and your agent to ensure protocol compliance:
-- **Leak Protection:** Detects and scrubs raw tool tags (like `<function>`) that models accidentally leak into text.
-- **Ghost Tool Detection:** Rejects responses that attempt to call tools you didn't provide.
-- **Heuristic Rescue:** Automatically recovers valid JSON tool calls buried in conversational fluff.
-- **JSON Validation:** Validates arguments against your schema before the agent ever sees them.
+1. **Evaluates intelligence** — uses the Reality Signal™ API to estimate the
+   probability of success for each model on the specific task at hand.
+2. **Calculates utility** — applies a mathematical formula to balance
+   accuracy, cost, and speed.
+3. **Enforces quality** — validates tool calls before they reach your agent,
+   catching malformed JSON, ghost tool calls, and protocol leaks.
 
 ---
 
-## 🚀 Key Features
+## The core engine — Expected Utility
 
-### **1. ⚡ Intelligent Routing Strategies**
-*   **Snap (Single-shot):** High-speed routing to the model with the highest predicted utility.
-*   **Ladder (Sequential):** The ultimate reliability mode. Starts with the most cost-effective model and automatically escalates to "smarter" models only if the response fails validation or confidence is too low.
+Every request is passed through a decision-theoretic engine. For each
+candidate model `m` in your configured pool, RealityRouter computes:
 
-### **2. 🔄 Automatic Feedback Loop**
-The system learns as you use it. Validated tool calls automatically send "Happy Path" signals back to the calibration engine, refining future routing decisions.
-
-### **3. 🔌 Multi-Provider Auto-Discovery**
-Bring your own keys. Reality Router automatically discovers and benchmarks models from:
-*   **OpenAI, Anthropic, Mistral, Gemini, & DeepSeek**
-*   **Local Ollama** instances
-*   **Custom OpenAI-compatible** endpoints
-
-### **4. 📊 Live Developer Dashboard**
-Monitor your agent's "Unit Economics" in real-time. Track savings, model success rates, and event traces through a built-in Control Center.
-
----
-
-## ⚡ Quick Start
-
-### **Linux / macOS**
-```bash
-curl -fsSL https://raw.githubusercontent.com/Lars-confi/RealityRouterTemp/main/install.sh | bash
+```
+EU(m) = p · R − α · cost − β · latency
 ```
 
-### **Windows (PowerShell)**
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Lars-confi/RealityRouterTemp/main/install.ps1'))
-```
+- `p` — calibrated probability of success on this specific prompt.
+- `R` — constant reward for a correct answer.
+- `α` — your cost sensitivity (tune in the dashboard).
+- `β` — your latency sensitivity (tune in the dashboard).
+
+The router picks `argmax EU` — every model, every query.
+
+> **Dynamic tuning.** The dashboard exposes `α` and `β` as live sliders.
+> Slide left for maximum frugality; slide right for raw speed. Changes take
+> effect on the next request — no restart, no redeploy.
 
 ---
 
-## 🛠️ Developer Integration
+## Validation gateway
 
-Reality Router is **100% OpenAI API compatible**. You don't need to rewrite your agent; just change your environment variables:
+RealityRouter sits between the model and your agent to enforce protocol
+compliance:
 
-- **Base URL:** `http://localhost:8000/v1`
-- **API Key:** `any` (or your configured secret)
-- **Model:** `gpt-4o` (or any string—the router will intercept and choose the best actual model for the job).
+- **Leak protection** — detects and scrubs raw tool tags that models
+  accidentally leak into text output.
+- **Ghost tool detection** — rejects responses that call tools you didn't
+  expose to the model.
+- **Heuristic rescue** — recovers valid JSON tool calls buried in
+  conversational fluff.
+- **Schema validation** — validates tool arguments against your schema
+  before the agent ever sees them.
 
 ---
 
-## 🤝 Contributing
+## Key features
 
-We are building the future of user-centric AI infrastructure. If you're interested in decision theory, agent protocols, or high-performance routing, we'd love your help!
+- **Two routing strategies** — single-shot (route to argmax-EU model
+  immediately) or sequential (start cheap, escalate on validation failure).
+- **Automatic feedback loop** — validated outcomes feed back into the
+  calibration engine, sharpening future routing decisions.
+- **Multi-provider auto-discovery** — bring your own keys; the router
+  discovers and benchmarks models from OpenAI, Anthropic, Gemini, Mistral,
+  DeepSeek, local Ollama, and any OpenAI-compatible endpoint.
+- **Live dashboard** — track unit economics, savings vs. always-flagship,
+  per-model reliability, and per-agent activity in a built-in web UI.
 
-*Built with ❤️ by Confidentia AI and the open-source community.*
+---
+
+## Documentation
+
+- **[Quickstart](docs/quickstart.md)** — install and route your first
+  request in about 60 seconds.
+- **[Architecture](ARCHITECTURE.md)** — directory layout and component
+  overview.
+- **[How it works](docs/concepts.md)** — Expected Utility math and the
+  calibration feedback loop.
+- **[Routing strategies](docs/routing.md)** — single-shot vs. sequential.
+- **[Multi-agent support](docs/agents.md)** — protocol detection and
+  sticky sessions.
+- **[API reference](docs/api.md)** — OpenAI-compatible endpoints.
+- **[Dashboard](docs/dashboard.md)** — CLI event viewer + web dashboard.
+
+---
+
+## Developer integration
+
+RealityRouter is **100% OpenAI API compatible**. You don't need to rewrite
+your agent — just change your environment variables:
+
+- **Base URL** — `http://localhost:8000/v1`
+- **API Key** — `any` (or your configured secret)
+- **Model** — `auto` (or any model name; the router intercepts and chooses
+  the best actual model for the job)
+
+---
+
+## Contributing
+
+We're building user-centric AI infrastructure. If you're interested in
+decision theory, agent protocols, or high-performance routing, contributions
+are welcome.
+
+Built by Confidentia AI and the open-source community.

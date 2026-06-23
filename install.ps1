@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 
 # --- Configuration ---
-$REPO_URL = "https://github.com/Lars-confi/RealityRouterTemp"
+$REPO_URL = "https://github.com/Lars-confi/RealityRouter"
 $TARGET_DIR = Join-Path $env:USERPROFILE ".reality_router"
 
 Write-Host "========================================" -ForegroundColor Blue

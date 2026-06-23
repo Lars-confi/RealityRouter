@@ -15,7 +15,7 @@ command_exists() {
 # --- Configuration ---
 # IMPORTANT: Replace this with the actual raw content URL of your repository.
 # For GitHub, it would look like: https://raw.githubusercontent.com/user/repo/main
-REPO_URL="https://github.com/Lars-confi/RealityRouterTemp"
+REPO_URL="https://github.com/Lars-confi/RealityRouter"
 TARGET_DIR="$HOME/.reality_router"
 
 # Detect OS

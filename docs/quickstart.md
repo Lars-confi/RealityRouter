@@ -5,111 +5,80 @@ description: 60-second install + your first routed request
 
 # Quickstart
 
-Install the router, configure your providers, and route your first request — in about 60 seconds.
+Install RealityRouter, configure your providers, and route your first request — in about 60 seconds.
 
 > [!NOTE]
-> Requires Python 3.10+ and an API key from at least one LLM provider (OpenAI, Anthropic, Gemini, Mistral, HuggingFace, or a local Ollama instance).
+> Requires Docker (recommended) or Python 3.10+. You will need an API key from at least one LLM provider (OpenAI, Anthropic, Gemini, Mistral, DeepSeek, or a local Ollama instance).
 
 ## 1. Install
 
-Download the dist zip and run the startup script:
+The fastest way to get started is using the one-line installer.
 
+### Linux / macOS
 ```bash
-unzip reality_router_dist.zip
-cd reality_router_dist
-./start.sh
+curl -fsSL https://raw.githubusercontent.com/Lars-confi/RealityRouter/main/install.sh | bash
 ```
 
-The script checks for Python 3, creates a virtualenv at `venv/`, installs dependencies, and migrates any existing config to `~/.reality_router/`. Then it launches the interactive setup wizard.
+### Windows (PowerShell)
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Lars-confi/RealityRouter/main/install.ps1'))
+```
+
+The script will download the latest version, set up the environment, and launch the interactive setup wizard.
 
 ## 2. Run the wizard
 
-The wizard walks you through five steps:
+The wizard walks you through the configuration of your decision engine:
 
-### Step 1 — Routing strategy
+### Step 1 — Authentication
+RealityRouter uses **Reality Signal™** to estimate model success probabilities. You will be prompted to authenticate via GitHub, Google, or Microsoft SSO to receive your secure calibration token.
 
-Pick one:
+### Step 2 — Routing Strategy
+Pick your default behavior:
+- **Expected Utility (Snap)** — Single-shot routing to the best model. Lowest latency.
+- **Tiered Assessment (Ladder)** — Sequential escalation. Starts cheap, moves to smarter models only if validation fails.
 
-- **Expected Utility (single-shot)** — score every model upfront, route to the winner. Lowest latency, best for balanced workloads. *Default.*
-- **Tiered Assessment (sequential)** — start with the cheapest model, validate output, escalate only if needed. Maximum cost optimization, best for autonomous agents.
+### Step 3 — Intelligence Coefficients
+Fine-tune how the engine weights different factors:
+- **α (Cost Sensitivity)** — Preference for saving money.
+- **β (Time Sensitivity)** — Preference for speed/low latency.
 
-Both strategies use the same Expected Utility math. See [Routing strategies](./routing.md) for details.
+### Step 4 — Provider Credentials
+Enter your API keys for providers like OpenAI, Anthropic, Mistral, and DeepSeek, or provide the URL for a local Ollama instance. The wizard **live-validates** your keys to ensure they are working before you finish.
 
-### Step 2 — Sensitivities
-
-These weight the Expected Utility equation. Defaults work for most workloads.
-
-- `R` — value of a correct answer. Higher → router prefers more accurate (often more expensive) models.
-- `α` — cost penalty per dollar spent. Higher → router prefers cheaper models, including local ones.
-- `β` — latency penalty per second. Higher → router prefers faster models. If unset, defaults to `1 − α`.
-
-### Step 3 — Provider credentials
-
-Paste API keys for the providers you want available:
-
-- `OPENAI_API_KEY` — OpenAI
-- `ANTHROPIC_API_KEY` — Anthropic
-- `GEMINI_API_KEY` — Google Gemini
-- `MISTRAL_API_KEY` — Mistral
-- `HUGGINGFACE_API_KEY` — Hugging Face
-- `CUSTOM_LLM_BASE_URL` + `CUSTOM_LLM_API_KEY` — local Ollama, vLLM, or any OpenAI-compatible endpoint
-
-Keys are saved to `~/.reality_router/.env`. They never leave your machine.
-
-### Step 4 — Discover & enable models
-
-The router probes each provider and lists every available model. Toggle them ON/OFF based on what you want to route to. Set per-model concurrency limits to avoid overwhelming providers (especially local Ollama). Pick one cheap fast model (Haiku, Gemini Flash) as your **sentiment analyzer** — it watches user follow-up turns for "unhappy" signals and feeds them back into the router's probability estimates.
-
-### Step 5 — Ignition
-
-The wizard launches the server on `http://localhost:8000`. The web dashboard is at `http://localhost:8000/metrics/dashboard`.
+### Step 5 — Model Visibility
+The router auto-discovers all available models based on your keys. Toggle models **ON** or **OFF** to define your routing pool. You will also select a cheap, fast model (like Gemini Flash) to act as your **Sentiment Analyzer** for the feedback loop.
 
 ## 3. Your first routed request
 
-Point any OpenAI-compatible client at the router:
+RealityRouter is **100% OpenAI API compatible**. Just point your client to your local instance:
 
 ```python
 import openai
 
 openai.api_base = "http://localhost:8000/v1"
-openai.api_key  = "anything"   # router uses its own .env keys upstream
+openai.api_key  = "any"   # The router handles upstream auth
 
 response = openai.ChatCompletion.create(
-    model="auto",   # let the router decide per-query
+    model="auto",   # Let the router choose the best model
     messages=[
-        {"role": "user", "content": "Add a formatDate(date) helper to utils.ts"}
+        {"role": "user", "content": "Write a high-performance Rust function to parse JSON."}
     ],
 )
 
 print(response.choices[0].message.content)
 ```
 
-Or via cURL — same OpenAI-compatible shape:
+## 4. Control Center
 
-```bash
-curl http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "auto",
-    "messages": [
-      {"role": "user", "content": "Add a formatDate helper"}
-    ]
-  }'
-```
+Once running, visit the web dashboard to monitor your routing in real-time:
 
-## 4. Watch it route
+- **Dashboard:** `http://localhost:8000/metrics/dashboard`
 
-Open a second terminal and launch the CLI event viewer to see every routing decision in real time, including the per-model leaderboard:
-
-```bash
-source venv/bin/activate
-python reality-router/event_viewer.py
-```
-
-Press `[h]` for the System Health Report with 🟢🟡🔴 reliability per model. Press `[1-5]` to inspect any recent event's full payload and utility breakdown. Press `[q]` to quit.
+Here you can adjust your **Cost vs. Speed** preferences using live sliders and see exactly how much you are saving compared to using flagship models for every request.
 
 ## Next
 
-- [How it works](./concepts.md) — the math behind every routing decision.
-- [Multi-agent support](./agents.md) — sticky sessions for Cursor, Zed, Claude Code, OpenClaw.
-- [Dashboard](./dashboard.md) — CLI + web monitoring for spend and reliability.
+- [How it works](./concepts.md) — The math behind Expected Utility.
+- [Routing strategies](./routing.md) — Snap vs. Ladder mode.
+- [Multi-agent support](./agents.md) — Using RealityRouter with Cursor, Zed, and Roo Code.

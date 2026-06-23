@@ -913,7 +913,7 @@ async def get_dashboard():
 
             async function checkVersion() {
                 try {
-                    const response = await fetch('https://api.github.com/repos/Lars-confi/RealityRouterTemp/tags');
+                    const response = await fetch('https://api.github.com/repos/Lars-confi/RealityRouter/tags');
                     const tags = await response.json();
                     if (tags && tags.length > 0) {
                         // Strip 'v' prefix if it exists (e.g. 'v0.0.1' -> '0.0.1')

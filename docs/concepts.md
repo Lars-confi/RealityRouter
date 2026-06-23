@@ -5,7 +5,7 @@ description: Expected Utility, probability updates, sentiment feedback
 
 # How it works
 
-RealityRouter scores every model on Expected Utility — a single number that combines accuracy, cost, and latency — and routes to the winner. The probabilities behind that math come from Reality Check™ calibration, updated continuously from real outcomes.
+RealityRouter scores every model on Expected Utility — a single number that combines accuracy, cost, and latency — and routes to the winner. The probabilities behind that math come from Reality Router™ calibration, updated continuously from real outcomes.
 
 ## Expected Utility
 
@@ -17,7 +17,7 @@ EU(m_i) = p_i · R − α · c_i − β · t_i
 
 The five terms:
 
-- `p_i` **probability of success** — the estimated likelihood this specific model produces a correct/high-quality answer to *this specific kind* of query. Calibrated by Reality Check™ from historical outcomes on similar tasks. Range: 0–1.
+- `p_i` **probability of success** — the estimated likelihood this specific model produces a correct/high-quality answer to *this specific kind* of query. Calibrated by Reality Router™ from historical outcomes on similar tasks. Range: 0–1.
 - `R` **reward** — the value of a correct answer, fixed at 100.
 - `c_i` **cost** — the estimated dollar cost of running `m_i` on this query. Computed from input token count, historical output length, and the model's specific per-token pricing.
 - `t_i` **latency** — the estimated response time, derived from a rolling 5–10 minute average for this model.
@@ -44,15 +44,15 @@ The cost term `c_i` isn't static — the router tracks per-token pricing for eve
 
 ## How probabilities get smarter
 
-`p_i` is the hard part — and where Reality Check™ does the work. The router doesn't just store a fixed success rate per model. It tracks **per-model, per-task-type** probabilities that update continuously.
+`p_i` is the hard part — and where Reality Router™ does the work. The router doesn't just store a fixed success rate per model. It tracks **per-model, per-task-type** probabilities that update continuously.
 
 ### 1. Unified feature extraction
 
 Every request — regardless of strategy — is decomposed into a consistent set of features: AST complexity (for code), task type (refactor / explain / generate / review), trace frequencies, agent fingerprint (Cursor, Zed, Claude Code, etc.), prompt length, and more.
 
-### 2. Reality Check™ calibration
+### 2. Reality Router™ calibration
 
-These features are sent to the Reality Check calibration service, which compares the current request against historical outcomes for structurally similar requests. The result: `p_i` for each candidate model.
+These features are sent to the Reality Router calibration service, which compares the current request against historical outcomes for structurally similar requests. The result: `p_i` for each candidate model.
 
 ### 3. Sentiment feedback loop
 
@@ -63,11 +63,11 @@ The router watches the conversation for implicit feedback. If a user follows up 
 
 ### 4. Continuous learning
 
-All signals — successful completions, quality failures, sentiment, validation errors — are logged and feed back into Reality Check™'s calibration. Tomorrow's routing reflects yesterday's outcomes. Without you ever filling out a survey.
+All signals — successful completions, quality failures, sentiment, validation errors — are logged and feed back into Reality Router™'s calibration. Tomorrow's routing reflects yesterday's outcomes. Without you ever filling out a survey.
 
 ## Why these probabilities can be trusted
 
-The router is only as honest as the probabilities driving it. If `p_i` is wrong, the EU math falls apart — you over-route to bad models and under-route to good ones. So Reality Check™ doesn't just "estimate" probabilities. It uses two families of statistical methods chosen specifically for their mathematical guarantees.
+The router is only as honest as the probabilities driving it. If `p_i` is wrong, the EU math falls apart — you over-route to bad models and under-route to good ones. So Reality Router™ doesn't just "estimate" probabilities. It uses two families of statistical methods chosen specifically for their mathematical guarantees.
 
 ### Venn predictors
 
@@ -85,10 +85,10 @@ The alternatives all introduce new sources of error:
 - **Learned calibrators** — a small model converts raw confidence into probability. Adds another model whose own error you have to track and re-train as distributions shift.
 - **Soft voting / ensembles** — combine multiple models' outputs. Works well empirically on some tasks, but lacks formal validity guarantees and can't tell you *how much* to trust a given decision.
 
-Reality Check™'s `p_i` is the most honest estimate you can get without introducing fresh sources of uncertainty. That matters every time the router has to decide whether to ship cheap or escalate to flagship — because it's the trustworthiness of the probability, not just its value, that determines whether the routing decision is correct.
+Reality Router™'s `p_i` is the most honest estimate you can get without introducing fresh sources of uncertainty. That matters every time the router has to decide whether to ship cheap or escalate to flagship — because it's the trustworthiness of the probability, not just its value, that determines whether the routing decision is correct.
 
 > [!NOTE]
-> The details of how Venn and conformal methods are applied internally — feature spaces, taxonomies, the specific calibration set construction — are part of the Reality Check service. The guarantees stated above hold for the published outputs.
+> The details of how Venn and conformal methods are applied internally — feature spaces, taxonomies, the specific calibration set construction — are part of the Reality Router service. The guarantees stated above hold for the published outputs.
 
 ## Protocol & quality validation
 
@@ -101,14 +101,14 @@ Before any response is returned to your client, the router inspects the raw outp
 - **AI refusals** — "As an AI language model…"
 - **Heuristic truncation** — abrupt endings mid-word or on conjunctions
 
-If anything trips, the router **silently escalates** to a better model. Negative feedback gets logged to Reality Check™. Your client sees only the clean response.
+If anything trips, the router **silently escalates** to a better model. Negative feedback gets logged to Reality Router™. Your client sees only the clean response.
 
 ### Quality vs infrastructure failures
 
 The router distinguishes between two failure modes:
 
-- **Quality failures** (truncation, malformed syntax, refusals) → negative feedback to Reality Check + automatic escalation.
-- **Infrastructure failures** (timeouts, API 500s, invalid keys) → **do not** contaminate Reality Check metrics. Instead, the router propagates HTTP 502 so you can fix what's actually broken.
+- **Quality failures** (truncation, malformed syntax, refusals) → negative feedback to Reality Router + automatic escalation.
+- **Infrastructure failures** (timeouts, API 500s, invalid keys) → **do not** contaminate Reality Router metrics. Instead, the router propagates HTTP 502 so you can fix what's actually broken.
 
 ## Next
 

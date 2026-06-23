@@ -48,7 +48,7 @@ class RoutingLog(Base):
     features_json = Column(Text)  # Stores the fixed-dimensional agent feature set
     user_sentiment = Column(String(20))  # unhappy, indeterminate, happy
     strategy = Column(String(50))  # expected_utility or tiered_assessment
-    reality_check_id = Column(String(100))  # Linked ID from Reality Check API
+    reality_check_id = Column(String(100))  # Linked ID from Reality Router API
     confidence = Column(Float)
     entropy = Column(Float)
     logprobs_mean = Column(Float)

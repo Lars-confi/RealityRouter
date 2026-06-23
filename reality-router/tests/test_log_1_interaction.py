@@ -246,7 +246,7 @@ TOOLS_PAYLOAD = [
 
 
 class MockHTTPXResponse:
-    """Helper to mock httpx.post responses for Reality Check"""
+    """Helper to mock httpx.post responses for Reality Router"""
 
     def __init__(self, json_data, status_code=200):
         self._json_data = json_data
@@ -266,7 +266,7 @@ async def test_live_capability_filtering_and_reality_check_tables(
 ):
     """
     Tests the live Reality Router infrastructure:
-    1. Extracts real features and hits the mocked Reality Check /decide endpoint to avoid network errors.
+    1. Extracts real features and hits the mocked Reality Router /decide endpoint to avoid network errors.
     2. Ranks live, dynamically discovered models based on expected utility.
     3. Excludes models without tool capabilities (dummy-no-tools) when tools are present.
     4. Prints the Model Comparison tables mimicking the interaction log.
@@ -282,7 +282,7 @@ async def test_live_capability_filtering_and_reality_check_tables(
         query="", agent_id="OpenAI/JS 6.26.0", parameters=request_payload
     )
 
-    # Custom side effect for Reality Check POST requests to ensure reliable probability generation
+    # Custom side effect for Reality Router POST requests to ensure reliable probability generation
     async def mock_rc_post(url, json=None, headers=None, timeout=None, **kwargs):
         features = json.get("features", {})
         model_id = features.get("model_id", "unknown")

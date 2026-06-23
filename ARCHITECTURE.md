@@ -230,7 +230,7 @@ This is highly predictable. You can count the input tokens of q using a tokenize
 This can be a rolling average of the latency for model mi over the last 5-10 minutes. Initially, we can assume ti = 1 second and update based on actual call latencies.
 
 **Estimating Probability (pi)**
-This is the hardest part and it will be handled by passing features to a Reality Check endpoint. Initially it can just be a random number generator sampling values from the uniform distribution on [0,1].
+This is the hardest part and it will be handled by passing features to a Reality Router endpoint. Initially it can just be a random number generator sampling values from the uniform distribution on [0,1].
 
 **Non-linear Time Penalties**
 If you have strict SLAs (e.g., the user must get an answer in under 5 seconds), you might change the linear time penalty (βti) to an exponential one, or introduce a hard constraint where EU(mi) = -∞ if ti > 5.
@@ -239,7 +239,7 @@ Instead of using a local model, we can actually use the users' LLMs to judge whe
 
 ## Tool Integration
 
-This Reality Code Rerouter can be used directly by editors like VS Codium and Zed or by agent systems like openclaw by pointing them to the /v1/completions or `/v1/chat/completions endpoints.
+This Reality Router can be used directly by editors like VS Codium and Zed or by agent systems like openclaw by pointing them to the /v1/completions or `/v1/chat/completions endpoints.
 
 For VS Codium/VS Code:
 ```json
@@ -249,11 +249,11 @@ For VS Codium/VS Code:
 ```
 
 For Zed Editor:
-In Zed, you can configure multiple LLM providers by setting up the Reality Code Rerouter as your backend. The configuration file (config/config.json) allows you to add any LLM provider you want to use.
+In Zed, you can configure multiple LLM providers by setting up the Reality Router as your backend. The configuration file (config/config.json) allows you to add any LLM provider you want to use.
 
-To configure Zed to use your Reality Code Rerouter:
+To configure Zed to use your Reality Router:
 1. Set up your LLM providers in config/config.json with their respective API keys as environment variables
-2. Point Zed to your Reality Code Rerouter endpoint:
+2. Point Zed to your Reality Router endpoint:
 ```json
 {
   "reality.codeRerouter.url": "http://localhost:3000/v1/completions"

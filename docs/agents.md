@@ -18,7 +18,7 @@ The router automatically identifies which client is calling it. Detection runs i
 If no identification is found, the router uses `default`. You can monitor per-agent success rates in the dashboard.
 
 > [!INFO]
-> **Why this matters.** Per-agent identification feeds into Reality Check™ calibration. The router learns "Zed asks structurally different questions than Cursor, which asks different questions than AutoGPT" and tunes its probabilities accordingly.
+> **Why this matters.** Per-agent identification feeds into Reality Router™ calibration. The router learns "Zed asks structurally different questions than Cursor, which asks different questions than AutoGPT" and tunes its probabilities accordingly.
 
 ## Sticky session state
 

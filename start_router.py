@@ -694,7 +694,7 @@ def wizard_reality_check_auth(env_vars):
     print_header("Step 1: Authentication")
     print_status("Reality Router can only be used after authentication.")
     print(
-        f"  {C_YELLOW}Note:{C_RESET} Reality Check handles the crowdsourcing. This information will only be used to ensure the underlying crowdsourcing utilities aren't abused or misused."
+        f"  {C_YELLOW}Note:{C_RESET} Reality Router handles the crowdsourcing. This information will only be used to ensure the underlying crowdsourcing utilities aren't abused or misused."
     )
     choices = [
         ("Login with Microsoft", "m"),

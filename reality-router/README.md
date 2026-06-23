@@ -14,8 +14,8 @@ The central orchestrator implementing multi-strategy routing logic.
 - **Utility Calculator**: Implements the mathematical framework: $EU(m_i) = p_i \cdot R - \alpha \cdot c_i - \beta \cdot t_i$.
 - **Validation Layer**: Intercepts model responses to verify schema compliance (JSON, XML, Markdown) before delivery.
 
-#### 2. Reality Check Integration
-The system integrates with Reality Check **Snap** and **Ladder** endpoints to obtain success probabilities ($p_i$).
+#### 2. Reality Router Integration
+The system integrates with Reality Router **Snap** and **Ladder** endpoints to obtain success probabilities ($p_i$).
 - **Snap Endpoint**: Used for single-shot calibration during initial ranking.
 - **Ladder Endpoint**: Used for high-fidelity post-hoc assessment in tiered strategies.
 - **Sentiment Feedback Loop**: Asynchronous submission of user feedback to reinforce or penalize model performance.
@@ -71,4 +71,4 @@ We welcome contributions from the community. Follow these guidelines to help imp
 
 ---
 
-*Reality Router is maintained by Confidentia AI and friends, powered by Reality Check.*
+*Reality Router is maintained by Confidentia AI and friends, powered by Reality Router.*

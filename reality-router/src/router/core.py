@@ -95,7 +95,7 @@ def resolve_agent_id(
     return header_val if header_val else "default"
 
 
-# Reality Check API Configuration - Hardcoded per v1.0.0.0 Spec
+# Reality Router API Configuration - Hardcoded per v1.0.0.0 Spec
 REALITY_ROUTING_URL = (
     "https://snap-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io"
 )
@@ -976,7 +976,7 @@ class RouterCore:
         model_id: str,
         response: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Extract agent features for Reality Check™ calibration"""
+        """Extract agent features for Reality Router™ calibration"""
         query = request.query or ""
         agent_id = request.agent_id or "default"
         settings = get_settings()
@@ -1312,7 +1312,7 @@ class RouterCore:
     async def get_ranked_models(
         self, request: RoutingRequest, strategy: str = "expected_utility"
     ) -> List[RoutingDecision]:
-        """Select models and rank them using Reality Check calibration"""
+        """Select models and rank them using Reality Router calibration"""
         settings = get_settings()
         logger.info(f"Ranking models using strategy: {strategy}")
         if not self.models:
@@ -1436,18 +1436,18 @@ class RouterCore:
                     async with httpx.AsyncClient(
                         http2=False, trust_env=False
                     ) as client:
-                        logger.info(f"Reality Check POST starting for {m['id']}...")
+                        logger.info(f"Reality Router POST starting for {m['id']}...")
                         resp = await client.post(
                             f"{url}/decide",
                             json={"features": m["features"]},
                             headers=headers,
                             timeout=60.0,
                         )
-                        logger.info(f"Reality Check POST finished for {m['id']}.")
+                        logger.info(f"Reality Router POST finished for {m['id']}.")
                     if resp.status_code == 200:
                         r = resp.json()
                         # Support multiple possible keys for probability and uncertainty
-                        # Support multiple possible keys for probability and uncertainty from Reality Check API
+                        # Support multiple possible keys for probability and uncertainty from Reality Router API
                         prob = r.get("prob_true")
                         if prob is None:
                             prob = r.get("probability")
@@ -1461,7 +1461,7 @@ class RouterCore:
                         uncertainty = r.get("uncertainty", 0.0)
 
                         logger.info(
-                            f"Reality Check calibration for {m['id']}: prob={prob:.4f}, uncert={uncertainty:.4f}, id={r.get('decision_id')}"
+                            f"Reality Router calibration for {m['id']}: prob={prob:.4f}, uncert={uncertainty:.4f}, id={r.get('decision_id')}"
                         )
                         return {
                             **m,
@@ -1473,11 +1473,11 @@ class RouterCore:
                     else:
                         error_body = resp.text
                         logger.warning(
-                            f"Reality Check API ERROR {resp.status_code} for model {m['id']} at {url}. Response: {error_body}"
+                            f"Reality Router API ERROR {resp.status_code} for model {m['id']} at {url}. Response: {error_body}"
                         )
                 except Exception as e:
                     logger.exception(
-                        f"Reality Check call failed for {m['id']} at {url}: {repr(e)}"
+                        f"Reality Router call failed for {m['id']} at {url}: {repr(e)}"
                     )
 
                 return {
@@ -1496,7 +1496,7 @@ class RouterCore:
                 res = await call_rc(m)
                 duration = time.time() - start_rc
                 logger.info(
-                    f"Reality Check total call time for {m['id']}: {duration:.4f}s"
+                    f"Reality Router total call time for {m['id']}: {duration:.4f}s"
                 )
                 results.append(res)
 
@@ -2014,7 +2014,7 @@ class RouterCore:
                         )
 
                         try:
-                            # Use string ID for feedback as expected by Reality Check API
+                            # Use string ID for feedback as expected by Reality Router API
                             rc_id_str = str(last_log.reality_check_id)
 
                             # Determine correct URL based on the log's original strategy
@@ -2034,7 +2034,7 @@ class RouterCore:
                             }
 
                             logger.info(
-                                f"Sending feedback to Reality Check ({fb_strategy}) for decision {rc_id_str}: {sentiment} (Payload: {fb_payload})"
+                                f"Sending feedback to Reality Router ({fb_strategy}) for decision {rc_id_str}: {sentiment} (Payload: {fb_payload})"
                             )
                             # Use stored token from settings or forwarded header
                             auth_token = settings.reality_check_token
@@ -2067,7 +2067,7 @@ class RouterCore:
                                 fb_status = fb_resp.status_code
                                 fb_text = fb_resp.text
                                 logger.info(
-                                    f"Reality Check feedback response: {fb_status}"
+                                    f"Reality Router feedback response: {fb_status}"
                                 )
                                 if fb_status != 200:
                                     logger.warning(f"Feedback error detail: {fb_text}")
@@ -2076,7 +2076,7 @@ class RouterCore:
                                 f"Invalid reality_check_id format: {last_log.reality_check_id}"
                             )
                 except Exception as e:
-                    logger.error(f"Error sending feedback to Reality Check: {e}")
+                    logger.error(f"Error sending feedback to Reality Router: {e}")
 
             if ranked_decisions:
                 title = (
@@ -2372,7 +2372,7 @@ class RouterCore:
                         )
                         self.load_balancer.record_failure(decision.model_id)
 
-                        # Silently send negative feedback to Reality Check for the hallucination
+                        # Silently send negative feedback to Reality Router for the hallucination
                         if decision.reality_check_id:
                             try:
                                 rc_id_str = str(decision.reality_check_id)

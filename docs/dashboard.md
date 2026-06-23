@@ -18,7 +18,7 @@ Available at `http://localhost:8000/metrics/dashboard` while the router is runni
 - **Success density** — overall operational success rate.
 - **Per-model metrics** — most reliable, most economical, fastest, least reliable, chattiest, most concise, clumsiest.
 - **Per-agent activity** — requests, cost, tokens, and success rate for each detected client (Cursor, Zed, RooCode, …).
-- **Probability calibration** — a live calibration curve showing how well Reality Check™'s predicted probabilities track observed outcomes.
+- **Probability calibration** — a live calibration curve showing how well Reality Router™'s predicted probabilities track observed outcomes.
 
 > [!INFO]
 > **Read the calibration plot.** The diagonal is perfect calibration: if the router predicts 70% success, 70% of those queries should succeed. The closer the live curve hugs the diagonal, the more honest the router's probabilities — which translates directly to better routing decisions.
@@ -50,7 +50,7 @@ python reality-router/event_viewer.py --clear
 ```
 
 > [!WARNING]
-> **Heads up.** Clearing wipes Reality Check™'s learned probabilities for your install. The router starts fresh — useful for testing, but you'll lose accumulated calibration. Production installs should rarely need this.
+> **Heads up.** Clearing wipes Reality Router™'s learned probabilities for your install. The router starts fresh — useful for testing, but you'll lose accumulated calibration. Production installs should rarely need this.
 
 ## Where data lives
 

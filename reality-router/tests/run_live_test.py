@@ -48,7 +48,7 @@ async def run_tests():
         )
         core.load_balancer.add_model(m["id"], m["id"], 1.0)
 
-    # We must patch get_ranked_models so it doesn't fail on network issues to the real Reality Check API
+    # We must patch get_ranked_models so it doesn't fail on network issues to the real Reality Router API
     # if it's not running locally, while still evaluating the models.
     from unittest.mock import patch
 

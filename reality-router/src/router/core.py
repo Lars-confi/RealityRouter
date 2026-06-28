@@ -1417,7 +1417,13 @@ class RouterCore:
                     if auth_token:
                         logger.info(f"RC Call Token starts with: {auth_token[:15]}...")
 
-                    headers = {"Content-Type": "application/json"}
+                    headers = {
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "Expect": "",
+                        "User-Agent": "curl/7.68.0",
+                        "Connection": "close",
+                    }
                     if auth_token:
                         # Ensure token has Bearer/Basic prefix as required by backend SSO
                         full_token = (
@@ -1435,7 +1441,9 @@ class RouterCore:
                             headers["Authorization"] = full_token
                         else:
                             headers["X-Reality-Check-Token"] = full_token
-                        logger.info(f"Attaching headers: {list(headers.keys())}")
+                        logger.info(
+                            f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token: {full_token[:20]}...)"
+                        )
                     else:
                         logger.warning(
                             "Reality Router token is missing in settings! Authentication will be anonymous."
@@ -2047,7 +2055,13 @@ class RouterCore:
                             )
                             # Use stored token from settings or forwarded header
                             auth_token = settings.reality_check_token
-                            headers = {"Content-Type": "application/json"}
+                            headers = {
+                                "Content-Type": "application/json",
+                                "Accept": "application/json",
+                                "Expect": "",
+                                "User-Agent": "curl/7.68.0",
+                                "Connection": "close",
+                            }
                             if auth_token:
                                 # Ensure token has Bearer/Basic prefix as required by backend SSO
                                 full_token = (
@@ -2067,7 +2081,7 @@ class RouterCore:
                                 else:
                                     headers["X-Reality-Check-Token"] = full_token
                                 logger.info(
-                                    f"Attaching headers: {list(headers.keys())}"
+                                    f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token: {full_token[:20]}...)"
                                 )
                             else:
                                 logger.warning(
@@ -2405,7 +2419,13 @@ class RouterCore:
                                         else REALITY_REROUTING_URL
                                     )
                                     auth_token = settings.reality_check_token
-                                    headers = {"Content-Type": "application/json"}
+                                    headers = {
+                                        "Content-Type": "application/json",
+                                        "Accept": "application/json",
+                                        "Expect": "",
+                                        "User-Agent": "curl/7.68.0",
+                                        "Connection": "close",
+                                    }
                                     if auth_token:
                                         # Ensure token has Bearer/Basic prefix as required by backend SSO
                                         full_token = (
@@ -2427,7 +2447,7 @@ class RouterCore:
                                                 full_token
                                             )
                                         logger.info(
-                                            f"Attaching headers: {list(headers.keys())}"
+                                            f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token: {full_token[:20]}...)"
                                         )
                                     else:
                                         logger.warning(
@@ -2465,7 +2485,13 @@ class RouterCore:
                                     else REALITY_REROUTING_URL
                                 )
                                 auth_token = settings.reality_check_token
-                                headers = {"Content-Type": "application/json"}
+                                headers = {
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                    "Expect": "",
+                                    "User-Agent": "curl/7.68.0",
+                                    "Connection": "close",
+                                }
                                 if auth_token:
                                     # Ensure token has Bearer/Basic prefix as required by backend SSO
                                     full_token = (
@@ -2485,7 +2511,7 @@ class RouterCore:
                                     else:
                                         headers["X-Reality-Check-Token"] = full_token
                                     logger.info(
-                                        f"Attaching headers: {list(headers.keys())}"
+                                        f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token: {full_token[:20]}...)"
                                     )
                                 else:
                                     logger.warning(
@@ -2807,7 +2833,13 @@ class RouterCore:
                                         else REALITY_REROUTING_URL
                                     )
                                     auth_token = settings.reality_check_token
-                                    headers = {"Content-Type": "application/json"}
+                                    headers = {
+                                        "Content-Type": "application/json",
+                                        "Accept": "application/json",
+                                        "Expect": "",
+                                        "User-Agent": "curl/7.68.0",
+                                        "Connection": "close",
+                                    }
                                     if auth_token:
                                         # Ensure token has Bearer/Basic prefix as required by backend SSO
                                         full_token = (
@@ -2829,7 +2861,7 @@ class RouterCore:
                                                 full_token
                                             )
                                         logger.info(
-                                            f"Attaching headers: {list(headers.keys())}"
+                                            f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token: {full_token[:20]}...)"
                                         )
                                     else:
                                         logger.warning(
@@ -2905,7 +2937,13 @@ class RouterCore:
                             ) as client:
                                 # Post-hoc assessment for tiered rerouting always uses REALITY_REROUTING_URL
                                 auth_token = settings.reality_check_token
-                                headers = {"Content-Type": "application/json"}
+                                headers = {
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                    "Expect": "",
+                                    "User-Agent": "curl/7.68.0",
+                                    "Connection": "close",
+                                }
                                 if auth_token:
                                     # Ensure token has Bearer/Basic prefix as required by backend SSO
                                     full_token = (
@@ -2925,7 +2963,7 @@ class RouterCore:
                                     else:
                                         headers["X-Reality-Check-Token"] = full_token
                                     logger.info(
-                                        f"Attaching headers: {list(headers.keys())}"
+                                        f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token: {full_token[:20]}...)"
                                     )
                                 else:
                                     logger.warning(

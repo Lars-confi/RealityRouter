@@ -1377,19 +1377,21 @@ class RouterCore:
                     .limit(20)
                     .all()
                 )
+                recent_times = [l.time for l in recent if l and getattr(l, "time", None) is not None] if recent else []
                 time_val = (
-                    statistics.mean([l.time for l in recent])
-                    if recent
+                    statistics.mean(recent_times)
+                    if recent_times
                     else info["time"]
                 )
 
                 p_cost = info.get("prompt_cost", info["cost"])
                 c_cost = info.get("completion_cost", info["cost"])
+                completion_tokens_list = [
+                    l.completion_tokens for l in recent if l and getattr(l, "completion_tokens", None)
+                ] if recent else []
                 avg_completion = (
-                    statistics.mean(
-                        [l.completion_tokens for l in recent if l.completion_tokens]
-                    )
-                    if recent and any(l.completion_tokens for l in recent)
+                    statistics.mean(completion_tokens_list)
+                    if completion_tokens_list
                     else 500
                 )
                 estimated_cost = (total_estimated_tokens * p_cost / 1000.0) + (

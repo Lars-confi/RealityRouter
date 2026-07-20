@@ -306,7 +306,8 @@ async def test_integration_reality_check_feedback_loop(mock_router):
     mock_log_entry = MagicMock()
     mock_log_entry.reality_check_id = 12345
     mock_log_entry.user_sentiment = None
-    mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = mock_log_entry
+    mock_log_entry.strategy = "expected_utility"
+    mock_db.query.return_value.filter.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = mock_log_entry
 
     with patch("src.router.core.SessionLocal", return_value=mock_db):
         # Mock the routing request with a happy sentiment
@@ -358,11 +359,8 @@ async def test_integration_reality_check_feedback_loop(mock_router):
             assert mock_log_entry.user_sentiment == "happy"
 
             # Verify the feedback API was called
-            mock_client_instance.post.assert_called_once_with(
-                "https://snap-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io/feedback",
-                json={
-                    "decision_id": 12345,
-                    "feedback": 1,  # 1 for happy sentiment
-                },
-                timeout=3.0,
-            )
+            assert mock_client_instance.post.call_count == 2
+            feedback_call = mock_client_instance.post.call_args_list[1]
+            assert feedback_call[0][0] == "https://snap-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io/feedback"
+            assert feedback_call[1]["json"] == {"decision_id": 12345, "feedback": 1}
+            assert feedback_call[1]["timeout"] == 60.0

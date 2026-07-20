@@ -261,7 +261,7 @@ class LoadBalancer:
         cb = self.circuit_breakers[model_id]
         cb["last_attempt_time"] = time.time()
 
-        if cb["state"] == "OPEN":
+        if cb["state"] in ("OPEN", "HALF_OPEN"):
             # Reset circuit breaker after successful test
             cb["state"] = "CLOSED"
             cb["failure_count"] = 0

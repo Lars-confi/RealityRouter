@@ -58,7 +58,7 @@ def run_pytest():
 
     cmd = [
         venv_pytest,
-        os.path.join(SCRIPT_DIR, "test_isolated_scenarios.py"),
+        SCRIPT_DIR,
         "-v",
         "-s",
     ]

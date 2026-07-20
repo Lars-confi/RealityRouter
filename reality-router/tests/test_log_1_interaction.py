@@ -44,8 +44,9 @@ def live_router_core(mock_db_session):
                     if match:
                         bash_vars[match.group(1)] = match.group(2)
 
-    # Create ~/.reality_router/.env
-    env_dir = os.path.expanduser("~/.reality_router")
+    # Create the test environment file respecting REALITY_ROUTER_HOME
+    app_home = os.getenv("REALITY_ROUTER_HOME", os.path.expanduser("~/.reality_router"))
+    env_dir = app_home
     os.makedirs(env_dir, exist_ok=True)
     env_path = os.path.join(env_dir, ".env")
 

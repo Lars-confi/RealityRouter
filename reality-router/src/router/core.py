@@ -3037,6 +3037,34 @@ class RouterCore:
                         ),
                         None,
                     )
+                    
+                    # Register sticky session for multi-turn agent stickiness
+                    if (
+                        request.agent_id
+                        and request.parameters
+                        and "messages" in request.parameters
+                        and request.parameters["messages"]
+                    ):
+                        first_msg_str = json.dumps(
+                            request.parameters["messages"][0], sort_keys=True
+                        )
+                        session_str = f"{request.agent_id}_{first_msg_str}"
+                        session_hash = hashlib.sha256(session_str.encode("utf-8")).hexdigest()
+                        s_id = f"zed_{session_hash}"
+                        self.active_sessions[s_id] = decision.model_id
+                        logger.info(f"Registered sticky session {s_id} for model {decision.model_id}")
+
+                    if not self.models[decision.model_id].get("supports_function_calling"):
+                        if request.parameters:
+                            request.parameters.pop("tools", None)
+                            request.parameters.pop("tool_choice", None)
+                            if "messages" in request.parameters:
+                                mcp_msg = {
+                                    "role": "system",
+                                    "content": "The user has MCP tools available.",
+                                }
+                                request.parameters["messages"] = [mcp_msg] + list(request.parameters["messages"])
+
                     return RoutingResponse(
                         model_id=decision.model_id,
                         model_name=decision.name,

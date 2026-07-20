@@ -35,6 +35,22 @@ def setup_sandbox():
         f.write("DEFAULT_STRATEGY=expected_utility\n")
         f.write("DISABLED_MODELS=gemini-3.1-flash-lite,gemini-3-pro-preview\n")
         f.write("SENTIMENT_MODEL_ID=gemini-2.5-flash\n")
+        
+        # Safely forward any active API keys from the developer's system environment
+        # This allows live tests to run successfully without saving keys in version control
+        forwarded_keys = [
+            "GEMINI_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "MISTRAL_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "CUSTOM_LLM_BASE_URL",
+            "CUSTOM_LLM_API_KEY"
+        ]
+        for key in forwarded_keys:
+            val = os.environ.get(key)
+            if val:
+                f.write(f'{key}="{val}"\n')
 
     print(f"📝 Created sandboxed config `.env` in: {env_path}")
 

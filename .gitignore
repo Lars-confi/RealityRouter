@@ -27,6 +27,8 @@ logs/
 # Build & Dist
 dist/
 build/
+dist_test/
+local_test/
 *.zip
 *.tar.gz
 reality_router_dist.zip

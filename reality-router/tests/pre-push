@@ -1,0 +1,21 @@
+#!/bin/bash
+# Pre-push hook: Runs sandboxed tests before allowing a git push.
+
+# Get the directory of the git repo (project root)
+GIT_DIR=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -z "$GIT_DIR" ]; then
+    # Fallback to current working directory
+    GIT_DIR=$(pwd)
+fi
+
+echo "🔒 Running Pre-Push Quality Gate..."
+python3 "$GIT_DIR/reality-router/tests/run_isolated_tests.py"
+
+# Capture exit code of the tests
+if [ $? -ne 0 ]; then
+    echo "❌ Push rejected! The isolated test suite failed. Please fix the errors before pushing."
+    exit 1
+fi
+
+echo "✅ All tests passed! Proceeding with push..."
+exit 0

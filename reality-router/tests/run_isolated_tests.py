@@ -34,7 +34,7 @@ def setup_sandbox():
         f.write("REALITY_CHECK_PROVIDER=Google\n")
         f.write("DEFAULT_STRATEGY=expected_utility\n")
         f.write("DISABLED_MODELS=gemini-3.1-flash-lite,gemini-3-pro-preview\n")
-        f.write("SENTIMENT_MODEL_ID=gemini-2.5-flash\n")
+        f.write("SENTIMENT_MODEL_ID=nemotron-3-nano:30b\n")
         
         # Safely forward any active API keys from the developer's system environment
         # This allows live tests to run successfully without saving keys in version control

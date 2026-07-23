@@ -99,6 +99,9 @@ async def test_tool_request_detection_and_filtering(mock_router):
 
 @pytest.mark.asyncio
 async def test_sticky_routing(mock_router):
+    from src.config.settings import get_settings
+    get_settings().enable_sticky_sessions = True
+
     request = RoutingRequest(
         query="Test sticky",
         agent_id="test_agent",

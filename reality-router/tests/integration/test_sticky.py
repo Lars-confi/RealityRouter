@@ -12,6 +12,9 @@ async def test_sticky_session_natural_lifecycle(base_router):
     3. The second request in the same session is instantly routed to the sticky model,
        bypassing ranking/decider API calls.
     """
+    from src.config.settings import get_settings
+    get_settings().enable_sticky_sessions = True
+
     # 1. First turn request (contains only the initial user message)
     first_turn_payload = {
         "model": "RealRouter",

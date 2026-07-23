@@ -1947,14 +1947,12 @@ class RouterCore:
 
             # Check for sticky session
             if (
-                request.agent_id
+                settings.enable_sticky_sessions
+                and request.agent_id
                 and request.parameters
                 and "messages" in request.parameters
                 and request.parameters["messages"]
             ):
-                import hashlib
-                import json
-
                 from fastapi import HTTPException
 
                 first_msg_str = json.dumps(
@@ -3040,7 +3038,8 @@ class RouterCore:
                     
                     # Register sticky session for multi-turn agent stickiness
                     if (
-                        request.agent_id
+                        settings.enable_sticky_sessions
+                        and request.agent_id
                         and request.parameters
                         and "messages" in request.parameters
                         and request.parameters["messages"]

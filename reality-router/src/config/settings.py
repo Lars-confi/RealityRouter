@@ -67,6 +67,7 @@ class Settings(BaseModel):
     # Routing settings
     enable_auto_discovery: bool = Field(default=True)
     default_strategy: str = Field(default="expected_utility")
+    enable_sticky_sessions: bool = Field(default=False)
     cost_sensitivity: float = Field(default=0.5)
     time_sensitivity: float = Field(default=0.5)
 

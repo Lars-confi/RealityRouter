@@ -1639,7 +1639,7 @@ class RouterCore:
 
             req_payload = json.dumps(request.parameters) if request.parameters else "{}"
             resp_payload = json.dumps(response) if response else "{}"
-            is_success = bool(response)
+            is_success = bool(response) and "error" not in response
 
             actual_cost = decision.cost
             if decision.model_id in self.models:
@@ -3079,6 +3079,23 @@ class RouterCore:
                     logger.error(f"Error calling model {decision.model_id}: {e}")
                     last_error = str(e)
                     self.load_balancer.record_failure(decision.model_id)
+                    
+                    # Log the failed routing attempt to the database for the dashboard
+                    try:
+                        self.log_routing_decision(
+                            decision.model_copy(
+                                update={"time": time.time() - start_time, "cost": 0.0}
+                            ),
+                            request,
+                            {"error": str(e), "text": ""},
+                            db,
+                            routing_context,
+                            self.extract_coding_features(request, decision.model_id, {}),
+                            None,
+                        )
+                    except Exception as log_err:
+                        logger.error(f"Failed to log failed routing decision: {log_err}")
+                        
                     continue
 
             raise HTTPException(

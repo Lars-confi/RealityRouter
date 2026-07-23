@@ -51,6 +51,7 @@ class MetricsSummary(BaseModel):
     agents: Dict[str, Dict]
     recent_events: List[Dict]
     timestamp: str
+    api_key_alerts: Optional[List[Dict]] = None
 
 
 class ModelMetrics(BaseModel):
@@ -219,6 +220,7 @@ async def get_metrics_summary(db: Session = Depends(get_db)):
                 agents={},
                 recent_events=[],
                 timestamp=datetime.utcnow().isoformat(),
+                api_key_alerts=None,
             )
 
         # Calculate statistics
@@ -359,6 +361,39 @@ async def get_metrics_summary(db: Session = Depends(get_db)):
             }
             recent_events.append(event)
 
+        # Check for recent API Key, authentication, or billing failures
+        api_key_alerts = []
+        try:
+            failed_logs = (
+                db.query(RoutingLog)
+                .filter(RoutingLog.success == False)
+                .order_by(RoutingLog.timestamp.desc())
+                .limit(20)
+                .all()
+            )
+            seen_models = set()
+            for log in failed_logs:
+                payload_str = log.response_payload or ""
+                payload_lower = payload_str.lower()
+                
+                # Check for various authentication, key, or billing error indicators
+                auth_error_keywords = [
+                    "401", "402", "unauthorized", "api key", "token", 
+                    "billing", "quota", "payment", "incorrect api key", 
+                    "credentials", "authentication", "unauthenticated"
+                ]
+                
+                if any(kw in payload_lower for kw in auth_error_keywords) and log.model_id not in seen_models:
+                    seen_models.add(log.model_id)
+                    api_key_alerts.append({
+                        "model_id": log.model_id,
+                        "model_name": log.model_name,
+                        "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S") if log.timestamp else None,
+                        "error_message": payload_str[:150] + "..." if len(payload_str) > 150 else payload_str
+                    })
+        except Exception as alert_err:
+            logger.error(f"Error checking for API key alerts: {alert_err}")
+
         return MetricsSummary(
             total_requests=total_requests,
             total_cost=total_cost,
@@ -374,6 +409,7 @@ async def get_metrics_summary(db: Session = Depends(get_db)):
             agents=agent_stats,
             recent_events=recent_events,
             timestamp=datetime.utcnow().isoformat(),
+            api_key_alerts=api_key_alerts or None,
         )
     except Exception as e:
         logger.error(f"Error getting metrics summary: {str(e)}")
@@ -646,6 +682,15 @@ async def get_dashboard():
                 <div id="version-badge" style="font-size: 0.85em; color: #8b949e; margin-top: 5px;">Version: <span id="current-version">0.0.3</span></div>
                 <div id="update-alert" style="display: none; margin-top: 10px; color: #f39c12; font-weight: bold; background: rgba(243, 156, 18, 0.1); padding: 5px 15px; border-radius: 5px; border: 1px solid rgba(243, 156, 18, 0.3);">
                     ⚠️ A new version is available! Run the installer to update.
+                </div>
+                <div id="api-alert" style="display: none; margin-top: 15px; color: #e74c3c; background: rgba(231, 76, 60, 0.08); padding: 15px 20px; border-radius: 8px; border: 1px solid rgba(231, 76, 60, 0.25); text-align: left; font-size: 0.9em; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                    <div style="font-weight: bold; font-size: 1.1em; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                        <span>🚨 WARNING: API Key, Authentication, or Billing Failures Detected!</span>
+                    </div>
+                    <ul id="api-alert-list" style="margin: 0; padding-left: 20px; line-height: 1.6; color: #cbd5e1;"></ul>
+                    <div style="margin-top: 10px; font-size: 0.85em; font-style: italic; color: #8b949e; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
+                        💡 <b>Action Required:</b> Open your terminal and run <code>python3 start_router.py</code> to refresh your provider credentials or update your provider's billing account.
+                    </div>
                 </div>
             </div>
 
@@ -936,7 +981,22 @@ async def get_dashboard():
                 try {
                     const res = await fetch('/metrics/summary');
                     const data = await res.json();
-
+                    
+                    // Update API Key/Billing Alerts
+                    const apiAlertEl = document.getElementById('api-alert');
+                    const apiAlertList = document.getElementById('api-alert-list');
+                    if (data.api_key_alerts && data.api_key_alerts.length > 0) {
+                        apiAlertEl.style.display = 'block';
+                        apiAlertList.innerHTML = '';
+                        data.api_key_alerts.forEach(alert => {
+                            const li = document.createElement('li');
+                            li.innerHTML = `Model <b>${alert.model_name}</b> failed at ${alert.timestamp}. Error: <code style="color: #ff8b8b; font-family: monospace;">${alert.error_message}</code>`;
+                            apiAlertList.appendChild(li);
+                        });
+                    } else {
+                        apiAlertEl.style.display = 'none';
+                    }
+ 
                     // Update Summary Grid
                     const summaryGrid = document.getElementById('summary-grid');
                     const savings = Math.max(0, data.potential_max_cost - data.total_cost);

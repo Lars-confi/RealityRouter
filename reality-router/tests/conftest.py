@@ -28,7 +28,8 @@ def clean_environment():
 @pytest.fixture
 def mock_db():
     """Mock the database session for standard DB operations."""
-    with patch("src.router.core.SessionLocal") as mock_session_local:
+    with patch("src.router.core.SessionLocal") as mock_session_core, \
+         patch("src.models.database.SessionLocal") as mock_session_db:
         db = MagicMock()
         # Mock simple query chain: db.query().filter().first() etc.
         mock_query = MagicMock()
@@ -39,7 +40,8 @@ def mock_db():
         mock_query.first.return_value = None
         db.query.return_value = mock_query
         
-        mock_session_local.return_value = db
+        mock_session_core.return_value = db
+        mock_session_db.return_value = db
         yield db
 
 

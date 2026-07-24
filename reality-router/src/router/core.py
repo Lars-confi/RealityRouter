@@ -2266,7 +2266,28 @@ class RouterCore:
                             r"```json\s*\n?(.*?)\n?```", resp_text, re.DOTALL
                         )
 
-                        # 3. Look for bare JSON objects (balanced braces)
+                        # 3. Look for custom Action-style blocks, e.g. [Action: terminal({"command": "..."})]
+                        action_blocks = re.findall(
+                            r"\[Action:\s*([a-zA-Z0-9_-]+)\((.*?)\)\]", resp_text, re.DOTALL
+                        )
+                        for a_name, a_args in action_blocks:
+                            clean_args = a_args.strip()
+                            # Strip outer quotes if wrapped
+                            if (clean_args.startswith("'") and clean_args.endswith("'")) or (clean_args.startswith('"') and clean_args.endswith('"')):
+                                clean_args = clean_args[1:-1]
+                            
+                            rescued_calls.append(
+                                {
+                                    "id": f"rescued_action_{int(time.time())}_{len(rescued_calls)}",
+                                    "type": "function",
+                                    "function": {
+                                        "name": a_name,
+                                        "arguments": clean_args
+                                    }
+                                }
+                            )
+
+                        # 4. Look for bare JSON objects (balanced braces)
                         if (
                             not json_blocks
                             and not rescued_calls
@@ -2348,7 +2369,7 @@ class RouterCore:
                         # Models must not leak raw tool syntax into the standard content block
                         resp_text = str(response.get("text", "")).strip()
                         # Strict patterns that indicate native tag hallucinations instead of API usage
-                        leak_patterns = [r"<｜tool", r"<function", r"✿", r"<tool_call>"]
+                        leak_patterns = [r"<｜tool", r"<function", r"✿", r"<tool_call>", r"\[Action:"]
                         for pattern in leak_patterns:
                             if re.search(pattern, resp_text):
                                 is_valid = False

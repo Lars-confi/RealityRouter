@@ -162,3 +162,50 @@ async def test_guardian_heuristic_tool_rescue(base_router):
         assert json.loads(tool_call["function"]["arguments"]) == {"task": "qa"}
         # Confirm that the leaked text was cleared to avoid downstream parser loops
         assert response.response["text"] == ""
+
+
+@pytest.mark.asyncio
+async def test_guardian_action_block_rescue(base_router):
+    """
+    Action/Terminal Block Heuristic Rescue Check.
+    Some models leak custom formatted tool tags (like '[Action: terminal({...})]') into the
+    plain content block. The Guardian must parse, clean, and rescue these into valid tool_calls.
+    """
+    request = RoutingRequest(
+        query="Run pytests in AIKYC directory",
+        agent_id="test_agent",
+        parameters={
+            "messages": [{"role": "user", "content": "Run pytests"}],
+            "tools": [{"type": "function", "function": {"name": "terminal", "parameters": {}}}]
+        }
+    )
+
+    # Model returned a leaked Action block inside text (exactly like Zed/Aider leaks)
+    leaked_action_response = {
+        "text": "[Action: terminal({\"command\":\"export PYTHONPATH=$PYTHONPATH:.:cloud/deployment/backend && ./venv/bin/pytest cloud/tests/test_golden_dataset.py\",\"cd\":\"/home/lc/CodeProjects/AIKYC\"})]",
+        "finish_reason": "stop"
+    }
+
+    mock_rescue_adapter = AsyncMock()
+    mock_rescue_adapter.forward_request.return_value = leaked_action_response
+    base_router.adapters["gemini-3.1-flash-lite"] = mock_rescue_adapter
+
+    async def mock_rc_post(url, json=None, headers=None, **kwargs):
+        return MockHTTPXResponse({"prob_true": 0.9, "decision_id": 404})
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
+        response = await base_router.route_request(request, strategy="tiered_assessment")
+        
+        # Verify that the leaked action block was successfully rescued
+        assert response.model_id == "gemini-3.1-flash-lite"
+        assert "tool_calls" in response.response
+        tool_call = response.response["tool_calls"][0]
+        assert tool_call["function"]["name"] == "terminal"
+        
+        # Verify arguments are parsed correctly as valid JSON
+        args = json.loads(tool_call["function"]["arguments"])
+        assert args["cd"] == "/home/lc/CodeProjects/AIKYC"
+        assert "pytest cloud/tests/test_golden_dataset.py" in args["command"]
+        
+        # Confirm that the leaked text was cleared
+        assert response.response["text"] == ""

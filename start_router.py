@@ -349,20 +349,19 @@ def get_all_models(env_vars):
                     f"Gemini native discovery ({version}) failed: {e}{error_body}"
                 )
 
-        # 2. Try OpenAI compat endpoint if needed (fallback if native found nothing)
-        if not models:
-            for version in ["v1beta", "v1"]:
-                compat_models = sync_discover_openai_compat(
-                    f"https://generativelanguage.googleapis.com/{version}/openai",
-                    g_key,
-                    "gemini",
-                )
-                for m in compat_models:
-                    if m["id"] not in gemini_ids:
-                        models.append(m)
-                        gemini_ids.add(m["id"])
-                if compat_models:
-                    break
+        # 2. Try OpenAI compat endpoint as well (always query to match backend router core discovery)
+        for version in ["v1beta", "v1"]:
+            compat_models = sync_discover_openai_compat(
+                f"https://generativelanguage.googleapis.com/{version}/openai",
+                g_key,
+                "gemini",
+            )
+            for m in compat_models:
+                if m["id"] not in gemini_ids:
+                    models.append(m)
+                    gemini_ids.add(m["id"])
+            if compat_models:
+                break
 
     # Anthropic
     a_key = env_vars.get("ANTHROPIC_API_KEY")

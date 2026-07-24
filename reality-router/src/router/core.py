@@ -2382,7 +2382,7 @@ class RouterCore:
                         if is_valid and response.get("tool_calls"):
                             # Get expected tool names from original request to ensure strict adherence
                             requested_tool_names = []
-                            if request.parameters and "tools" in request.parameters:
+                            if request.parameters and request.parameters.get("tools"):
                                 for t in request.parameters["tools"]:
                                     name = t.get("function", {}).get("name")
                                     if name:

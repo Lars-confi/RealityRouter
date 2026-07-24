@@ -209,3 +209,47 @@ async def test_guardian_action_block_rescue(base_router):
         
         # Confirm that the leaked text was cleared
         assert response.response["text"] == ""
+
+
+@pytest.mark.asyncio
+async def test_guardian_null_tools_parameter(base_router):
+    """
+    Verifies that if the client request contains a 'tools' parameter set explicitly
+    to None (which translates to null in JSON, common in clients like Zed),
+    and a model hallucinates a tool call anyway:
+    1. The Guardian does NOT crash with a TypeError: 'NoneType' object is not iterable.
+    2. The model's hallucinated call is rejected as a Ghost Tool (since 0 tools were requested).
+    """
+    request = RoutingRequest(
+        query="Explain 1+1",
+        agent_id="test_agent",
+        parameters={
+            "messages": [{"role": "user", "content": "Explain 1+1"}],
+            "tools": None  # Explicitly null tools (this was causing the NoneType iteration crash!)
+        }
+    )
+
+    hallucinated_response = {
+        "text": "",
+        "tool_calls": [
+            {
+                "id": "ghost_call_456",
+                "type": "function",
+                "function": {"name": "terminal", "arguments": "{}"}
+            }
+        ],
+        "finish_reason": "tool_calls"
+    }
+
+    mock_hal_adapter = AsyncMock()
+    mock_hal_adapter.forward_request.return_value = hallucinated_response
+    base_router.adapters["gemini-3.1-flash-lite"] = mock_hal_adapter
+
+    async def mock_rc_post(url, json=None, headers=None, **kwargs):
+        return MockHTTPXResponse({"prob_true": 0.9, "decision_id": 405})
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
+        # This call should succeed (no TypeError) and bypass the ghost tool to get the next clean model
+        response = await base_router.route_request(request, strategy="tiered_assessment")
+        assert response is not None
+        assert response.model_id != "gemini-3.1-flash-lite"

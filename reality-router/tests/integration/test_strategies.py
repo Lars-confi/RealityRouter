@@ -22,22 +22,20 @@ async def test_snap_strategy_sorting_and_routing(base_router):
     2. Sorts models by utility descending.
     3. Selects the highest-utility model and routes the prompt.
     """
+    base_router.utility_calculator.reward = 10.0
     request = RoutingRequest(
         query="Write a quick script",
         agent_id="test_agent",
         parameters={"messages": [{"role": "user", "content": "Write a script"}]}
     )
 
-    # We mock the decider API so that:
-    # - gemini-3.1-flash-lite: prob = 0.8
-    # - gemini-2.5-flash: prob = 0.85
-    # - gemini-3.5-flash: prob = 0.9
+    # We mock the decider API so that gemini-3.1-flash-lite has high utility
     async def mock_rc_post(url, json=None, headers=None, **kwargs):
         model_id = json.get("features", {}).get("model_id", "")
         probs = {
-            "gemini-3.1-flash-lite": 0.8,
-            "gemini-2.5-flash": 0.85,
-            "gemini-3.5-flash": 0.9,
+            "gemini-3.1-flash-lite": 0.99,
+            "gemini-2.5-flash": 0.1,
+            "gemini-3.5-flash": 0.1,
         }
         return MockHTTPXResponse({"prob_true": probs.get(model_id, 0.5), "decision_id": 601})
 
@@ -59,6 +57,7 @@ async def test_ladder_strategy_success_on_first_try(base_router):
     3. The post-hoc assessment returns high confidence (e.g. 0.95).
     4. The router accepts the answer and stops, without escalating to more expensive models.
     """
+    base_router.utility_calculator.reward = 10.0
     request = RoutingRequest(
         query="Explain 1+1",
         agent_id="test_agent",
@@ -89,6 +88,7 @@ async def test_ladder_strategy_escalation_flow(base_router):
     5. The post-hoc validator returns high confidence (e.g. 0.95).
     6. Router stops at the second tier, returning the second model's response.
     """
+    base_router.utility_calculator.reward = 10.0
     request = RoutingRequest(
         query="Write a complex compiler",
         agent_id="test_agent",

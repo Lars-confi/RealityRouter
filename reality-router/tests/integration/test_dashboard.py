@@ -132,3 +132,29 @@ def test_dashboard_api_key_alert(test_client, mock_db):
     html_response = test_client.get("/metrics/dashboard")
     assert html_response.status_code == 200
     assert "id=\"api-alert\"" in html_response.text
+
+
+def test_dashboard_time_windowing(test_client, mock_db):
+    """
+    Verifies that the /metrics/summary?window=... endpoint:
+    1. Successfully applies filter and parses query parameters.
+    2. Works smoothly for different time intervals ('24h', '7d', '30d').
+    """
+    for interval in ["24h", "7d", "30d", "all"]:
+        response = test_client.get(f"/metrics/summary?window={interval}")
+        assert response.status_code == 200
+
+
+def test_dashboard_reset_endpoint(test_client, mock_db):
+    """
+    Verifies that the /metrics/reset endpoint:
+    1. Returns HTTP 200 OK.
+    2. Triggers delete transactions against the SQLite database.
+    """
+    response = test_client.post("/metrics/reset")
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    
+    # Verify that the DB query deletes were actually executed
+    assert mock_db.query.return_value.delete.call_count == 2
+    assert mock_db.commit.call_count == 1

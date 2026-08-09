@@ -196,13 +196,25 @@ metrics_collector = MetricsCollector()
 
 
 @router.get("/summary")
-async def get_metrics_summary(db: Session = Depends(get_db)):
+async def get_metrics_summary(window: Optional[str] = "all", db: Session = Depends(get_db)):
     """
     Get summary of routing metrics from database
     """
     try:
-        # Get all routing logs from database
-        logs = db.query(RoutingLog).all()
+        # Get query for routing logs
+        query = db.query(RoutingLog)
+        
+        if window == "24h":
+            since = datetime.utcnow() - timedelta(hours=24)
+            query = query.filter(RoutingLog.timestamp >= since)
+        elif window == "7d":
+            since = datetime.utcnow() - timedelta(days=7)
+            query = query.filter(RoutingLog.timestamp >= since)
+        elif window == "30d":
+            since = datetime.utcnow() - timedelta(days=30)
+            query = query.filter(RoutingLog.timestamp >= since)
+            
+        logs = query.all()
 
         if not logs:
             return MetricsSummary(
@@ -535,6 +547,21 @@ async def update_preferences(pref: PreferenceUpdate):
     return {"status": "success", "alpha": alpha, "beta": beta}
 
 
+@router.post("/reset")
+async def reset_database(db: Session = Depends(get_db)):
+    try:
+        from src.models.database import RoutingLog, ModelPerformance
+        # Delete logs
+        db.query(RoutingLog).delete()
+        # Reset model stats / accumulated metrics
+        db.query(ModelPerformance).delete()
+        db.commit()
+        return {"status": "success", "message": "Database cleared successfully!"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to reset: {str(e)}")
+
+
 class ModelPreferenceRequest(BaseModel):
     model_id: str
     value: float
@@ -694,9 +721,19 @@ async def get_dashboard():
                 </div>
             </div>
 
-            <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('performance', event)">Performance</button>
-                <button class="tab-btn" onclick="switchTab('settings', event)">Settings</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; max-width: 1200px;">
+                <div class="tabs" style="margin-bottom: 0;">
+                    <button class="tab-btn active" onclick="switchTab('performance', event)">Performance</button>
+                    <button class="tab-btn" onclick="switchTab('settings', event)">Settings</button>
+                </div>
+                <div>
+                    <select id="time-window" onchange="loadData()" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; outline: none; transition: background 0.2s;">
+                        <option value="all">All Time</option>
+                        <option value="24h">Last 24 Hours</option>
+                        <option value="7d">Last 7 Days</option>
+                        <option value="30d">Last 30 Days</option>
+                    </select>
+                </div>
             </div>
 
             <div id="tab-performance" class="tab-content active">
@@ -797,8 +834,16 @@ async def get_dashboard():
                         <tbody id="all-models-body"></tbody>
                     </table>
                 </div>
-            </div>
-        </div> <!-- End tab-settings -->
+                <div style="margin-top: 40px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 25px;">
+                    <h3 style="color: #e74c3c; margin-top: 0; display: flex; align-items: center; gap: 8px;">
+                        <span>🚨 Danger Zone</span>
+                    </h3>
+                    <p style="color: #8b949e; font-size: 0.9em; margin-bottom: 20px; line-height: 1.5;">Wiping the database will permanently delete all historical metrics, USD savings, latency logs, and events to zero. Your SSO configurations and API settings will NOT be modified.</p>
+                    <button onclick="confirmResetDatabase()" style="background: rgba(231, 76, 60, 0.12); border: 1px solid rgba(231, 76, 60, 0.4); color: #e74c3c; padding: 10px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.2s; outline: none;" onmouseover="this.style.background='rgba(231, 76, 60, 0.25)'" onmouseout="this.style.background='rgba(231, 76, 60, 0.12)'">
+                        Clear Metrics Database
+                    </button>
+                </div>
+            </div> <!-- End tab-settings -->
     </div>
 
     <script>
@@ -954,6 +999,23 @@ async def get_dashboard():
                 }
             }
 
+            async function confirmResetDatabase() {
+                const confirmed = window.confirm("⚠️ DANGER: Are you absolutely sure you want to delete all historical logs, USD savings, and latency metrics? This action is permanent and cannot be undone.");
+                if (confirmed) {
+                    try {
+                        const res = await fetch('/metrics/reset', { method: 'POST' });
+                        if (res.ok) {
+                            alert("✅ Database cleared successfully!");
+                            location.reload();
+                        } else {
+                            alert("❌ Failed to clear database.");
+                        }
+                    } catch (e) {
+                        alert("❌ Error connecting to server.");
+                    }
+                }
+            }
+
             loadAllModels();
 
             async function checkVersion() {
@@ -979,7 +1041,8 @@ async def get_dashboard():
 
             async function loadData() {
                 try {
-                    const res = await fetch('/metrics/summary');
+                    const windowVal = document.getElementById('time-window').value;
+                    const res = await fetch('/metrics/summary?window=' + windowVal);
                     const data = await res.json();
                     
                     // Update API Key/Billing Alerts

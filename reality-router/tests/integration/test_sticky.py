@@ -31,16 +31,16 @@ async def test_sticky_session_natural_lifecycle(base_router):
     )
 
     # First turn should evaluate and select the highest utility model.
-    # We mock the /decide endpoint so that gemini-3.5-flash is rated extremely high
+    # We mock the /decide endpoint so that gemini-3.1-flash-lite is rated extremely high
     async def mock_rc_post(url, json=None, headers=None, **kwargs):
         model_id = json.get("features", {}).get("model_id", "")
-        prob = 0.99 if model_id == "gemini-3.5-flash" else 0.5
+        prob = 0.99 if model_id == "gemini-3.1-flash-lite" else 0.1
         return MagicMock(status_code=200, json=lambda: {"prob_true": prob, "decision_id": 501})
 
     with patch("httpx.AsyncClient.post", side_effect=mock_rc_post) as mock_post:
-        # Route the first request (should select gemini-3.5-flash)
+        # Route the first request (should select gemini-3.1-flash-lite)
         response_1 = await base_router.route_request(first_request, strategy="expected_utility")
-        assert response_1.model_id == "gemini-3.5-flash"
+        assert response_1.model_id == "gemini-3.1-flash-lite"
         assert mock_post.call_count == 3 # Polled all 3 models in the pool
         
         # Verify that the session is now registered in active sessions
@@ -54,7 +54,7 @@ async def test_sticky_session_natural_lifecycle(base_router):
         
         # CRITICAL TEST: It must have been registered automatically!
         assert session_id in base_router.active_sessions
-        assert base_router.active_sessions[session_id] == "gemini-3.5-flash"
+        assert base_router.active_sessions[session_id] == "gemini-3.1-flash-lite"
 
     # 2. Second turn request (contains the first turn AND the user follow-up)
     second_turn_payload = {
@@ -77,7 +77,7 @@ async def test_sticky_session_natural_lifecycle(base_router):
     with patch("httpx.AsyncClient.post") as mock_post_2:
         response_2 = await base_router.route_request(second_request, strategy="expected_utility")
         
-        # Verify it went straight to gemini-3.5-flash
-        assert response_2.model_id == "gemini-3.5-flash"
+        # Verify it went straight to gemini-3.1-flash-lite
+        assert response_2.model_id == "gemini-3.1-flash-lite"
         # Verify no decider API calls were made (bypassed)
         mock_post_2.assert_not_called()

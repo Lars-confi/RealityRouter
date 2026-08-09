@@ -161,9 +161,11 @@ class ExpectedUtilityCalculator:
         self, cost: float, time: float, probability: float, preference: float = 100.0
     ) -> float:
         preference_penalty = (100.0 - preference) * 10.0
+        # Scale cost by 1000.0 to bring it to the same order of magnitude as latency in seconds
+        scaled_cost = cost * 1000.0
         return (
             probability * self.reward
-            - self.cost_sensitivity * cost
+            - self.cost_sensitivity * scaled_cost
             - self.time_sensitivity * time
             - preference_penalty
         )

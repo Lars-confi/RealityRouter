@@ -5,7 +5,7 @@ Pricing Manager for fetching and caching up-to-date LLM token costs.
 import json
 import os
 import time
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import httpx
 
@@ -80,6 +80,34 @@ class PricingManager:
                 logger.info("Fell back to expired local cache due to network error.")
             except Exception:
                 pass
+
+    def get_model_capabilities(self, model_name: str) -> Dict[str, Any]:
+        """
+        Get capabilities for a model, specifically vision capability.
+        """
+        model_name_lower = model_name.lower()
+        if "gpt-4.1-nano" in model_name_lower:
+            return {"supports_vision": False}
+        if "gpt-4o" in model_name_lower or "gemini" in model_name_lower:
+            return {"supports_vision": True}
+        if not self.prices:
+            return {"supports_vision": False}
+        if model_name_lower.startswith("models/"):
+            model_name_lower = model_name_lower[7:]
+
+        def extract_caps(price_data: dict) -> Dict[str, Any]:
+            supports_vision = price_data.get("supports_vision", False)
+            return {"supports_vision": bool(supports_vision)}
+
+        if model_name_lower in self.prices:
+            return extract_caps(self.prices[model_name_lower])
+        for key in self.prices.keys():
+            if key.endswith(f"/{model_name_lower}"):
+                return extract_caps(self.prices[key])
+        for key in self.prices.keys():
+            if model_name_lower in key:
+                return extract_caps(self.prices[key])
+        return {"supports_vision": False}
 
     def get_model_pricing(
         self, model_name: str

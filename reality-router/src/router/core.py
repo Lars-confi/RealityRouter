@@ -228,7 +228,7 @@ class RouterCore:
                     model_id=model_id,
                     model_name=model_info.get("name", model_id),
                     cost=model_info.get(
-                        "cost", (p_cost + c_cost) / 2 if p_cost is not None else 0.0
+                        "cost", (p_cost + c_cost) / 2 if (p_cost is not None and c_cost is not None) else 0.0
                     ),
                     time=model_info.get("time", 1.0),
                     probability=model_info.get("probability", 0.8),
@@ -355,8 +355,9 @@ class RouterCore:
                                         max_input_tokens,
                                         max_tokens,
                                     ) = pricing_manager.get_model_pricing(name)
-                                    if p_cost is None:
-                                        p_cost, c_cost = 0.0, 0.0
+                                    if p_cost is None or c_cost is None:
+                                        p_cost = p_cost if p_cost is not None else 0.0
+                                        c_cost = c_cost if c_cost is not None else 0.0
                                     supports_function_calling = True
                                     cost = (p_cost + c_cost) / 2
                                     self.add_model(
@@ -427,8 +428,9 @@ class RouterCore:
                                         max_input_tokens,
                                         max_tokens,
                                     ) = pricing_manager.get_model_pricing(name)
-                                    if p_cost is None:
-                                        p_cost, c_cost = 0.001, 0.001
+                                    if p_cost is None or c_cost is None:
+                                        p_cost = p_cost if p_cost is not None else 0.001
+                                        c_cost = c_cost if c_cost is not None else 0.001
                                     supports_function_calling = True
                                     cost = (p_cost + c_cost) / 2
                                     self.add_model(
@@ -501,17 +503,22 @@ class RouterCore:
                                         max_input_tokens,
                                         max_tokens,
                                     ) = pricing_manager.get_model_pricing(name)
-                                    if p_cost is None:
+                                    if p_cost is None or c_cost is None:
                                         if "gpt-4o-mini" in name:
-                                            p_cost, c_cost = 0.00015, 0.0006
+                                            p_cost = p_cost if p_cost is not None else 0.00015
+                                            c_cost = c_cost if c_cost is not None else 0.0006
                                         elif "gpt-4o" in name:
-                                            p_cost, c_cost = 0.0025, 0.005
+                                            p_cost = p_cost if p_cost is not None else 0.0025
+                                            c_cost = c_cost if c_cost is not None else 0.005
                                         elif "gpt-4" in name:
-                                            p_cost, c_cost = 0.03, 0.06
+                                            p_cost = p_cost if p_cost is not None else 0.03
+                                            c_cost = c_cost if c_cost is not None else 0.06
                                         elif "gpt-3.5" in name:
-                                            p_cost, c_cost = 0.0005, 0.0015
+                                            p_cost = p_cost if p_cost is not None else 0.0005
+                                            c_cost = c_cost if c_cost is not None else 0.0015
                                         else:
-                                            p_cost, c_cost = 0.002, 0.002
+                                            p_cost = p_cost if p_cost is not None else 0.002
+                                            c_cost = c_cost if c_cost is not None else 0.002
                                     supports_function_calling = True
                                     cost = (p_cost + c_cost) / 2
                                     self.add_model(
@@ -585,13 +592,16 @@ class RouterCore:
                                     max_input_tokens,
                                     max_tokens,
                                 ) = pricing_manager.get_model_pricing(name)
-                                if p_cost is None:
+                                if p_cost is None or c_cost is None:
                                     if "sonnet" in name:
-                                        p_cost, c_cost = 0.003, 0.015
+                                        p_cost = p_cost if p_cost is not None else 0.003
+                                        c_cost = c_cost if c_cost is not None else 0.015
                                     elif "opus" in name:
-                                        p_cost, c_cost = 0.015, 0.075
+                                        p_cost = p_cost if p_cost is not None else 0.015
+                                        c_cost = c_cost if c_cost is not None else 0.075
                                     else:
-                                        p_cost, c_cost = 0.00025, 0.00125
+                                        p_cost = p_cost if p_cost is not None else 0.00025
+                                        c_cost = c_cost if c_cost is not None else 0.00125
                                 supports_function_calling = True
                                 cost = (p_cost + c_cost) / 2
                                 self.add_model(
@@ -660,11 +670,13 @@ class RouterCore:
                                     max_input_tokens,
                                     max_tokens,
                                 ) = pricing_manager.get_model_pricing(name)
-                                if p_cost is None:
+                                if p_cost is None or c_cost is None:
                                     if "large" in name:
-                                        p_cost, c_cost = 0.002, 0.006
+                                        p_cost = p_cost if p_cost is not None else 0.002
+                                        c_cost = c_cost if c_cost is not None else 0.006
                                     else:
-                                        p_cost, c_cost = 0.0001, 0.0003
+                                        p_cost = p_cost if p_cost is not None else 0.0001
+                                        c_cost = c_cost if c_cost is not None else 0.0003
                                 supports_function_calling = True
                                 cost = (p_cost + c_cost) / 2
                                 self.add_model(
@@ -765,13 +777,16 @@ class RouterCore:
                                 max_input_tokens,
                                 max_tokens,
                             ) = pricing_manager.get_model_pricing(name)
-                            if p_cost is None:
+                            if p_cost is None or c_cost is None:
                                 if "flash" in name:
-                                    p_cost, c_cost = 0.000075, 0.0003
+                                    p_cost = p_cost if p_cost is not None else 0.000075
+                                    c_cost = c_cost if c_cost is not None else 0.0003
                                 elif "pro" in name:
-                                    p_cost, c_cost = 0.00125, 0.005
+                                    p_cost = p_cost if p_cost is not None else 0.00125
+                                    c_cost = c_cost if c_cost is not None else 0.005
                                 else:
-                                    p_cost, c_cost = 0.00035, 0.00035
+                                    p_cost = p_cost if p_cost is not None else 0.00035
+                                    c_cost = c_cost if c_cost is not None else 0.00035
                             supports_function_calling = True
                             cost = (p_cost + c_cost) / 2
                             self.add_model(
@@ -835,14 +850,17 @@ class RouterCore:
                                 max_input_tokens,
                                 max_tokens,
                             ) = pricing_manager.get_model_pricing(name)
-                            if p_cost is None:
+                            if p_cost is None or c_cost is None:
                                 low = raw.lower()
                                 if "reasoner" in low or "r1" in low:
-                                    p_cost, c_cost = 0.00055, 0.00219
+                                    p_cost = p_cost if p_cost is not None else 0.00055
+                                    c_cost = c_cost if c_cost is not None else 0.00219
                                 elif "coder" in low:
-                                    p_cost, c_cost = 0.00014, 0.00028
+                                    p_cost = p_cost if p_cost is not None else 0.00014
+                                    c_cost = c_cost if c_cost is not None else 0.00028
                                 else:
-                                    p_cost, c_cost = 0.00028, 0.00042
+                                    p_cost = p_cost if p_cost is not None else 0.00028
+                                    c_cost = c_cost if c_cost is not None else 0.00042
                             supports_function_calling = True
                             cost = (p_cost + c_cost) / 2
                             self.add_model(
@@ -1350,12 +1368,32 @@ class RouterCore:
                     )
                 ]
 
+            # Check for vision-modality requests
+            has_images = False
+            if request.parameters:
+                def _has_image_url(data) -> bool:
+                    if isinstance(data, dict):
+                        if data.get("type") == "image_url":
+                            return True
+                        return any(_has_image_url(v) for v in data.values())
+                    elif isinstance(data, list):
+                        return any(_has_image_url(item) for item in data)
+                    return False
+                has_images = _has_image_url(request.parameters)
+
             tools_requested = bool(
                 request.parameters and request.parameters.get("tools")
             )
 
             model_tasks = []
             for mid, info in self.models.items():
+                # If vision is detected, only include models that strictly support it
+                if has_images:
+                    caps = pricing_manager.get_model_capabilities(mid)
+                    if not caps.get("supports_vision", False):
+                        logger.info(f"Skipping model {mid} for vision request (no vision support)")
+                        continue
+
                 # If tools are requested, only include models that strictly support them
                 if tools_requested and not info.get("supports_function_calling", False):
                     continue

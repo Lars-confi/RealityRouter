@@ -115,3 +115,45 @@ async def test_ladder_strategy_escalation_flow(base_router):
         # Should escalate past gemini-3.1-flash-lite and stop at gemini-2.5-flash
         assert response.model_id == "gemini-2.5-flash"
         assert call_counts["ladder"] == 2 # Evaluated two models post-hoc
+
+
+@pytest.mark.asyncio
+async def test_vision_modality_aware_routing(base_router):
+    """
+    Verifies that when a request contains an image (type: "image_url"),
+    only models supporting vision are evaluated.
+    """
+    # Create request with image
+    request = RoutingRequest(
+        query="Analyze this image",
+        agent_id="test_agent",
+        parameters={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What is in this image?"},
+                        {"type": "image_url", "image_url": {"url": "https://example.com/image.png"}}
+                    ]
+                }
+            ]
+        }
+    )
+
+    # Let's mock get_model_capabilities to return supports_vision = True for gemini-3.5-flash
+    # and supports_vision = False for gemini-3.1-flash-lite and gemini-2.5-flash.
+    def mock_get_model_capabilities(model_name: str):
+        if "gemini-3.5-flash" in model_name:
+            return {"supports_vision": True}
+        return {"supports_vision": False}
+
+    async def mock_rc_post(url, json=None, headers=None, **kwargs):
+        return MockHTTPXResponse({"prob_true": 0.9, "decision_id": 999})
+
+    with patch("src.utils.pricing.pricing_manager.get_model_capabilities", side_effect=mock_get_model_capabilities), \
+         patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
+        # We run the expected_utility (Snap) strategy
+        response = await base_router.route_request(request, strategy="expected_utility")
+        
+        # Should select gemini-3.5-flash because it's the only one that supports vision
+        assert response.model_id == "gemini-3.5-flash"

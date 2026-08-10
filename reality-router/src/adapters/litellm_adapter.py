@@ -140,6 +140,27 @@ class LiteLLMAdapter(BaseAdapter):
             message = choice.message
             text = getattr(message, "content", "") or ""
 
+            # Extract reasoning_content (for DeepSeek thinking-mode compatibility)
+            reasoning_content = ""
+            for attr in ["reasoning_content", "reasoning", "thought"]:
+                val = getattr(message, attr, None)
+                if val:
+                    reasoning_content = val
+                    break
+            
+            if (
+                not reasoning_content
+                and hasattr(message, "provider_specific_fields")
+                and isinstance(message.provider_specific_fields, dict)
+            ):
+                psf = message.provider_specific_fields
+                reasoning_content = (
+                    psf.get("reasoning_content")
+                    or psf.get("reasoning")
+                    or psf.get("thought")
+                    or ""
+                )
+
             # Extract reasoning/reasoning_content if main content is empty
             if not text:
                 # 1. Check for reasoning attributes directly on message object
@@ -160,7 +181,7 @@ class LiteLLMAdapter(BaseAdapter):
                         psf.get("reasoning_content")
                         or psf.get("reasoning")
                         or psf.get("thought")
-                        or psf.get("refusal")
+                        or getattr(message, "refusal", "")
                         or ""
                     )
 
@@ -182,9 +203,6 @@ class LiteLLMAdapter(BaseAdapter):
                             },
                         }
                     )
-
-            # Removed heuristic tool parsing.
-            # Core Validation Gateway now strictly enforces protocol and escalates on leaks.
 
             # Extract usage statistics
             usage_dict = {}
@@ -248,6 +266,7 @@ class LiteLLMAdapter(BaseAdapter):
 
             result = {
                 "text": text,
+                "reasoning_content": reasoning_content or None,
                 "finish_reason": finish_reason,
                 "tool_calls": tool_calls if tool_calls else None,
                 "usage": usage_dict,

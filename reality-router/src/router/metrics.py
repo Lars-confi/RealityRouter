@@ -388,18 +388,26 @@ async def get_metrics_summary(window: Optional[str] = "all", db: Session = Depen
                 payload_str = log.response_payload or ""
                 payload_lower = payload_str.lower()
                 
-                # Check for various authentication, key, or billing error indicators
-                auth_error_keywords = [
-                    "401", "402", "unauthorized", "api key", "token", 
-                    "billing", "quota", "payment", "incorrect api key", 
-                    "credentials", "authentication", "unauthenticated"
-                ]
+                # Dynamic classification logic
+                category = "generic"
+                is_alert = False
                 
-                if any(kw in payload_lower for kw in auth_error_keywords) and log.model_id not in seen_models:
+                if "max_tokens" in payload_lower or "context_length" in payload_lower or "too large" in payload_lower or "completion_tokens" in payload_lower:
+                    category = "token_limit"
+                    is_alert = True
+                elif "rate_limit" in payload_lower or "429" in payload_lower or "too many requests" in payload_lower:
+                    category = "rate_limit"
+                    is_alert = True
+                elif any(kw in payload_lower for kw in ["401", "402", "unauthorized", "api key", "billing", "quota", "payment", "incorrect api key", "credentials", "authentication", "unauthenticated"]):
+                    category = "credentials"
+                    is_alert = True
+                
+                if is_alert and log.model_id not in seen_models:
                     seen_models.add(log.model_id)
                     api_key_alerts.append({
                         "model_id": log.model_id,
                         "model_name": log.model_name,
+                        "category": category,
                         "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S") if log.timestamp else None,
                         "error_message": payload_str[:150] + "..." if len(payload_str) > 150 else payload_str
                     })
@@ -710,14 +718,10 @@ async def get_dashboard():
                 <div id="update-alert" style="display: none; margin-top: 10px; color: #f39c12; font-weight: bold; background: rgba(243, 156, 18, 0.1); padding: 5px 15px; border-radius: 5px; border: 1px solid rgba(243, 156, 18, 0.3);">
                     ⚠️ A new version is available! Run the installer to update.
                 </div>
-                <div id="api-alert" style="display: none; margin-top: 15px; color: #e74c3c; background: rgba(231, 76, 60, 0.08); padding: 15px 20px; border-radius: 8px; border: 1px solid rgba(231, 76, 60, 0.25); text-align: left; font-size: 0.9em; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-                    <div style="font-weight: bold; font-size: 1.1em; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
-                        <span>🚨 WARNING: API Key, Authentication, or Billing Failures Detected!</span>
-                    </div>
+                <div id="api-alert" style="display: none; margin-top: 15px; background: rgba(255, 255, 255, 0.05); padding: 15px 20px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1); text-align: left; font-size: 0.9em; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                    <div id="api-alert-title" style="font-weight: bold; font-size: 1.1em; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;"></div>
                     <ul id="api-alert-list" style="margin: 0; padding-left: 20px; line-height: 1.6; color: #cbd5e1;"></ul>
-                    <div style="margin-top: 10px; font-size: 0.85em; font-style: italic; color: #8b949e; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
-                        💡 <b>Action Required:</b> Open your terminal and run <code>python3 start_router.py</code> to refresh your provider credentials or update your provider's billing account.
-                    </div>
+                    <div id="api-alert-remediation" style="margin-top: 10px; font-size: 0.85em; font-style: italic; color: #8b949e; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;"></div>
                 </div>
             </div>
 
@@ -1047,13 +1051,46 @@ async def get_dashboard():
                     
                     // Update API Key/Billing Alerts
                     const apiAlertEl = document.getElementById('api-alert');
+                    const apiAlertTitle = document.getElementById('api-alert-title');
                     const apiAlertList = document.getElementById('api-alert-list');
+                    const apiAlertRemediation = document.getElementById('api-alert-remediation');
                     if (data.api_key_alerts && data.api_key_alerts.length > 0) {
                         apiAlertEl.style.display = 'block';
                         apiAlertList.innerHTML = '';
+                        
+                        // We classify based on the first alert's category to determine style
+                        const mainAlert = data.api_key_alerts[0];
+                        const category = mainAlert.category || 'generic';
+                        
+                        if (category === 'credentials') {
+                            apiAlertEl.style.borderColor = 'rgba(231, 76, 60, 0.25)';
+                            apiAlertEl.style.background = 'rgba(231, 76, 60, 0.08)';
+                            apiAlertTitle.style.color = '#e74c3c';
+                            apiAlertTitle.innerHTML = '🚨 WARNING: API Key, Authentication, or Billing Failures Detected!';
+                            apiAlertRemediation.innerHTML = '💡 <b>Action Required:</b> Open your terminal and run <code>python3 start_router.py</code> to refresh your provider credentials or update your provider\'s billing account.';
+                        } else if (category === 'token_limit') {
+                            apiAlertEl.style.borderColor = 'rgba(243, 156, 18, 0.25)';
+                            apiAlertEl.style.background = 'rgba(243, 156, 18, 0.08)';
+                            apiAlertTitle.style.color = '#f39c12';
+                            apiAlertTitle.innerHTML = '⚠️ WARNING: Model Output/Context Limit Exceeded!';
+                            apiAlertRemediation.innerHTML = '💡 <b>Notice:</b> Your caller sent a <code>max_tokens</code> or prompt size exceeding this model\'s cap. Reality Router clamps these automatically (so requests still proceed), but you can also reduce the value client-side in your agent settings.';
+                        } else if (category === 'rate_limit') {
+                            apiAlertEl.style.borderColor = 'rgba(52, 152, 219, 0.25)';
+                            apiAlertEl.style.background = 'rgba(52, 152, 219, 0.08)';
+                            apiAlertTitle.style.color = '#3498db';
+                            apiAlertTitle.innerHTML = '⏳ WARNING: Upstream Rate Limits Exceeded (429)!';
+                            apiAlertRemediation.innerHTML = '💡 <b>Notice:</b> This model is hitting temporary rate limits. Reality Router\'s circuit breaker will temporarily trip and failover, but you should consider upgrading your provider tier if this happens frequently.';
+                        } else {
+                            apiAlertEl.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                            apiAlertEl.style.background = 'rgba(255, 255, 255, 0.05)';
+                            apiAlertTitle.style.color = '#e6edf3';
+                            apiAlertTitle.innerHTML = '⚠️ WARNING: Active Model Failures Detected!';
+                            apiAlertRemediation.innerHTML = '💡 <b>Action Required:</b> Check the raw error messages below to diagnose why this model connection failed.';
+                        }
+                        
                         data.api_key_alerts.forEach(alert => {
                             const li = document.createElement('li');
-                            li.innerHTML = `Model <b>${alert.model_name}</b> failed at ${alert.timestamp}. Error: <code style="color: #ff8b8b; font-family: monospace;">${alert.error_message}</code>`;
+                            li.innerHTML = `Model <b>\${alert.model_name}</b> failed at \${alert.timestamp}. Error: <code style="color: #ff8b8b; font-family: monospace;">\${alert.error_message}</code>`;
                             apiAlertList.appendChild(li);
                         });
                     } else {

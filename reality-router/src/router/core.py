@@ -2189,6 +2189,19 @@ class RouterCore:
                         # Strictly enforce stream=False internally so we can evaluate full response
                         current_request.parameters["stream"] = False
 
+                        # Clamp max_tokens and max_completion_tokens to the model's known output cap
+                        model_info = self.models.get(decision.model_id, {})
+                        max_out_cap = model_info.get("max_tokens")
+                        if max_out_cap:
+                            for key in ["max_tokens", "max_completion_tokens"]:
+                                if key in current_request.parameters and current_request.parameters[key] is not None:
+                                    original_val = current_request.parameters[key]
+                                    if original_val > max_out_cap:
+                                        current_request.parameters[key] = max_out_cap
+                                        logger.info(
+                                            f"Clamped {key} from {original_val} to model's max cap {max_out_cap} for {decision.model_id}"
+                                        )
+
                     has_tools = bool(
                         current_request.parameters
                         and current_request.parameters.get("tools")

@@ -157,3 +157,50 @@ async def test_vision_modality_aware_routing(base_router):
         
         # Should select gemini-3.5-flash because it's the only one that supports vision
         assert response.model_id == "gemini-3.5-flash"
+
+
+
+@pytest.mark.asyncio
+async def test_routing_max_tokens_clamping(base_router):
+    """
+    Verifies that when a request is made with a high max_tokens or max_completion_tokens value,
+    it is clamped to the model's configured max_tokens cap.
+    """
+    # 1. Setup gemini-3.5-flash's max_tokens as 4096 in the router's model configuration
+    base_router.models["gemini-3.5-flash"]["max_tokens"] = 4096
+
+    # 2. Make a request with max_tokens=32000
+    request = RoutingRequest(
+        query="Write a long story",
+        agent_id="test_agent",
+        parameters={
+            "messages": [{"role": "user", "content": "Write a long story"}],
+            "max_tokens": 32000,
+            "max_completion_tokens": 32000,
+        }
+    )
+
+    # 3. We mock the decider API so gemini-3.5-flash is selected (highest probability)
+    async def mock_rc_post(url, json=None, headers=None, **kwargs):
+        # Return high probability for gemini-3.5-flash
+        model_id = json.get("features", {}).get("model_id", "") if json else ""
+        prob = 0.99 if model_id == "gemini-3.5-flash" else 0.1
+        return MockHTTPXResponse({"prob_true": prob, "decision_id": 1001})
+
+    # Get the mock adapter for gemini-3.5-flash and reset it
+    adapter = base_router.adapters["gemini-3.5-flash"]
+    adapter.forward_request.reset_mock()
+    adapter.forward_request.return_value = {"text": "Success Response"}
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
+        # Route the request using expected_utility
+        await base_router.route_request(request, strategy="expected_utility")
+
+        # 4. Assert that the request passed to the adapter has been successfully clamped
+        adapter.forward_request.assert_called_once()
+        called_args, called_kwargs = adapter.forward_request.call_args
+        clamped_request = called_args[0]
+        
+        # Verify the parameters were clamped
+        assert clamped_request.parameters["max_tokens"] == 4096
+        assert clamped_request.parameters["max_completion_tokens"] == 4096

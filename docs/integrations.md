@@ -9,6 +9,14 @@ Reality Router speaks the OpenAI protocol. Any developer tool that lets you conf
 
 This page covers the five most-requested integrations. The pattern is the same for anything else: point the tool's OpenAI base URL at `http://localhost:8000/v1` (or your RR host), give it a placeholder API key, and pick a model from the RR pool.
 
+**Jump to your tool:**
+
+- [OpenCode](#opencode)
+- [Cursor](#cursor)
+- [Aider](#aider)
+- [Cline (VS Code)](#cline-vs-code)
+- [Codex CLI](#codex-cli)
+
 > [!NOTE]
 > All snippets assume RR is running locally on port 8000. Swap `localhost` for your host if RR runs on a different machine (e.g. a home lab, VPC, or Tailscale endpoint).
 

@@ -36,6 +36,8 @@ RealityRouter is probably what you want if you are saying any of these:
 - *My Claude / OpenAI / Cursor bill keeps climbing and I don't know why.*
 - *I keep hitting rate limits or usage caps.*
 - *I'm paying flagship prices to format JSON.*
+- *I'd run far more agents if the cost didn't scale with every one.*
+- *I can't leave an agent running overnight without watching the meter.*
 - *I have keys for several providers and no way to use them together.*
 - *I run Ollama and want to use my own hardware when it makes sense.*
 - *I can't tell which model is actually earning its cost.*

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import json
 import logging
 import os
@@ -11,7 +12,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-import inquirer
+try:
+    import inquirer
+except ImportError:
+    # Only the wizard needs the interactive TUI. Headless mode must work in a
+    # slim container or CI image that has no reason to ship it.
+    inquirer = None
 
 # Set up simple file logging
 APP_HOME = os.getenv("REALITY_ROUTER_HOME", os.path.expanduser("~/.reality_router"))
@@ -26,6 +32,18 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REALITY_ROUTER_DIR = os.path.join(SCRIPT_DIR, "reality-router")
 ENV_FILE = os.path.join(APP_HOME, ".env")
 DISABLED_MODELS_FILE = os.path.join(APP_HOME, "disabled_models.json")
+PID_FILE = os.path.join(APP_HOME, "router.pid")
+SERVER_LOG = os.path.join(APP_HOME, "server.log")
+
+# Exit codes for non-interactive callers. Distinct on purpose: 3 means ask the
+# user for a key, 4 means a key they already gave is wrong.
+EXIT_OK = 0
+EXIT_USAGE = 2
+EXIT_NO_CREDENTIALS = 3
+EXIT_NO_MODELS = 4
+EXIT_UNHEALTHY = 5
+EXIT_PORT_BUSY = 6
+EXIT_ALREADY_RUNNING = 7
 
 # --- Colors & UI Elements ---
 C_RESET = "\033[0m"
@@ -106,9 +124,41 @@ def load_env():
 
 
 def save_env(env_vars):
+    """Persist env_vars to ENV_FILE, keeping comments and existing key order.
+
+    This used to rewrite the file from the dict alone, which silently deleted
+    every comment the user had written -- load_env() skips comment lines, so a
+    load/save round-trip dropped them. Existing keys are now updated in place
+    and new ones appended.
+    """
+    existing = []
+    if os.path.exists(ENV_FILE):
+        with open(ENV_FILE, "r") as f:
+            existing = f.read().split("\n")
+
+    written = set()
+    out = []
+    for line in existing:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in env_vars:
+                out.append(f"{key}={env_vars[key]}")
+                written.add(key)
+            # A key no longer in env_vars is dropped, matching the old behaviour
+            # of writing only what the dict contained.
+            continue
+        out.append(line)
+
+    for k, v in env_vars.items():
+        if k not in written:
+            out.append(f"{k}={v}")
+
+    while out and not out[-1].strip():
+        out.pop()
+
     with open(ENV_FILE, "w") as f:
-        for k, v in env_vars.items():
-            f.write(f"{k}={v}\n")
+        f.write("\n".join(out) + "\n")
 
 
 def load_disabled_models():
@@ -1026,7 +1076,394 @@ def deploy_docker(env_vars):
         input(f"\n  Press [Enter] to return...")
 
 
+# --- Headless / non-interactive mode ---------------------------------------
+#
+# Everything below exists so the router can be brought up without a TTY: CI,
+# Docker, systemd, and agent-assisted installs. Bare `reality-router` with no
+# flags still drops into the wizard exactly as before.
+
+
+def credential_keys():
+    """Flat list of env keys that count as configuring a provider.
+
+    Derived from PROVIDER_KEYS rather than duplicated, so adding a provider to
+    the wizard automatically teaches headless mode about it. CUSTOM_LLM_API_KEY
+    is excluded: for a local endpoint the base URL is what matters, and the key
+    is routinely the literal string "dummy".
+    """
+    return [
+        key
+        for pairs in PROVIDER_KEYS.values()
+        for key, _ in pairs
+        if key != "CUSTOM_LLM_API_KEY"
+    ]
+
+
+def has_any_credential(env_vars):
+    return any(
+        env_vars.get(k) and env_vars.get(k) != "dummy" for k in credential_keys()
+    )
+
+
+def read_pid():
+    try:
+        with open(PID_FILE, "r") as f:
+            return int(f.read().strip())
+    except Exception:
+        return None
+
+
+def pid_alive(pid):
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def port_is_free(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("127.0.0.1", port)) != 0
+
+
+def wait_for_health(port, timeout=30):
+    """Poll /health until it answers or we give up.
+
+    Without this, --detach returns before uvicorn is listening and the caller
+    races the server it just started.
+    """
+    deadline = time.time() + timeout
+    url = f"http://127.0.0.1:{port}/health"
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=2) as r:
+                if r.status == 200:
+                    return True
+        except Exception:
+            pass
+        time.sleep(0.5)
+    return False
+
+
+# Ordered cheapest-looking first. Used only when real pricing is unavailable.
+CHEAP_MODEL_HINTS = [
+    "nano",
+    "mini",
+    "flash",
+    "haiku",
+    "turbo",
+    "lite",
+    "small",
+    "air",
+    "tiny",
+]
+
+
+def _pricing_manager():
+    """The router's pricing table, if it can be imported.
+
+    start_router.py does not otherwise depend on the router package, and the
+    import needs the server's own dependencies present. Returns None rather
+    than failing so the wizard keeps working in a bare environment.
+    """
+    try:
+        if REALITY_ROUTER_DIR not in sys.path:
+            sys.path.insert(0, REALITY_ROUTER_DIR)
+        from src.utils.pricing import pricing_manager
+
+        return pricing_manager
+    except Exception as e:
+        logger.debug(f"pricing_manager unavailable: {e}")
+        return None
+
+
+def resolve_sentiment_model(models, explicit=None):
+    """Pick the cheap, fast model used for the feedback loop.
+
+    Returns (model_id, reason). The wizard asks a human to choose; this makes
+    the same choice from the discovered set. The reason is surfaced to the
+    caller because it is a decision the user would otherwise have made.
+    """
+    ids = [m["id"] for m in models]
+
+    if explicit:
+        if explicit not in ids:
+            return None, f"'{explicit}' was not discovered"
+        return explicit, "specified with --sentiment-model"
+
+    if not ids:
+        return None, "no models discovered"
+
+    # A local model is free, but only worth using if it is not glacial -- on
+    # slow hardware local inference makes the feedback loop cost more time than
+    # the routing saves.
+    local = [m for m in models if m.get("provider") in ("custom", "ollama")]
+    if local:
+        return local[0]["id"], "local model, zero marginal cost"
+
+    pm = _pricing_manager()
+    if pm:
+        priced = []
+        for m in models:
+            try:
+                p_cost, c_cost, _, _, _ = pm.get_model_pricing(m["id"])
+            except Exception:
+                continue
+            if p_cost is None or c_cost is None:
+                continue
+            priced.append(((p_cost + c_cost) / 2, m["id"]))
+        if priced:
+            priced.sort()
+            return priced[0][1], "cheapest model with known pricing"
+
+    # No pricing available: fall back to naming conventions. This is a
+    # heuristic, and it is reported as one.
+    for hint in CHEAP_MODEL_HINTS:
+        for mid in ids:
+            if hint in mid.lower():
+                return mid, f"name suggests a small model ('{hint}'); pricing unavailable"
+
+    return ids[0], "first discovered model; no pricing or naming signal"
+
+
+def start_server_detached(env_vars, port):
+    """Launch uvicorn in its own session and return immediately."""
+    env = os.environ.copy()
+    env.update(env_vars)
+    env["PYTHONPATH"] = os.path.abspath(REALITY_ROUTER_DIR)
+
+    logf = open(SERVER_LOG, "ab")
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "src.main:app",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            str(port),
+            "--no-access-log",
+        ],
+        cwd=REALITY_ROUTER_DIR,
+        env=env,
+        stdout=logf,
+        stderr=logf,
+        stdin=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    with open(PID_FILE, "w") as f:
+        f.write(str(proc.pid))
+    return proc.pid
+
+
+def build_status(env_vars, port=None, pid=None, models=None):
+    """Machine-readable state. base_url and dashboard_url are given whole so no
+    caller has to reassemble them from a port -- assuming 8000 is exactly the
+    bug this is meant to prevent."""
+    models = models or []
+    by_provider = {}
+    for m in models:
+        prov = m.get("provider", "unknown")
+        by_provider.setdefault(prov, 0)
+        by_provider[prov] += 1
+
+    providers = {}
+    for name, pairs in PROVIDER_KEYS.items():
+        keys = [k for k, _ in pairs if k != "CUSTOM_LLM_API_KEY"]
+        configured = any(
+            env_vars.get(k) and env_vars.get(k) != "dummy" for k in keys
+        )
+        # get_all_models tags local models "custom"; the wizard calls the
+        # provider "custom/local".
+        lookup = "custom" if name == "custom/local" else name
+        entry = {"configured": configured, "models": by_provider.get(lookup, 0)}
+        if configured and entry["models"] == 0:
+            entry["reason"] = "credential present but no models returned"
+        elif not configured:
+            entry["reason"] = "not configured"
+        providers[name] = entry
+
+    status = {
+        "status": "healthy" if port and not port_is_free(port) else "stopped",
+        "port": port,
+        "pid": pid,
+        "config_file": ENV_FILE,
+        "sentiment_model": env_vars.get("SENTIMENT_MODEL_ID"),
+        "reality_signal": bool(env_vars.get("REALITY_CHECK_TOKEN")),
+        "providers": providers,
+        "models_total": len(models),
+    }
+    if port:
+        status["base_url"] = f"http://localhost:{port}/v1"
+        status["dashboard_url"] = f"http://localhost:{port}/metrics/dashboard"
+    return status
+
+
+def headless_main(args):
+    env_vars = load_env()
+
+    # --set writes config and exits; it exists so callers never hand-write .env
+    # format, and so one code path owns which keys are legal.
+    if args.set:
+        for pair in args.set:
+            if "=" not in pair:
+                print(f"--set expects KEY=VALUE, got: {pair}", file=sys.stderr)
+                return EXIT_USAGE
+            k, v = pair.split("=", 1)
+            env_vars[k.strip().upper()] = v.strip()
+        save_env(env_vars)
+        print(json.dumps({"status": "config_written", "config_file": ENV_FILE}, indent=2))
+        return EXIT_OK
+
+    running_pid = read_pid()
+    if pid_alive(running_pid):
+        port = args.port or 8000
+        print(json.dumps(build_status(env_vars, port, running_pid), indent=2))
+        if not args.status:
+            print("already running; use --status", file=sys.stderr)
+            return EXIT_ALREADY_RUNNING
+        return EXIT_OK
+
+    if args.status:
+        print(json.dumps(build_status(env_vars), indent=2))
+        return EXIT_OK
+
+    if not has_any_credential(env_vars):
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "error": "no provider credentials configured",
+                    "hint": "set one with --set, e.g. --set OPENAI_API_KEY=...",
+                    "accepted": credential_keys(),
+                },
+                indent=2,
+            )
+        )
+        return EXIT_NO_CREDENTIALS
+
+    models = get_all_models(env_vars)
+    if not models:
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "error": "credentials present but no models discovered",
+                    "providers": build_status(env_vars)["providers"],
+                },
+                indent=2,
+            )
+        )
+        return EXIT_NO_MODELS
+
+    sentiment, reason = resolve_sentiment_model(models, args.sentiment_model)
+    if sentiment is None:
+        print(
+            json.dumps({"status": "error", "error": reason}, indent=2), file=sys.stderr
+        )
+        return EXIT_USAGE
+    env_vars["SENTIMENT_MODEL_ID"] = sentiment
+
+    env_vars.setdefault("COST_SENSITIVITY", "50")
+    env_vars.setdefault("TIME_SENSITIVITY", "50")
+    env_vars.setdefault("USER_EMAIL", "anonymous")
+    env_vars.setdefault("USER_LOCATION", "unknown")
+    save_env(env_vars)
+
+    if args.port:
+        if not port_is_free(args.port):
+            print(
+                json.dumps(
+                    {"status": "error", "error": f"port {args.port} is busy"}, indent=2
+                ),
+                file=sys.stderr,
+            )
+            return EXIT_PORT_BUSY
+        port = args.port
+    else:
+        port = find_available_port(8000)
+
+    if not args.detach:
+        # Foreground: correct for Docker and systemd, which want to own the
+        # process. start_server() handles its own output.
+        env_vars["_RR_PORT"] = str(port)
+        start_server(env_vars)
+        return EXIT_OK
+
+    pid = start_server_detached(env_vars, port)
+    if not wait_for_health(port):
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "error": "server started but /health never became healthy",
+                    "pid": pid,
+                    "log": SERVER_LOG,
+                },
+                indent=2,
+            ),
+            file=sys.stderr,
+        )
+        return EXIT_UNHEALTHY
+
+    status = build_status(env_vars, port, pid, models)
+    status["sentiment_model_reason"] = reason
+    print(json.dumps(status, indent=2))
+    return EXIT_OK
+
+
+def parse_args(argv):
+    p = argparse.ArgumentParser(
+        prog="reality-router",
+        description="Start RealityRouter. With no flags, runs the setup wizard.",
+    )
+    p.add_argument(
+        "--headless",
+        action="store_true",
+        help="never prompt; missing required values are errors, not questions",
+    )
+    p.add_argument(
+        "--detach",
+        action="store_true",
+        help="start in the background and return once /health is healthy",
+    )
+    p.add_argument("--status", action="store_true", help="print state as JSON and exit")
+    p.add_argument("--port", type=int, help="bind this port; fail if it is busy")
+    p.add_argument(
+        "--sentiment-model", help="model id for the feedback loop, instead of choosing one"
+    )
+    p.add_argument(
+        "--set",
+        action="append",
+        metavar="KEY=VALUE",
+        help="write a config value to .env and exit (repeatable)",
+    )
+    return p.parse_args(argv)
+
+
 def main():
+    argv = sys.argv[1:]
+    if argv:
+        args = parse_args(argv)
+        if args.headless or args.status or args.set:
+            sys.exit(headless_main(args))
+        # Flags that only make sense alongside --headless
+        print("--detach/--port/--sentiment-model require --headless", file=sys.stderr)
+        sys.exit(EXIT_USAGE)
+
+    if inquirer is None:
+        print(
+            "The setup wizard needs the 'inquirer' package (pip install inquirer).\n"
+            "To configure without it, use headless mode:\n"
+            "  reality-router --headless --set OPENAI_API_KEY=... \n"
+            "  reality-router --headless --detach",
+            file=sys.stderr,
+        )
+        sys.exit(EXIT_USAGE)
+
     logger.debug("Starting Reality Router Setup Wizard.")
     env_vars = load_env()
     has_docker = check_docker()

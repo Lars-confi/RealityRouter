@@ -92,6 +92,8 @@ compliance:
 - **[Routing strategies](docs/routing.md)** — single-shot vs. sequential.
 - **[Multi-agent support](docs/agents.md)** — protocol detection and
   sticky sessions.
+- **[Agent-assisted install](docs/agent-install.md)** — let a coding agent
+  install and wire it up for you.
 - **[API reference](docs/api.md)** — OpenAI-compatible endpoints.
 - **[Dashboard](docs/dashboard.md)** — CLI event viewer + web dashboard.
 

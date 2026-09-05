@@ -75,7 +75,8 @@ compliance:
   calibration engine, sharpening future routing decisions.
 - **Multi-provider auto-discovery** — bring your own keys; the router
   discovers and benchmarks models from OpenAI, Anthropic, Gemini, Mistral,
-  DeepSeek, local Ollama, and any OpenAI-compatible endpoint.
+  DeepSeek, Moonshot (Kimi), Z.ai (GLM), local Ollama, and any
+  OpenAI-compatible endpoint.
 - **Live dashboard** — track unit economics, savings vs. always-flagship,
   per-model reliability, and per-agent activity in a built-in web UI.
 

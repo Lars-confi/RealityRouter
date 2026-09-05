@@ -51,6 +51,8 @@ class Settings(BaseModel):
     deepseek_api_key: Optional[str] = Field(default=None)
     moonshot_api_key: Optional[str] = Field(default=None)
     zai_api_key: Optional[str] = Field(default=None)
+    xai_api_key: Optional[str] = Field(default=None)
+    dashscope_api_key: Optional[str] = Field(default=None)
     custom_llm_base_url: Optional[str] = Field(default=None)
     custom_llm_api_key: Optional[str] = Field(default=None)
     reality_check_token: Optional[str] = Field(default=None)

@@ -15,6 +15,20 @@ RealityRouter scores each request against every model you have configured and
 picks the cheapest one likely to succeed. The expensive models stay available
 for the work that needs them.
 
+## I want to run more agents, but cost scales with every one I add.
+
+An agent run is mostly routine steps — reading files, formatting, summarising,
+checking its own work — with a handful of genuinely hard ones. Sent to a single
+model, every step is priced like the hardest one, so cost scales linearly with
+how much you run. That is what makes people ration their agents.
+
+Routing per request breaks that link. The routine majority goes to cheap models
+and only the hard minority reaches a flagship, which changes what running ten
+times more agents actually costs.
+
+This is the case where a router matters most: not trimming a bill you already
+have, but making work viable that you would otherwise not run at all.
+
 ## I have API keys for several providers. How do I use them all from one tool?
 
 Point the tool at RealityRouter instead of at a provider. It presents a normal

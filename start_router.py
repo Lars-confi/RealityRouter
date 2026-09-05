@@ -1297,6 +1297,10 @@ def build_status(env_vars, port=None, pid=None, models=None):
         "models_total": len(models),
     }
     if port:
+        # Origin as well as the two derived URLs: /metrics/* sits at the root,
+        # not under /v1, so a caller that only has base_url ends up doing
+        # string surgery on it to reach them.
+        status["url"] = f"http://localhost:{port}"
         status["base_url"] = f"http://localhost:{port}/v1"
         status["dashboard_url"] = f"http://localhost:{port}/metrics/dashboard"
     return status

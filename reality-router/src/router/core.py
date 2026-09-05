@@ -50,7 +50,9 @@ MOONSHOT_FALLBACK_MODELS: Dict[str, tuple] = {
 }
 
 ZAI_FALLBACK_MODELS: Dict[str, tuple] = {
-    # glm-4.7-flash and glm-4.5-flash are genuinely $0 at the provider.
+    # glm-4.7-flash and glm-4.5-flash are listed at $0 upstream. Treat as a
+    # promotional tier rather than a guarantee; pricing_manager wins if it
+    # knows better.
     "glm-4.7-flash": (0.0, 0.0),
     "glm-4.7": (0.00060, 0.00220),
     "glm-4.6": (0.00060, 0.00220),
@@ -58,6 +60,24 @@ ZAI_FALLBACK_MODELS: Dict[str, tuple] = {
     "glm-5-code": (0.00120, 0.00500),
     "glm-5.3": (0.00140, 0.00440),
     "glm-5.3-flash": (0.00015, 0.00050),
+}
+
+XAI_FALLBACK_MODELS: Dict[str, tuple] = {
+    "grok-code-fast": (0.00100, 0.00200),
+    "grok-4.3": (0.00125, 0.00250),
+    "grok-4.5": (0.00200, 0.00600),
+    "grok-4.6": (0.00200, 0.00600),
+}
+
+DASHSCOPE_FALLBACK_MODELS: Dict[str, tuple] = {
+    # qwen-flash and qwen-plus-latest are listed at $0 upstream, which looks
+    # like missing data rather than a real free tier, so they are left out of
+    # the fallback. Live discovery will still pick them up if they exist.
+    "qwen-turbo": (0.00005, 0.00020),
+    "qwen-coder": (0.00030, 0.00150),
+    "qwen-plus": (0.00040, 0.00120),
+    "qwen-max": (0.00160, 0.00640),
+    "qwen3.7-max": (0.00250, 0.00750),
 }
 
 
@@ -222,6 +242,104 @@ class RouterCore:
         self.load_configured_models()
 
         logger.info("Router core initialized with Expected Utility Theory framework")
+
+    def _discover_openai_compatible(
+        self,
+        *,
+        settings,
+        provider: str,
+        models_url: str,
+        api_key: str,
+        keep_tokens: tuple,
+        fallback_models: Dict[str, tuple],
+        default_cost: tuple,
+    ):
+        """Discover and register models from one OpenAI-protocol provider.
+
+        Shared by the Moonshot / Z.ai / xAI / DashScope blocks below. The
+        providers above them predate this helper and still inline the same
+        logic; they can be migrated separately.
+
+        Model ids are registered as ``{provider}/{raw_id}``, which is what
+        LiteLLM expects for routing. Only ids containing one of ``keep_tokens``
+        are kept, so a provider that also resells other vendors' models does
+        not duplicate entries we already discover first-party.
+
+        If the live ``/models`` endpoint is unreachable, ``fallback_models``
+        supplies the ids instead. ``pricing_manager`` is always consulted
+        first; ``fallback_models`` and ``default_cost`` are only a floor, in
+        USD per 1K tokens.
+        """
+        raw_ids = []
+        try:
+            resp = httpx.get(
+                models_url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=3,
+            )
+            if resp.status_code == 200:
+                raw_ids = [
+                    m.get("id") for m in resp.json().get("data", []) if m.get("id")
+                ]
+        except Exception as e:
+            logger.info(f"{provider}: live discovery unavailable ({e})")
+
+        if not raw_ids:
+            raw_ids = list(fallback_models)
+            logger.info(
+                f"{provider}: using curated fallback list ({len(raw_ids)} models)"
+            )
+
+        for raw in raw_ids:
+            low = raw.lower()
+            if not any(tok in low for tok in keep_tokens):
+                continue
+            name = f"{provider}/{raw}"
+
+            if not any(d.get("id") == name for d in self.all_discovered_models):
+                self.all_discovered_models.append(
+                    {
+                        "id": name,
+                        "name": name,
+                        "provider": provider,
+                        "enabled": name not in settings.disabled_models,
+                    }
+                )
+
+            if name in self.models or name in settings.disabled_models:
+                continue
+            if name not in self.adapters:
+                from src.adapters.litellm_adapter import LiteLLMAdapter
+
+                self.adapters[name] = LiteLLMAdapter(model_name=name, api_key=api_key)
+
+            (
+                p_cost,
+                c_cost,
+                supports_function_calling,
+                max_input_tokens,
+                max_tokens,
+            ) = pricing_manager.get_model_pricing(name)
+            if p_cost is None or c_cost is None:
+                fb_p, fb_c = fallback_models.get(raw, default_cost)
+                p_cost = p_cost if p_cost is not None else fb_p
+                c_cost = c_cost if c_cost is not None else fb_c
+            supports_function_calling = True
+            cost = (p_cost + c_cost) / 2
+            self.add_model(
+                name,
+                name,
+                cost,
+                0.6,
+                0.88,
+                None,
+                p_cost,
+                c_cost,
+                supports_function_calling,
+                max_input_tokens,
+                max_tokens,
+            )
+            self.load_balancer.add_model(name, name, 1.0)
 
     def load_configured_models(self):
         """Load models from configuration and dynamically discover them"""
@@ -907,180 +1025,65 @@ class RouterCore:
                 except Exception as e:
                     logger.warning(f"Auto-discovery failed for DeepSeek: {e}")
 
-            # 7. Moonshot (Kimi)
-            # Moonshot's API is OpenAI-protocol compatible and LiteLLM routes it
-            # natively via the `moonshot/` prefix, so no adapter work is needed.
-            # Unlike the providers above, discovery falls back to a curated list
-            # when the live endpoint is unreachable — see MOONSHOT_FALLBACK_MODELS.
-            moonshot_key = settings.moonshot_api_key
-            if moonshot_key and moonshot_key != "dummy":
+            # 7. Moonshot (Kimi) / 8. Z.ai (GLM) / 9. xAI (Grok) /
+            # 10. Alibaba Qwen (DashScope)
+            #
+            # All four are OpenAI-protocol compatible and routed natively by
+            # LiteLLM, so they need discovery only -- no adapter work. Each
+            # falls back to a curated model list when its /models endpoint is
+            # unreachable: these providers run regional gateways and do not all
+            # expose listing on every plan.
+            for _prov, _key, _url, _tokens, _fallback, _default in (
+                (
+                    "moonshot",
+                    settings.moonshot_api_key,
+                    "https://api.moonshot.ai/v1/models",
+                    ("kimi", "moonshot"),
+                    MOONSHOT_FALLBACK_MODELS,
+                    (0.00095, 0.00400),
+                ),
+                (
+                    "zai",
+                    settings.zai_api_key,
+                    "https://api.z.ai/api/paas/v4/models",
+                    ("glm",),
+                    ZAI_FALLBACK_MODELS,
+                    (0.00060, 0.00220),
+                ),
+                (
+                    "xai",
+                    settings.xai_api_key,
+                    "https://api.x.ai/v1/models",
+                    ("grok",),
+                    XAI_FALLBACK_MODELS,
+                    (0.00125, 0.00250),
+                ),
+                # DashScope also resells DeepSeek, GLM and Kimi. Restricting to
+                # "qwen" keeps those from being registered twice, since we
+                # discover them first-party above.
+                (
+                    "dashscope",
+                    settings.dashscope_api_key,
+                    "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models",
+                    ("qwen",),
+                    DASHSCOPE_FALLBACK_MODELS,
+                    (0.00040, 0.00120),
+                ),
+            ):
+                if not _key or _key == "dummy":
+                    continue
                 try:
-                    raw_ids = []
-                    try:
-                        resp = httpx.get(
-                            "https://api.moonshot.ai/v1/models",
-                            headers={"Authorization": f"Bearer {moonshot_key}"},
-                            timeout=3,
-                        )
-                        if resp.status_code == 200:
-                            raw_ids = [
-                                m.get("id")
-                                for m in resp.json().get("data", [])
-                                if m.get("id")
-                            ]
-                    except Exception as e:
-                        logger.info(f"Moonshot live discovery unavailable ({e})")
-
-                    if not raw_ids:
-                        raw_ids = list(MOONSHOT_FALLBACK_MODELS)
-                        logger.info(
-                            f"Moonshot: using curated fallback list "
-                            f"({len(raw_ids)} models)"
-                        )
-
-                    for raw in raw_ids:
-                        low = raw.lower()
-                        if "kimi" not in low and "moonshot" not in low:
-                            continue
-                        name = f"moonshot/{raw}"
-
-                        # Add to discovered models list
-                        if not any(
-                            d.get("id") == name for d in self.all_discovered_models
-                        ):
-                            self.all_discovered_models.append(
-                                {
-                                    "id": name,
-                                    "name": name,
-                                    "provider": "moonshot",
-                                    "enabled": name not in settings.disabled_models,
-                                }
-                            )
-
-                        if name in self.models or name in settings.disabled_models:
-                            continue
-                        if name not in self.adapters:
-                            from src.adapters.litellm_adapter import LiteLLMAdapter
-
-                            self.adapters[name] = LiteLLMAdapter(
-                                model_name=name, api_key=moonshot_key
-                            )
-                        (
-                            p_cost,
-                            c_cost,
-                            supports_function_calling,
-                            max_input_tokens,
-                            max_tokens,
-                        ) = pricing_manager.get_model_pricing(name)
-                        if p_cost is None or c_cost is None:
-                            fb_p, fb_c = MOONSHOT_FALLBACK_MODELS.get(
-                                raw, (0.00095, 0.00400)
-                            )
-                            p_cost = p_cost if p_cost is not None else fb_p
-                            c_cost = c_cost if c_cost is not None else fb_c
-                        supports_function_calling = True
-                        cost = (p_cost + c_cost) / 2
-                        self.add_model(
-                            name,
-                            name,
-                            cost,
-                            0.6,
-                            0.88,
-                            None,
-                            p_cost,
-                            c_cost,
-                            supports_function_calling,
-                            max_input_tokens,
-                            max_tokens,
-                        )
-                        self.load_balancer.add_model(name, name, 1.0)
+                    self._discover_openai_compatible(
+                        settings=settings,
+                        provider=_prov,
+                        models_url=_url,
+                        api_key=_key,
+                        keep_tokens=_tokens,
+                        fallback_models=_fallback,
+                        default_cost=_default,
+                    )
                 except Exception as e:
-                    logger.warning(f"Auto-discovery failed for Moonshot: {e}")
-
-            # 8. Z.ai (GLM)
-            # Z.ai serves GLM over an OpenAI-compatible surface under
-            # /api/paas/v4/. LiteLLM routes it natively via the `zai/` prefix.
-            # Same fallback behaviour as Moonshot above.
-            zai_key = settings.zai_api_key
-            if zai_key and zai_key != "dummy":
-                try:
-                    raw_ids = []
-                    try:
-                        resp = httpx.get(
-                            "https://api.z.ai/api/paas/v4/models",
-                            headers={"Authorization": f"Bearer {zai_key}"},
-                            timeout=3,
-                        )
-                        if resp.status_code == 200:
-                            raw_ids = [
-                                m.get("id")
-                                for m in resp.json().get("data", [])
-                                if m.get("id")
-                            ]
-                    except Exception as e:
-                        logger.info(f"Z.ai live discovery unavailable ({e})")
-
-                    if not raw_ids:
-                        raw_ids = list(ZAI_FALLBACK_MODELS)
-                        logger.info(
-                            f"Z.ai: using curated fallback list ({len(raw_ids)} models)"
-                        )
-
-                    for raw in raw_ids:
-                        if "glm" not in raw.lower():
-                            continue
-                        name = f"zai/{raw}"
-
-                        # Add to discovered models list
-                        if not any(
-                            d.get("id") == name for d in self.all_discovered_models
-                        ):
-                            self.all_discovered_models.append(
-                                {
-                                    "id": name,
-                                    "name": name,
-                                    "provider": "zai",
-                                    "enabled": name not in settings.disabled_models,
-                                }
-                            )
-
-                        if name in self.models or name in settings.disabled_models:
-                            continue
-                        if name not in self.adapters:
-                            from src.adapters.litellm_adapter import LiteLLMAdapter
-
-                            self.adapters[name] = LiteLLMAdapter(
-                                model_name=name, api_key=zai_key
-                            )
-                        (
-                            p_cost,
-                            c_cost,
-                            supports_function_calling,
-                            max_input_tokens,
-                            max_tokens,
-                        ) = pricing_manager.get_model_pricing(name)
-                        if p_cost is None or c_cost is None:
-                            fb_p, fb_c = ZAI_FALLBACK_MODELS.get(raw, (0.00060, 0.00220))
-                            p_cost = p_cost if p_cost is not None else fb_p
-                            c_cost = c_cost if c_cost is not None else fb_c
-                        supports_function_calling = True
-                        cost = (p_cost + c_cost) / 2
-                        self.add_model(
-                            name,
-                            name,
-                            cost,
-                            0.6,
-                            0.88,
-                            None,
-                            p_cost,
-                            c_cost,
-                            supports_function_calling,
-                            max_input_tokens,
-                            max_tokens,
-                        )
-                        self.load_balancer.add_model(name, name, 1.0)
-                except Exception as e:
-                    logger.warning(f"Auto-discovery failed for Z.ai: {e}")
+                    logger.warning(f"Auto-discovery failed for {_prov}: {e}")
 
             logger.info(f"Total configured and discovered models: {len(self.models)}")
 

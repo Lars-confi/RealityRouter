@@ -8,7 +8,7 @@ description: 60-second install + your first routed request
 Install RealityRouter, configure your providers, and route your first request — in about 60 seconds.
 
 > [!NOTE]
-> Requires Docker (recommended) or Python 3.10+. You will need an API key from at least one LLM provider (OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot, Z.ai, or a local Ollama instance).
+> Requires Docker (recommended) or Python 3.10+. You will need an API key from at least one LLM provider (OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot, Z.ai, xAI, Alibaba Qwen, or a local Ollama instance).
 
 ## 1. Install
 
@@ -44,7 +44,7 @@ Fine-tune how the engine weights different factors:
 - **β (Time Sensitivity)** — Preference for speed/low latency.
 
 ### Step 4 — Provider Credentials
-Enter your API keys for providers like OpenAI, Anthropic, Mistral, DeepSeek, Moonshot (Kimi), and Z.ai (GLM), or provide the URL for a local Ollama instance. The wizard **live-validates** your keys to ensure they are working before you finish.
+Enter your API keys for providers like OpenAI, Anthropic, Mistral, DeepSeek, Moonshot (Kimi), Z.ai (GLM), xAI (Grok), and Alibaba Qwen, or provide the URL for a local Ollama instance. The wizard **live-validates** your keys to ensure they are working before you finish.
 
 ### Step 5 — Model Visibility
 The router auto-discovers all available models based on your keys. Toggle models **ON** or **OFF** to define your routing pool. You will also select a cheap, fast model (like Gemini Flash) to act as your **Sentiment Analyzer** for the feedback loop.

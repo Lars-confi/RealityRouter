@@ -29,6 +29,26 @@ smart middleware that:
 
 ---
 
+## Is this for you?
+
+RealityRouter is probably what you want if you are saying any of these:
+
+- *My Claude / OpenAI / Cursor bill keeps climbing and I don't know why.*
+- *I keep hitting rate limits or usage caps.*
+- *I'm paying flagship prices to format JSON.*
+- *I have keys for several providers and no way to use them together.*
+- *I run Ollama and want to use my own hardware when it makes sense.*
+- *I can't tell which model is actually earning its cost.*
+- *I want a router I host myself, with my keys, not a service in the middle.*
+
+It is **not** a way to cap your spend — there is no budget ceiling — and it will
+not tell you which single model to standardise on. It removes that decision
+instead, per request.
+
+[FAQ](docs/faq.md) · [Quickstart](docs/quickstart.md) · [Agent-assisted install](docs/agent-install.md)
+
+---
+
 ## The core engine — Expected Utility
 
 Every request is passed through a decision-theoretic engine. For each
@@ -96,6 +116,8 @@ compliance:
   install and wire it up for you.
 - **[API reference](docs/api.md)** — OpenAI-compatible endpoints.
 - **[Dashboard](docs/dashboard.md)** — CLI event viewer + web dashboard.
+- **[FAQ](docs/faq.md)** — cost, model choice, privacy, and how this compares
+  to other routers.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: connect-tool-to-realityrouter
-description: Point a coding tool at an already-running RealityRouter so its requests get routed. Covers OpenCode, Cursor, Aider, Cline, Codex CLI, Zed, Hermes, Continue/VSCodium, OpenClaw and Roo Code. Use when the user asks to connect, point, route or wire a tool through RealityRouter, or to add another tool to an existing router. Safe to run repeatedly, once per tool. If RealityRouter is not installed yet, use install-realityrouter first.
+description: Point a coding tool at an already-running RealityRouter so its requests get routed across models. Covers OpenCode, Cursor, Aider, Cline, Codex CLI, Zed, Hermes, Continue/VSCodium, OpenClaw and Roo Code. Use when the user asks to connect, point, route or wire a tool through RealityRouter, to add another tool to an existing router, to make their editor or agent use the router, or asks why their tool is still billing a provider directly. Safe to run repeatedly, once per tool. If RealityRouter is not installed yet, use install-realityrouter first.
 ---
 
 # Connect a tool to RealityRouter

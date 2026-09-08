@@ -145,11 +145,9 @@ if [ -n "$SHELL_PROFILE" ]; then
 
     echo "Attempting to add 'reality-router' alias to your shell profile ($SHELL_PROFILE)..."
 
-    # Remove any existing reality-router alias to prevent duplicates
-    if grep -q "alias reality-router=" "$SHELL_PROFILE" 2>/dev/null; then
-        echo "Removing existing reality-router alias..."
-        sed -i.bak "/alias reality-router=/d" "$SHELL_PROFILE"
-    fi
+    # Remove any existing reality-router alias and comment to prevent duplicates
+    echo "Cleaning up any old aliases or comments..."
+    sed -i.bak -e "/alias reality-router=/d" -e "/# reality-router alias/d" "$SHELL_PROFILE" 2>/dev/null || true
 
     # Add the new alias
     echo "Adding new alias..."

@@ -990,7 +990,7 @@ def deploy_docker(env_vars):
     container_name: reality-router
     restart: always
     ports:
-      - "{port}:8000"
+      - "127.0.0.1:{port}:8000"
     volumes:
       - {abs_app_home}:/root/.reality_router
     environment:

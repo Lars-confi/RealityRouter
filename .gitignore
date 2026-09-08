@@ -41,3 +41,6 @@ plans/
 .vscode/
 .idea/
 .DS_Store
+
+# Docker Generated
+docker-compose.yml

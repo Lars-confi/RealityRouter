@@ -1006,7 +1006,11 @@ def deploy_docker(env_vars):
         # Check for docker compose vs docker-compose
         cmd = ["docker", "compose", "up", "-d", "--build"]
 
-        subprocess.run(cmd, cwd=SCRIPT_DIR, check=True)
+        # Fix for ARM64/Spark build compatibility with BuildKit provenance records
+        env = os.environ.copy()
+        env["DOCKER_BUILD_RECORD_PROVENANCE"] = "false"
+
+        subprocess.run(cmd, cwd=SCRIPT_DIR, env=env, check=True)
 
         print(f"\n  {C_GREEN}{C_BOLD}RealityRouter is now running in Docker!{C_RESET}")
         print(f"  {C_CYAN}Endpoint: http://localhost:{port}{C_RESET}")

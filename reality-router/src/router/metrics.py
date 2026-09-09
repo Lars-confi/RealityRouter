@@ -1067,25 +1067,25 @@ async def get_dashboard():
                             apiAlertEl.style.background = 'rgba(231, 76, 60, 0.08)';
                             apiAlertTitle.style.color = '#e74c3c';
                             apiAlertTitle.innerHTML = '🚨 WARNING: API Key, Authentication, or Billing Failures Detected!';
-                            apiAlertRemediation.innerHTML = '💡 <b>Action Required:</b> Open your terminal and run <code>python3 start_router.py</code> to refresh your provider credentials or update your provider\'s billing account.';
+                            apiAlertRemediation.innerHTML = "💡 <b>Action Required:</b> Open your terminal and run <code>python3 start_router.py</code> to refresh your provider credentials or update your provider's billing account.";
                         } else if (category === 'token_limit') {
                             apiAlertEl.style.borderColor = 'rgba(243, 156, 18, 0.25)';
                             apiAlertEl.style.background = 'rgba(243, 156, 18, 0.08)';
                             apiAlertTitle.style.color = '#f39c12';
                             apiAlertTitle.innerHTML = '⚠️ WARNING: Model Output/Context Limit Exceeded!';
-                            apiAlertRemediation.innerHTML = '💡 <b>Notice:</b> Your caller sent a <code>max_tokens</code> or prompt size exceeding this model\'s cap. Reality Router clamps these automatically (so requests still proceed), but you can also reduce the value client-side in your agent settings.';
+                            apiAlertRemediation.innerHTML = "💡 <b>Notice:</b> Your caller sent a <code>max_tokens</code> or prompt size exceeding this model's cap. Reality Router clamps these automatically (so requests still proceed), but you can also reduce the value client-side in your agent settings.";
                         } else if (category === 'rate_limit') {
                             apiAlertEl.style.borderColor = 'rgba(52, 152, 219, 0.25)';
                             apiAlertEl.style.background = 'rgba(52, 152, 219, 0.08)';
                             apiAlertTitle.style.color = '#3498db';
                             apiAlertTitle.innerHTML = '⏳ WARNING: Upstream Rate Limits Exceeded (429)!';
-                            apiAlertRemediation.innerHTML = '💡 <b>Notice:</b> This model is hitting temporary rate limits. Reality Router\'s circuit breaker will temporarily trip and failover, but you should consider upgrading your provider tier if this happens frequently.';
+                            apiAlertRemediation.innerHTML = "💡 <b>Notice:</b> This model is hitting temporary rate limits. Reality Router's circuit breaker will temporarily trip and failover, but you should consider upgrading your provider tier if this happens frequently.";
                         } else {
                             apiAlertEl.style.borderColor = 'rgba(255, 255, 255, 0.15)';
                             apiAlertEl.style.background = 'rgba(255, 255, 255, 0.05)';
                             apiAlertTitle.style.color = '#e6edf3';
                             apiAlertTitle.innerHTML = '⚠️ WARNING: Active Model Failures Detected!';
-                            apiAlertRemediation.innerHTML = '💡 <b>Action Required:</b> Check the raw error messages below to diagnose why this model connection failed.';
+                            apiAlertRemediation.innerHTML = "💡 <b>Action Required:</b> Check the raw error messages below to diagnose why this model connection failed.";
                         }
                         
                         data.api_key_alerts.forEach(alert => {

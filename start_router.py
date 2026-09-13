@@ -699,6 +699,7 @@ def wizard_reality_check_auth(env_vars):
         ("Login with Microsoft", "m"),
         ("Login with GitHub", "g"),
         ("Login with Google", "o"),
+        ("RealitySignal Enterprise (Custom Endpoint Setup)", "e"),
     ]
     auth_q = [
         inquirer.List(
@@ -715,6 +716,29 @@ def wizard_reality_check_auth(env_vars):
 
     # Device Code Flow
     auth_type = auth_a["auth_type"]
+    if auth_type == "e":
+        print_status("Enterprise Setup: Custom Endpoint Configuration")
+        default_snap = env_vars.get(
+            "REALITY_ROUTING_URL",
+            "https://snap-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io",
+        )
+        default_ladder = env_vars.get(
+            "REALITY_REROUTING_URL",
+            "https://ladder-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io",
+        )
+        snap_url = stable_prompt("Enter custom Snap URL", default_snap)
+        ladder_url = stable_prompt("Enter custom Ladder URL", default_ladder)
+
+        env_vars["REALITY_ROUTING_URL"] = snap_url
+        env_vars["REALITY_REROUTING_URL"] = ladder_url
+        env_vars["REALITY_CHECK_PROVIDER"] = "Enterprise"
+        env_vars["REALITY_CHECK_TOKEN"] = "local_unauthenticated"
+        env_vars["SSO_EMAIL"] = "enterprise@local"
+        save_env(env_vars)
+        print_status("Enterprise configuration saved successfully!", "success")
+        time.sleep(1.5)
+        return "Enterprise"
+
     is_github = auth_type == "g"
     is_google = auth_type == "o"
 

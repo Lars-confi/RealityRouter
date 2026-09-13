@@ -96,12 +96,14 @@ def resolve_agent_id(
 
 
 # Reality Router API Configuration - Hardcoded per v1.0.0.0 Spec
-REALITY_ROUTING_URL = (
-    "https://snap-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io"
-)
-REALITY_REROUTING_URL = (
-    "https://ladder-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io"
-)
+def get_routing_url() -> str:
+    """Get dynamic Reality Routing URL from settings"""
+    return get_settings().reality_routing_url
+
+
+def get_rerouting_url() -> str:
+    """Get dynamic Reality Rerouting URL from settings"""
+    return get_settings().reality_rerouting_url
 
 # Infrastructure failure detection patterns
 INFRA_FAILURE_PATTERNS = [
@@ -1451,7 +1453,7 @@ class RouterCore:
 
             async def call_rc(m):
                 # Initial model ranking always uses the Snap endpoint
-                url = REALITY_ROUTING_URL
+                url = get_routing_url()
                 try:
                     # Use stored token from settings or forwarded header
                     auth_token = settings.reality_check_token
@@ -1466,7 +1468,7 @@ class RouterCore:
                         "User-Agent": "curl/7.68.0",
                         "Connection": "close",
                     }
-                    if auth_token:
+                    if auth_token and auth_token != "local_unauthenticated":
                         # Ensure token has Bearer/Basic prefix as required by backend SSO
                         full_token = (
                             auth_token
@@ -1483,7 +1485,7 @@ class RouterCore:
                         )
                     else:
                         logger.warning(
-                            "Reality Router token is missing in settings! Authentication will be anonymous."
+                            "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
                         )
 
                     # Match curl behavior: fresh connection per request, no HTTP/1.1
@@ -2074,9 +2076,9 @@ class RouterCore:
                                 last_log.strategy or strategy or "expected_utility"
                             )
                             url = (
-                                REALITY_ROUTING_URL
+                                get_routing_url()
                                 if fb_strategy == "expected_utility"
-                                else REALITY_REROUTING_URL
+                                else get_rerouting_url()
                             )
 
                             feedback_val = 1 if sentiment == "happy" else 0
@@ -2097,7 +2099,7 @@ class RouterCore:
                                 "User-Agent": "curl/7.68.0",
                                 "Connection": "close",
                             }
-                            if auth_token:
+                            if auth_token and auth_token != "local_unauthenticated":
                                 # Ensure token has Bearer/Basic prefix as required by backend SSO
                                 full_token = (
                                     auth_token
@@ -2114,7 +2116,7 @@ class RouterCore:
                                 )
                             else:
                                 logger.warning(
-                                    "Reality Router token is missing in settings! Authentication will be anonymous."
+                                    "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
                                 )
 
                             async with httpx.AsyncClient(
@@ -2477,9 +2479,9 @@ class RouterCore:
                                     http2=False, trust_env=False
                                 ) as client:
                                     url = (
-                                        REALITY_ROUTING_URL
+                                        get_routing_url()
                                         if strategy == "expected_utility"
-                                        else REALITY_REROUTING_URL
+                                        else get_rerouting_url()
                                     )
                                     auth_token = settings.reality_check_token
                                     headers = {
@@ -2489,7 +2491,7 @@ class RouterCore:
                                         "User-Agent": "curl/7.68.0",
                                         "Connection": "close",
                                     }
-                                    if auth_token:
+                                    if auth_token and auth_token != "local_unauthenticated":
                                         # Ensure token has Bearer/Basic prefix as required by backend SSO
                                         full_token = (
                                             auth_token
@@ -2506,7 +2508,7 @@ class RouterCore:
                                         )
                                     else:
                                         logger.warning(
-                                            "Reality Router token is missing in settings! Authentication will be anonymous."
+                                            "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
                                         )
 
                                     await client.post(
@@ -2535,9 +2537,9 @@ class RouterCore:
                                 http2=False, trust_env=False
                             ) as client:
                                 url = (
-                                    REALITY_ROUTING_URL
+                                    get_routing_url()
                                     if strategy == "expected_utility"
-                                    else REALITY_REROUTING_URL
+                                    else get_rerouting_url()
                                 )
                                 auth_token = settings.reality_check_token
                                 headers = {
@@ -2547,7 +2549,7 @@ class RouterCore:
                                     "User-Agent": "curl/7.68.0",
                                     "Connection": "close",
                                 }
-                                if auth_token:
+                                if auth_token and auth_token != "local_unauthenticated":
                                     # Ensure token has Bearer/Basic prefix as required by backend SSO
                                     full_token = (
                                         auth_token
@@ -2564,7 +2566,7 @@ class RouterCore:
                                     )
                                 else:
                                     logger.warning(
-                                        "Reality Router token is missing in settings! Authentication will be anonymous."
+                                        "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
                                     )
 
                                 await client.post(
@@ -2877,9 +2879,9 @@ class RouterCore:
                                     http2=False, trust_env=False
                                 ) as client:
                                     url = (
-                                        REALITY_ROUTING_URL
+                                        get_routing_url()
                                         if strategy == "expected_utility"
-                                        else REALITY_REROUTING_URL
+                                        else get_rerouting_url()
                                     )
                                     auth_token = settings.reality_check_token
                                     headers = {
@@ -2889,7 +2891,7 @@ class RouterCore:
                                         "User-Agent": "curl/7.68.0",
                                         "Connection": "close",
                                     }
-                                    if auth_token:
+                                    if auth_token and auth_token != "local_unauthenticated":
                                         # Ensure token has Bearer/Basic prefix as required by backend SSO
                                         full_token = (
                                             auth_token
@@ -2906,7 +2908,7 @@ class RouterCore:
                                         )
                                     else:
                                         logger.warning(
-                                            "Reality Router token is missing in settings! Authentication will be anonymous."
+                                            "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
                                         )
 
                                     fb_resp = await client.post(
@@ -2976,7 +2978,7 @@ class RouterCore:
                             async with httpx.AsyncClient(
                                 http2=False, trust_env=False
                             ) as client:
-                                # Post-hoc assessment for tiered rerouting always uses REALITY_REROUTING_URL
+                                # Post-hoc assessment for tiered rerouting always uses get_rerouting_url()
                                 auth_token = settings.reality_check_token
                                 headers = {
                                     "Content-Type": "application/json",
@@ -2985,7 +2987,7 @@ class RouterCore:
                                     "User-Agent": "curl/7.68.0",
                                     "Connection": "close",
                                 }
-                                if auth_token:
+                                if auth_token and auth_token != "local_unauthenticated":
                                     # Ensure token has Bearer/Basic prefix as required by backend SSO
                                     full_token = (
                                         auth_token
@@ -3002,11 +3004,11 @@ class RouterCore:
                                     )
                                 else:
                                     logger.warning(
-                                        "Reality Router token is missing in settings! Authentication will be anonymous."
+                                        "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
                                     )
 
                                 rc_resp = await client.post(
-                                    f"{REALITY_REROUTING_URL}/decide",
+                                    f"{get_rerouting_url()}/decide",
                                     json={"features": final_features},
                                     headers=headers,
                                     timeout=60.0,
@@ -3075,7 +3077,7 @@ class RouterCore:
                                 else:
                                     error_body = rc_resp.text
                                     logger.warning(
-                                        f"Post-hoc assessment ERROR {rc_resp.status_code} at {REALITY_REROUTING_URL}. Response: {error_body}"
+                                        f"Post-hoc assessment ERROR {rc_resp.status_code} at {get_rerouting_url()}. Response: {error_body}"
                                     )
                                     # Fallback to local confidence if RC fails
                                     if local_confidence > 0:
@@ -3084,7 +3086,7 @@ class RouterCore:
 
                         except Exception as e:
                             logger.exception(
-                                f"Post-hoc tiered assessment failed for {decision.model_id} at {REALITY_REROUTING_URL}: {repr(e)}"
+                                f"Post-hoc tiered assessment failed for {decision.model_id} at {get_rerouting_url()}: {repr(e)}"
                             )
 
                         # If we reached here, this model is deemed sufficient, stop escalation.

@@ -53,6 +53,12 @@ class Settings(BaseModel):
     custom_llm_api_key: Optional[str] = Field(default=None)
     reality_check_token: Optional[str] = Field(default=None)
     reality_check_provider: Optional[str] = Field(default=None)
+    reality_routing_url: str = Field(
+        default="https://snap-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io"
+    )
+    reality_rerouting_url: str = Field(
+        default="https://ladder-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io"
+    )
 
     # User Profile settings
     user_email: str = Field(default="anonymous")

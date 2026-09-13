@@ -13,8 +13,15 @@ def mock_router():
         patch("src.router.core.SessionLocal") as mock_session,
         patch("src.router.core.ExpectedUtilityCalculator") as mock_calc,
         patch("src.router.core.load_balancer"),
-        patch("src.router.core.get_settings"),
+        patch("src.router.core.get_settings") as mock_get_settings,
     ):
+        mock_settings = MagicMock()
+        mock_settings.reality_routing_url = "https://snap-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io"
+        mock_settings.reality_rerouting_url = "https://ladder-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io"
+        mock_settings.reality_check_token = None
+        mock_settings.reality_check_provider = None
+        mock_get_settings.return_value = mock_settings
+
         # Make the mocked DB return empty list for recent logs by default
         mock_db = mock_session.return_value
 

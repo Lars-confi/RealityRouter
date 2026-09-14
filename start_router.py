@@ -720,11 +720,11 @@ def wizard_reality_check_auth(env_vars):
         print_status("Enterprise Setup: Custom Endpoint Configuration")
         default_snap = env_vars.get(
             "REALITY_ROUTING_URL",
-            "http://localhost:5000",
+            "http://localhost:8001",
         )
         default_ladder = env_vars.get(
             "REALITY_REROUTING_URL",
-            "http://localhost:5000",
+            "http://localhost:8002",
         )
         snap_url = stable_prompt("Enter custom Snap URL", default_snap)
         ladder_url = stable_prompt("Enter custom Ladder URL", default_ladder)

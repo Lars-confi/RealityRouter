@@ -720,11 +720,11 @@ def wizard_reality_check_auth(env_vars):
         print_status("Enterprise Setup: Custom Endpoint Configuration")
         default_snap = env_vars.get(
             "REALITY_ROUTING_URL",
-            "https://snap-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io",
+            "http://localhost:5000",
         )
         default_ladder = env_vars.get(
             "REALITY_REROUTING_URL",
-            "https://ladder-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io",
+            "http://localhost:5000",
         )
         snap_url = stable_prompt("Enter custom Snap URL", default_snap)
         ladder_url = stable_prompt("Enter custom Ladder URL", default_ladder)

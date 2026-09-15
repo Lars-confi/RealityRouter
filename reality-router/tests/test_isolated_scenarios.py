@@ -205,3 +205,157 @@ async def test_whitelist_filtering(router_core):
     # Gemini 3.1 Flash Lite should NOT be in core.models pool
     assert "gemini-2.5-flash" in core.models
     assert "gemini-3.1-flash-lite" not in core.models
+
+
+@pytest.mark.asyncio
+async def test_scenario_d_enterprise_unauthenticated(router_core):
+    """
+    Scenario D: Test Enterprise unauthenticated.
+    Sets reality_check_token to 'local_unauthenticated', provider to 'Enterprise',
+    routing and rerouting URLs to local port mocks, and verifies that headers
+    do not contain 'X-Reality-Check-Token' or 'Authorization'.
+    """
+    import httpx
+    settings = get_settings()
+    settings.reality_check_token = "local_unauthenticated"
+    settings.reality_check_provider = "Enterprise"
+    settings.reality_routing_url = "http://localhost:8001"
+    settings.reality_rerouting_url = "http://localhost:8002"
+
+    request = RoutingRequest(
+        query="Test query for Scenario D",
+        agent_id="test_agent",
+        parameters={"messages": [{"role": "user", "content": "Hello world"}]}
+    )
+
+    async def mock_rc_post(url, json=None, headers=None, timeout=None, **kwargs):
+        # Assert url contains http://localhost:8001 or http://localhost:8002 depending on Snap/Ladder
+        assert "http://localhost:8001" in url or "http://localhost:8002" in url
+        
+        # Assert headers do NOT contain 'X-Reality-Check-Token' or 'Authorization'
+        if headers is not None:
+            assert "X-Reality-Check-Token" not in headers
+            assert "Authorization" not in headers
+
+        return MockHTTPXResponse({"prob_true": 0.75, "decision_id": 401})
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post) as mock_post:
+        # Run router_core.get_ranked_models under 'tiered_assessment'
+        decisions = await router_core.get_ranked_models(request, strategy="tiered_assessment")
+        assert len(decisions) == 3
+        for d in decisions:
+            assert d.probability == 0.75
+
+        # Run router_core.route_request under 'tiered_assessment'
+        response = await router_core.route_request(request, strategy="tiered_assessment")
+        assert response.model_id is not None
+        assert response.probability == 0.75
+        
+        # Verify that mock_post was called
+        assert mock_post.call_count >= 2
+
+
+def test_scenario_e_new_providers_discovery():
+    """
+    Scenario E: Test the auto-discovery parsing logic for new providers.
+    Covers Moonshot (Kimi), Z.ai (GLM), xAI (Grok), and Alibaba (Qwen/DashScope).
+    Verifies that live discovery filters by keep_tokens and defaults to curated
+    fallback lists when live endpoints are unreachable.
+    """
+    import httpx
+    settings = get_settings()
+    
+    # Enable auto discovery and set mock API keys
+    settings.enable_auto_discovery = True
+    settings.moonshot_api_key = "mock_moonshot_key"
+    settings.zai_api_key = "mock_zai_key"
+    settings.xai_api_key = "mock_grok_key"
+    settings.dashscope_api_key = "mock_qwen_key"
+
+    # Define a mock get for live discovery
+    def mock_httpx_get_live(url, headers=None, timeout=None, **kwargs):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        if "moonshot.ai" in url:
+            mock_resp.json.return_value = {
+                "data": [
+                    {"id": "kimi-v1"},
+                    {"id": "moonshot-large"},
+                    {"id": "other-non-matching-model"},
+                ]
+            }
+        elif "api.z.ai" in url:
+            mock_resp.json.return_value = {
+                "data": [
+                    {"id": "glm-4"},
+                    {"id": "unrelated-model"},
+                ]
+            }
+        elif "api.x.ai" in url:
+            mock_resp.json.return_value = {
+                "data": [
+                    {"id": "grok-beta"},
+                ]
+            }
+        elif "aliyuncs.com" in url:
+            mock_resp.json.return_value = {
+                "data": [
+                    {"id": "qwen-large"},
+                    {"id": "deepseek-v3"},  # Resold, should be ignored by keep_tokens
+                ]
+            }
+        else:
+            mock_resp.status_code = 404
+        return mock_resp
+
+    # First, test live discovery
+    with patch("httpx.get", side_effect=mock_httpx_get_live):
+        # We need to mock SessionLocal for RouterCore initialization
+        with patch("src.router.core.SessionLocal") as mock_session:
+            core = RouterCore()
+            
+            # Verify live discovered models are present
+            discovered_ids = [m["id"] for m in core.all_discovered_models]
+            assert "moonshot/kimi-v1" in discovered_ids
+            assert "moonshot/moonshot-large" in discovered_ids
+            assert "moonshot/other-non-matching-model" not in discovered_ids
+            
+            assert "zai/glm-4" in discovered_ids
+            assert "zai/unrelated-model" not in discovered_ids
+            
+            assert "xai/grok-beta" in discovered_ids
+            
+            assert "dashscope/qwen-large" in discovered_ids
+            assert "dashscope/deepseek-v3" not in discovered_ids
+
+            # Verify that they are added to core.models and priced
+            assert "moonshot/kimi-v1" in core.models
+            assert "zai/glm-4" in core.models
+            assert "xai/grok-beta" in core.models
+            assert "dashscope/qwen-large" in core.models
+
+    # Second, test fallback discovery when live endpoints fail
+    def mock_httpx_get_fail(url, headers=None, timeout=None, **kwargs):
+        raise httpx.RequestError("Mock connection error")
+
+    with patch("httpx.get", side_effect=mock_httpx_get_fail):
+        with patch("src.router.core.SessionLocal") as mock_session:
+            core_fallback = RouterCore()
+            
+            # Verify fallbacks are loaded instead
+            discovered_ids = [m["id"] for m in core_fallback.all_discovered_models]
+            
+            # From MOONSHOT_FALLBACK_MODELS
+            assert "moonshot/kimi-k2.7-code" in discovered_ids
+            # From ZAI_FALLBACK_MODELS
+            assert "zai/glm-4.7" in discovered_ids
+            # From XAI_FALLBACK_MODELS
+            assert "xai/grok-code-fast" in discovered_ids
+            # From DASHSCOPE_FALLBACK_MODELS
+            assert "dashscope/qwen-turbo" in discovered_ids
+
+            # Verify costs fallback correctly (checks pricing flow fallback to default or curated lists)
+            assert "moonshot/kimi-k2.7-code" in core_fallback.models
+            model_info = core_fallback.models["moonshot/kimi-k2.7-code"]
+            assert model_info["prompt_cost"] == 0.00095
+            assert model_info["completion_cost"] == 0.00400

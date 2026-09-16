@@ -52,6 +52,7 @@ def live_router_core(mock_db_session):
 
     with open(env_path, "w") as f:
         f.write('SENTIMENT_MODEL_ID="nemotron-3-nano:30b"\n')
+        f.write('ENABLE_AUTO_DISCOVERY=False\n')
         f.write(
             'ROUTING_MODEL_IDS="qwen3-coder:30b,gemini-2.5-flash,gemini-3-flash-preview"\n'
         )

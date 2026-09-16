@@ -20,6 +20,7 @@ def mock_router():
         mock_settings.reality_rerouting_url = "https://ladder-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io"
         mock_settings.reality_check_token = None
         mock_settings.reality_check_provider = None
+        mock_settings.enable_auto_discovery = False
         mock_get_settings.return_value = mock_settings
 
         # Make the mocked DB return empty list for recent logs by default

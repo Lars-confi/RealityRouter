@@ -72,8 +72,22 @@ $requirements = Join-Path $TARGET_DIR "reality-router\requirements.txt"
 & $venvPython -m pip install --upgrade pip --quiet
 & $venvPython -m pip install -r $requirements --quiet
 
+# --- Executable Wrapper Setup ---
+Write-Host "`nStep 4: Creating executable wrappers..." -ForegroundColor Cyan
+$localBin = Join-Path $env:USERPROFILE ".local\bin"
+if (-not (Test-Path $localBin)) {
+    New-Item -ItemType Directory -Path $localBin | Out-Null
+}
+
+$cmdPath = Join-Path $localBin "reality-router.cmd"
+"@echo off`r`n`"$env:USERPROFILE\.reality_router\venv\Scripts\python.exe`" `"$env:USERPROFILE\.reality_router\start_router.py`" %*" | Out-File -FilePath $cmdPath -Encoding ascii -Force
+
+$ps1Path = Join-Path $localBin "reality-router.ps1"
+"& `"$env:USERPROFILE\.reality_router\venv\Scripts\python.exe`" `"$env:USERPROFILE\.reality_router\start_router.py`" `$args" | Out-File -FilePath $ps1Path -Encoding utf8 -Force
+Write-Host "✅ Executable wrappers created at $localBin" -ForegroundColor Green
+
 # --- PowerShell Function Setup ---
-Write-Host "`nStep 4: Configuring PowerShell shortcut..." -ForegroundColor Cyan
+Write-Host "`nStep 5: Configuring PowerShell shortcut..." -ForegroundColor Cyan
 
 $functionName = "reality-router"
 $functionCode = @"

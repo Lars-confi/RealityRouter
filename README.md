@@ -136,6 +136,25 @@ your agent — just change your environment variables:
 
 ---
 
+## For AI Agents
+
+RealityRouter is fully agent-native and designed to be managed and controlled programmatically. 
+
+If you are an AI coding agent (like Zed, Claude Code, Cursor, Roo Code, etc.) or an automation script, you can interact with RealityRouter headlessly:
+
+1. **Zero-Prompt Setup & Autodetection**:
+   - Run `reality-router setup --agent` to configure RealityRouter. This will automatically scan your environment variables (`OPENAI_API_KEY`, `GEMINI_API_KEY`, etc.), autodetect local Ollama, choose default coefficient penalties, and complete the installation without any prompts.
+2. **Strict Validation Mode**:
+   - Run `reality-router setup --non-interactive` to assert that all configurations are present. If API credentials or models are missing, it will crash with documented, non-zero exit codes.
+3. **SSO Device-Code Auth over JSON Streams**:
+   - Run `reality-router auth --agent --json` to start OAuth authentication. It prints newline-delimited JSON (NDJSON) events (e.g. `auth_required` with `verification_uri` and `user_code`) and never logs sensitive tokens.
+4. **Active Diagnostics Check**:
+   - Run `reality-router doctor --json` to perform active checks. The command exits with precise exit codes (`0` if healthy, `10` if config file missing, `11` if auth missing, `12` if provider keys missing, `14` if port is busy).
+5. **Machine-Readable Status**:
+   - Run `reality-router status --json` to get detailed stats about the daemon status, port, pid, and active provider models.
+
+---
+
 ## Contributing
 
 We're building user-centric AI infrastructure. If you're interested in

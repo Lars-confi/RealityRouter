@@ -117,6 +117,20 @@ echo "Installation of dependencies complete."
 # Deactivate the virtual environment for now. The alias will handle activation.
 deactivate
 
+# --- Executable Wrapper Setup ---
+echo "Creating real executable wrapper at ~/.local/bin/reality-router..."
+mkdir -p "$HOME/.local/bin"
+WRAPPER_PATH="$HOME/.local/bin/reality-router"
+
+cat << 'EOF' > "$WRAPPER_PATH"
+#!/bin/bash
+TARGET_DIR="$HOME/.reality_router"
+exec "$TARGET_DIR/venv/bin/python" "$TARGET_DIR/start_router.py" "$@"
+EOF
+
+chmod +x "$WRAPPER_PATH"
+echo "✅ Executable wrapper installed at $WRAPPER_PATH"
+
 # --- Alias Setup ---
 SHELL_PROFILE=""
 detected_shell=$(basename "$SHELL")
@@ -135,6 +149,14 @@ else
 fi
 
 if [ -n "$SHELL_PROFILE" ]; then
+    # Ensure ~/.local/bin is in PATH
+    if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+        echo "Adding ~/.local/bin to PATH in $SHELL_PROFILE..."
+        # Clean up any existing PATH export for ~/.local/bin to keep it idempotent
+        sed -i.bak -e "/export PATH=\"\$HOME\/.local\/bin:\$PATH\"/d" "$SHELL_PROFILE" 2>/dev/null || true
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_PROFILE"
+    fi
+
     # Determine correct activation path for the alias
     ACTIVATE_PATH="venv/bin/activate"
     if [ "$OS_TYPE" = "windows" ]; then

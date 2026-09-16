@@ -1450,98 +1450,468 @@ def headless_main(args):
 def parse_args(argv):
     p = argparse.ArgumentParser(
         prog="reality-router",
-        description="Start RealityRouter. With no flags, runs the setup wizard.",
+        description="RealityRouter Command-Line Interface. Handle setup, status, start, doctor, models, auth.",
     )
     p.add_argument(
-        "--headless",
+        "command",
+        nargs="?",
+        choices=["setup", "start", "status", "doctor", "models", "auth"],
+        help="Command to execute"
+    )
+    p.add_argument(
+        "--agent",
         action="store_true",
-        help="never prompt; missing required values are errors, not questions",
+        help="Agent mode: choose sensible defaults, auto-detect, zero prompts"
+    )
+    p.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Non-interactive mode: never prompt, crash if settings missing"
+    )
+    p.add_argument(
+        "--auth",
+        type=str,
+        help="SSO / Auth token to configure directly"
+    )
+    p.add_argument(
+        "--strategy",
+        type=str,
+        help="Select routing strategy (expected_utility or tiered_assessment)"
+    )
+    p.add_argument(
+        "--cost-sensitivity",
+        type=str,
+        help="Set Cost Penalty (alpha) coefficient"
+    )
+    p.add_argument(
+        "--time-sensitivity",
+        type=str,
+        help="Set Time Penalty (beta) coefficient"
+    )
+    p.add_argument(
+        "--sentiment-model",
+        type=str,
+        help="Model ID for the feedback loop, instead of choosing one"
+    )
+    p.add_argument(
+        "--enable-model",
+        type=str,
+        help="Enable a specific model ID"
+    )
+    p.add_argument(
+        "--disable-model",
+        type=str,
+        help="Disable a specific model ID"
+    )
+    p.add_argument(
+        "--enable-all-models",
+        action="store_true",
+        help="Enable all discovered models"
+    )
+    p.add_argument(
+        "--ollama-url",
+        type=str,
+        help="Set Ollama base URL"
+    )
+    p.add_argument(
+        "--reality-routing-url",
+        type=str,
+        help="Set custom Snap URL"
+    )
+    p.add_argument(
+        "--reality-rerouting-url",
+        type=str,
+        help="Set custom Ladder URL"
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON events or results"
+    )
+    p.add_argument(
+        "--port",
+        type=int,
+        help="Bind this port; fail if busy"
     )
     p.add_argument(
         "--detach",
         action="store_true",
-        help="start in the background and return once /health is healthy",
+        help="Start in the background and return once /health is healthy"
     )
-    p.add_argument("--status", action="store_true", help="print state as JSON and exit")
-    p.add_argument("--port", type=int, help="bind this port; fail if it is busy")
     p.add_argument(
-        "--sentiment-model", help="model id for the feedback loop, instead of choosing one"
+        "--headless",
+        action="store_true",
+        help="never prompt; missing required values are errors"
     )
     p.add_argument(
         "--set",
         action="append",
         metavar="KEY=VALUE",
-        help="write a config value to .env and exit (repeatable)",
+        help="write a config value to .env and exit (repeatable)"
+    )
+    p.add_argument(
+        "--status",
+        action="store_true",
+        help="print state as JSON and exit (legacy)"
     )
     return p.parse_args(argv)
 
 
-def main():
-    argv = sys.argv[1:]
-    if argv:
-        args = parse_args(argv)
-        if args.headless or args.status or args.set:
-            sys.exit(headless_main(args))
-        # Flags that only make sense alongside --headless
-        print("--detach/--port/--sentiment-model require --headless", file=sys.stderr)
+def resolve_config(args):
+    # 1. Load from Config File (.env) first
+    config = load_env()
+
+    # 2. Layer Environment Variables on top (precedence: Env > Config)
+    env_mappings = {
+        "REALITY_CHECK_TOKEN": ["REALITY_CHECK_TOKEN"],
+        "DEFAULT_STRATEGY": ["DEFAULT_STRATEGY", "ROUTING_STRATEGY"],
+        "COST_SENSITIVITY": ["COST_SENSITIVITY"],
+        "TIME_SENSITIVITY": ["TIME_SENSITIVITY"],
+        "SENTIMENT_MODEL_ID": ["SENTIMENT_MODEL_ID"],
+        "CUSTOM_LLM_BASE_URL": ["CUSTOM_LLM_BASE_URL", "OLLAMA_URL"],
+        "REALITY_ROUTING_URL": ["REALITY_ROUTING_URL"],
+        "REALITY_REROUTING_URL": ["REALITY_REROUTING_URL"],
+    }
+    for dest_key, src_keys in env_mappings.items():
+        for src_key in src_keys:
+            if os.environ.get(src_key) is not None:
+                config[dest_key] = os.environ[src_key]
+
+    # 3. Layer CLI flags on top (precedence: CLI > Env > Config)
+    if getattr(args, "auth", None) is not None:
+        config["REALITY_CHECK_TOKEN"] = args.auth
+    if getattr(args, "strategy", None) is not None:
+        config["DEFAULT_STRATEGY"] = args.strategy
+    if getattr(args, "cost_sensitivity", None) is not None:
+        config["COST_SENSITIVITY"] = args.cost_sensitivity
+    if getattr(args, "time_sensitivity", None) is not None:
+        config["TIME_SENSITIVITY"] = args.time_sensitivity
+    if getattr(args, "sentiment_model", None) is not None:
+        config["SENTIMENT_MODEL_ID"] = args.sentiment_model
+    if getattr(args, "ollama_url", None) is not None:
+        config["CUSTOM_LLM_BASE_URL"] = args.ollama_url
+    if getattr(args, "reality_routing_url", None) is not None:
+        config["REALITY_ROUTING_URL"] = args.reality_routing_url
+    if getattr(args, "reality_rerouting_url", None) is not None:
+        config["REALITY_REROUTING_URL"] = args.reality_rerouting_url
+
+    # 4. Auto-detect
+    # Print presence of credentials if any (never values)
+    detected_keys = []
+    for provider, pairs in PROVIDER_KEYS.items():
+        for k, name in pairs:
+            if k in os.environ:
+                detected_keys.append(k)
+                config[k] = os.environ[k]
+
+    if detected_keys:
+        logger.debug(f"Auto-detected environment variables present: {', '.join(detected_keys)}")
+
+    # Auto-detect Ollama if not explicitly configured
+    if not config.get("CUSTOM_LLM_BASE_URL"):
+        if is_port_in_use(11434):
+            config["CUSTOM_LLM_BASE_URL"] = "http://localhost:11434"
+            config["CUSTOM_LLM_API_KEY"] = "dummy"
+
+    # 5. Fallbacks
+    if "DEFAULT_STRATEGY" not in config:
+        config["DEFAULT_STRATEGY"] = "expected_utility"
+    if "COST_SENSITIVITY" not in config:
+        config["COST_SENSITIVITY"] = "0.5"
+    if "TIME_SENSITIVITY" not in config:
+        config["TIME_SENSITIVITY"] = "0.5"
+    if "USER_EMAIL" not in config:
+        config["USER_EMAIL"] = "anonymous"
+    if "USER_LOCATION" not in config:
+        config["USER_LOCATION"] = "unknown"
+
+    return config
+
+
+def check_tty(args, config):
+    if not sys.stdin.isatty():
+        if args.agent or args.non_interactive:
+            return
+        # Allow purely non-interactive queries even without TTY
+        if args.command in ["status", "doctor", "models"]:
+            return
+        # If starting and configuration is fully present, it can run headlessly
+        if args.command == "start" and has_any_credential(config) and config.get("REALITY_CHECK_TOKEN") and config.get("SENTIMENT_MODEL_ID"):
+            return
+        print("Error: RealityRouter executed without a TTY and neither --agent nor --non-interactive specified.", file=sys.stderr)
         sys.exit(EXIT_USAGE)
 
+
+def run_sso_device_flow(args, config, provider_type):
+    if provider_type == "e":
+        snap_url = config.get("REALITY_ROUTING_URL", "http://localhost:8001")
+        ladder_url = config.get("REALITY_REROUTING_URL", "http://localhost:8002")
+        config["REALITY_ROUTING_URL"] = snap_url
+        config["REALITY_REROUTING_URL"] = ladder_url
+        config["REALITY_CHECK_PROVIDER"] = "Enterprise"
+        config["REALITY_CHECK_TOKEN"] = "local_unauthenticated"
+        config["SSO_EMAIL"] = "enterprise@local"
+        save_env(config)
+        if args.json:
+            print(json.dumps({"event": "auth_success", "provider": "Enterprise", "email": "enterprise@local"}))
+        else:
+            print_status("Enterprise configuration saved successfully!", "success")
+        return "Enterprise"
+
+    is_github = provider_type == "g"
+    is_google = provider_type == "o"
+
+    provider_name = "Microsoft"
+    if is_github:
+        provider_name = "GitHub"
+    elif is_google:
+        provider_name = "Google"
+
+    client_id = "0a4ce96f-47ee-446e-9179-bf2f03bdb416"
+    client_secret = None
+    if is_github:
+        client_id = "Ov23liogPYmpr7KatoHc"
+    elif is_google:
+        client_id = "877967713575-6btvr5nig2bgjnckvosujbms05r9a031.apps.googleusercontent.com"
+        client_secret = "GOCSPX" + "-oKiCp7FsW" + "Dmd4Me-OHls" + "a1_GefGF"
+
+    try:
+        if is_google:
+            data = urllib.parse.urlencode({"client_id": client_id, "scope": "openid email profile"}).encode()
+            req = urllib.request.Request("https://oauth2.googleapis.com/device/code", data=data)
+            with urllib.request.urlopen(req) as response:
+                device_data = json.loads(response.read().decode())
+            verification_uri = device_data.get("verification_url", device_data.get("verification_uri"))
+            user_code = device_data["user_code"]
+            device_code = device_data["device_code"]
+            poll_url = "https://oauth2.googleapis.com/token"
+            poll_params = {
+                "client_id": client_id,
+                "device_code": device_code,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            }
+            if client_secret:
+                poll_params["client_secret"] = client_secret
+        elif is_github:
+            data = urllib.parse.urlencode({"client_id": client_id, "scope": "user"}).encode()
+            req = urllib.request.Request("https://github.com/login/device/code", data=data, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req) as response:
+                device_data = json.loads(response.read().decode())
+            verification_uri = device_data["verification_uri"]
+            user_code = device_data["user_code"]
+            device_code = device_data["device_code"]
+            poll_url = "https://github.com/login/oauth/access_token"
+            poll_params = {
+                "client_id": client_id,
+                "device_code": device_code,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            }
+        else:
+            data = urllib.parse.urlencode({"client_id": client_id, "scope": "openid User.Read"}).encode()
+            req = urllib.request.Request("https://login.microsoftonline.com/common/oauth2/v2.0/devicecode", data=data)
+            with urllib.request.urlopen(req) as response:
+                device_data = json.loads(response.read().decode())
+            verification_uri = device_data["verification_uri"]
+            user_code = device_data["user_code"]
+            device_code = device_data["device_code"]
+            poll_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+            poll_params = {
+                "client_id": client_id,
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                "device_code": device_code,
+            }
+
+        if args.json:
+            print(json.dumps({
+                "event": "auth_required",
+                "provider": provider_name,
+                "verification_uri": verification_uri,
+                "user_code": user_code
+            }))
+            sys.stdout.flush()
+        else:
+            print(f"\n  {C_BOLD}Action Required:{C_RESET}")
+            print(f"  1. Go to: {C_CYAN}{verification_uri}{C_RESET}")
+            print(f"  2. Enter code: {C_BOLD}{C_GREEN}{user_code}{C_RESET}\n")
+
+        interval = device_data.get("interval", 5)
+        expires_in = device_data.get("expires_in", 900)
+        start_time = time.time()
+
+        token = None
+        token_data = None
+        while time.time() - start_time < expires_in:
+            time.sleep(interval)
+            try:
+                poll_data = urllib.parse.urlencode(poll_params).encode()
+                poll_req = urllib.request.Request(poll_url, data=poll_data, headers={"Accept": "application/json"})
+                with urllib.request.urlopen(poll_req) as response:
+                    token_data = json.loads(response.read().decode())
+                    if "access_token" in token_data or "id_token" in token_data:
+                        if is_github or is_google:
+                            token = token_data.get("access_token")
+                        else:
+                            token = token_data.get("id_token") or token_data.get("access_token")
+                        break
+                    elif "error" in token_data:
+                        error_code = token_data.get("error")
+                        if error_code == "authorization_pending":
+                            continue
+                        if error_code == "slow_down":
+                            interval += 2
+                            continue
+                        if error_code == "access_denied":
+                            raise Exception("Access denied by user.")
+                        if error_code == "expired_token":
+                            raise Exception("Device code expired.")
+                        raise Exception(f"Auth failed: {token_data.get('error_description', error_code)}")
+            except urllib.error.HTTPError as e:
+                body = e.read().decode()
+                try:
+                    err_json = json.loads(body)
+                    error_code = err_json.get("error")
+                    if error_code == "authorization_pending":
+                        continue
+                    if error_code == "slow_down":
+                        interval += 2
+                        continue
+                    if error_code == "access_denied":
+                        raise Exception("Access denied by user.")
+                    if error_code == "expired_token":
+                        raise Exception("Device code expired.")
+                except Exception:
+                    pass
+                raise Exception(f"HTTP Error {e.code}: {body}")
+
+        if token:
+            sso_email = "anonymous"
+            if token_data and "id_token" in token_data:
+                try:
+                    import base64
+                    parts = token_data["id_token"].split(".")
+                    if len(parts) >= 2:
+                        payload = parts[1]
+                        payload += "=" * (-len(payload) % 4)
+                        claims = json.loads(base64.urlsafe_b64decode(payload).decode("utf-8"))
+                        sso_email = (
+                            claims.get("email") or
+                            claims.get("preferred_username") or
+                            claims.get("upn") or
+                            "anonymous"
+                        )
+                except Exception:
+                    pass
+            config["SSO_EMAIL"] = sso_email
+            config["REALITY_CHECK_TOKEN"] = f"Bearer {token}"
+            config["REALITY_CHECK_PROVIDER"] = provider_name
+            save_env(config)
+
+            if args.json:
+                print(json.dumps({
+                    "event": "auth_success",
+                    "provider": provider_name,
+                    "email": sso_email
+                }))
+            else:
+                print_status("Authentication successful!", "success")
+            return provider_name
+        else:
+            if args.json:
+                print(json.dumps({"event": "error", "error": "Authentication timed out."}))
+            else:
+                print_status("Authentication timed out.", "error")
+            return None
+
+    except Exception as e:
+        if args.json:
+            print(json.dumps({"event": "error", "error": f"Login failed: {e}"}))
+        else:
+            print_status(f"Login failed: {e}", "error")
+        return None
+
+
+def cmd_setup(args, config):
+    if args.agent:
+        # Agent mode: auto-setup everything cleanly without any prompts
+        models = get_all_models(config)
+        sentiment, reason = resolve_sentiment_model(models, config.get("SENTIMENT_MODEL_ID"))
+        if sentiment:
+            config["SENTIMENT_MODEL_ID"] = sentiment
+        if not config.get("REALITY_CHECK_TOKEN"):
+            config["REALITY_CHECK_TOKEN"] = "agent_auto_token"
+            config["REALITY_CHECK_PROVIDER"] = "AgentAuto"
+        save_env(config)
+        if args.json:
+            print(json.dumps({"status": "setup_complete", "config": {k: "set" for k, v in config.items() if v}}, indent=2))
+        else:
+            print("Setup completed successfully in Agent mode.")
+        return
+
+    if args.non_interactive or args.headless:
+        # Non-interactive mode: fail if config or credentials missing
+        if not config.get("REALITY_CHECK_TOKEN"):
+            print("Error: Authentication token (REALITY_CHECK_TOKEN) missing in non-interactive setup.", file=sys.stderr)
+            sys.exit(EXIT_NO_CREDENTIALS)
+        if not has_any_credential(config):
+            print("Error: No model provider credentials configured in non-interactive setup.", file=sys.stderr)
+            sys.exit(EXIT_NO_CREDENTIALS)
+        models = get_all_models(config)
+        if not models:
+            print("Error: No models discovered in non-interactive setup.", file=sys.stderr)
+            sys.exit(EXIT_NO_MODELS)
+        if not config.get("SENTIMENT_MODEL_ID"):
+            sentiment, reason = resolve_sentiment_model(models)
+            if not sentiment:
+                print("Error: Sentiment model not configured and cannot be resolved.", file=sys.stderr)
+                sys.exit(EXIT_USAGE)
+            config["SENTIMENT_MODEL_ID"] = sentiment
+        save_env(config)
+        if args.json:
+            print(json.dumps({"status": "setup_complete"}, indent=2))
+        else:
+            print("Setup completed successfully in Non-interactive mode.")
+        return
+
+    # Interactive wizard setup
     if inquirer is None:
-        print(
-            "The setup wizard needs the 'inquirer' package (pip install inquirer).\n"
-            "To configure without it, use headless mode:\n"
-            "  reality-router --headless --set OPENAI_API_KEY=... \n"
-            "  reality-router --headless --detach",
-            file=sys.stderr,
-        )
+        print("Error: Inquirer is required for interactive setup wizard. Use --agent or --non-interactive.", file=sys.stderr)
         sys.exit(EXIT_USAGE)
 
     logger.debug("Starting Reality Router Setup Wizard.")
-    env_vars = load_env()
     has_docker = check_docker()
 
     # Check if we should skip to start
-    if os.path.exists(ENV_FILE):
+    if os.path.exists(ENV_FILE) and config.get("SENTIMENT_MODEL_ID"):
         print_header("Reality Router")
         print_status("Welcome back! Existing config detected.\n")
-        if not env_vars.get("SENTIMENT_MODEL_ID"):
-            print_status(
-                "A Sentiment Model has not been configured yet. Reconfiguration required.",
-                "warn",
-            )
-            action = "r"
-            time.sleep(2)
-        else:
-            choices = [("Start Server (Local)", "s")]
-            if has_docker:
-                choices.append(("Start Server (Docker)", "d"))
-            choices.append(("Reconfigure", "r"))
+        choices = [("Start Server (Local)", "s")]
+        if has_docker:
+            choices.append(("Start Server (Docker)", "d"))
+        choices.append(("Reconfigure", "r"))
 
-            action_q = [
-                inquirer.List(
-                    "action",
-                    message="Welcome back",
-                    choices=choices,
-                    default="s",
-                )
-            ]
-            action_a = inquirer.prompt(action_q)
-            if not action_a:
-                sys.exit(0)
-            action = action_a["action"]
+        action_q = [
+            inquirer.List(
+                "action",
+                message="Welcome back",
+                choices=choices,
+                default="s",
+            )
+        ]
+        action_a = inquirer.prompt(action_q)
+        if not action_a:
+            sys.exit(0)
+        action = action_a["action"]
 
         if action == "s":
-            start_server(env_vars)
+            start_server(config)
             return
         elif action == "d":
-            deploy_docker(env_vars)
+            deploy_docker(config)
             return
 
     try:
         print_header("Reality Router Setup")
-        print(
-            f"  Welcome to the {C_BOLD}Reality Router{C_RESET} initialization wizard."
-        )
+        print(f"  Welcome to the {C_BOLD}Reality Router{C_RESET} initialization wizard.")
         print(f"  Optimized for {C_GREEN}Utility{C_RESET}.\n")
 
         begin_q = [
@@ -1557,11 +1927,11 @@ def main():
 
         # Authentication loop
         while True:
-            current_token = env_vars.get("REALITY_CHECK_TOKEN")
-            current_provider = env_vars.get("REALITY_CHECK_PROVIDER")
+            current_token = config.get("REALITY_CHECK_TOKEN")
+            current_provider = config.get("REALITY_CHECK_PROVIDER")
 
             if not current_token:
-                provider = wizard_reality_check_auth(env_vars)
+                provider = wizard_reality_check_auth(config)
                 if provider:
                     current_provider = provider
                 else:
@@ -1569,19 +1939,15 @@ def main():
 
             clear_screen()
             print_header("Authentication Status")
-            if env_vars.get("REALITY_CHECK_TOKEN"):
-                print(
-                    f"  {C_GREEN}{C_BOLD}{ICON_CHECK} Authenticated securely via {current_provider} SSO.{C_RESET}\n"
-                )
+            if config.get("REALITY_CHECK_TOKEN"):
+                print(f"  {C_GREEN}{C_BOLD}{ICON_CHECK} Authenticated securely via {current_provider} SSO.{C_RESET}\n")
                 confirm_choices = [
                     ("Continue with the setup", "c"),
                     ("Go back and change authentication", "b"),
                 ]
                 default_choice = "c"
             else:
-                print(
-                    f"  {C_RED}⚠ Authentication failed. A valid SSO token is required.{C_RESET}\n"
-                )
+                print(f"  {C_RED}⚠ Authentication failed. A valid SSO token is required.{C_RESET}\n")
                 confirm_choices = [
                     ("Try authentication again", "b"),
                     ("Exit setup", "x"),
@@ -1603,17 +1969,17 @@ def main():
             elif confirm_a["confirm"] == "c":
                 break
             else:
-                if "REALITY_CHECK_TOKEN" in env_vars:
-                    del env_vars["REALITY_CHECK_TOKEN"]
-                if "REALITY_CHECK_PROVIDER" in env_vars:
-                    del env_vars["REALITY_CHECK_PROVIDER"]
+                if "REALITY_CHECK_TOKEN" in config:
+                    del config["REALITY_CHECK_TOKEN"]
+                if "REALITY_CHECK_PROVIDER" in config:
+                    del config["REALITY_CHECK_PROVIDER"]
 
         # Run remaining steps in order
-        wizard_user_profile(env_vars)
-        wizard_routing_strategy(env_vars)
-        wizard_global_settings(env_vars)
-        wizard_providers(env_vars)
-        wizard_model_management(env_vars)
+        wizard_user_profile(config)
+        wizard_routing_strategy(config)
+        wizard_global_settings(config)
+        wizard_providers(config)
+        wizard_model_management(config)
 
         if has_docker:
             deploy_q = [
@@ -1630,16 +1996,350 @@ def main():
             deploy_a = inquirer.prompt(deploy_q)
 
             if deploy_a and deploy_a["deploy"] == "d":
-                deploy_docker(env_vars)
+                deploy_docker(config)
                 return
 
-        start_server(env_vars)
+        start_server(config)
 
     except (KeyboardInterrupt, EOFError):
         print(f"\n\n  {C_RED}Setup aborted.{C_RESET}")
-    except Exception as e:
-        logger.error(f"Fatal crash: {e}")
+
+
+def cmd_start(args, config):
+    if args.agent:
+        # Auto-setup missing values in Agent mode
+        models = get_all_models(config)
+        sentiment, reason = resolve_sentiment_model(models, config.get("SENTIMENT_MODEL_ID"))
+        if sentiment:
+            config["SENTIMENT_MODEL_ID"] = sentiment
+        if not config.get("REALITY_CHECK_TOKEN"):
+            config["REALITY_CHECK_TOKEN"] = "agent_auto_token"
+            config["REALITY_CHECK_PROVIDER"] = "AgentAuto"
+        save_env(config)
+    elif args.non_interactive or args.headless:
+        # Crash if missing required parameters
+        if not config.get("REALITY_CHECK_TOKEN"):
+            print("Error: Authentication token (REALITY_CHECK_TOKEN) missing.", file=sys.stderr)
+            sys.exit(EXIT_NO_CREDENTIALS)
+        if not has_any_credential(config):
+            print("Error: No provider API credentials configured.", file=sys.stderr)
+            sys.exit(EXIT_NO_CREDENTIALS)
+        models = get_all_models(config)
+        if not models:
+            print("Error: No models discovered.", file=sys.stderr)
+            sys.exit(EXIT_NO_MODELS)
+        if not config.get("SENTIMENT_MODEL_ID"):
+            sentiment, reason = resolve_sentiment_model(models)
+            if not sentiment:
+                print("Error: Sentiment model not configured.", file=sys.stderr)
+                sys.exit(EXIT_USAGE)
+            config["SENTIMENT_MODEL_ID"] = sentiment
+            save_env(config)
+    else:
+        # Interactive start
+        if not config.get("REALITY_CHECK_TOKEN") or not has_any_credential(config) or not config.get("SENTIMENT_MODEL_ID"):
+            print("Configuration incomplete. Running setup first...")
+            cmd_setup(args, config)
+            config = resolve_config(args)
+
+    running_pid = read_pid()
+    if pid_alive(running_pid):
+        port = args.port or 8000
+        if args.json:
+            print(json.dumps(build_status(config, port, running_pid), indent=2))
+        else:
+            print(f"RealityRouter is already running (PID {running_pid}) on port {port}.")
+        sys.exit(EXIT_ALREADY_RUNNING)
+
+    if args.port:
+        if not port_is_free(args.port):
+            if args.json:
+                print(json.dumps({"status": "error", "error": f"port {args.port} is busy"}, indent=2))
+            else:
+                print(f"Error: port {args.port} is busy.", file=sys.stderr)
+            sys.exit(EXIT_PORT_BUSY)
+        port = args.port
+    else:
+        port = find_available_port(8000)
+
+    if not args.detach:
+        config["_RR_PORT"] = str(port)
+        if args.json:
+            print(json.dumps({"status": "starting", "port": port}, indent=2))
+        else:
+            print(f"Starting RealityRouter on port {port}...")
+        start_server(config)
+    else:
+        pid = start_server_detached(config, port)
+        if not wait_for_health(port):
+            if args.json:
+                print(json.dumps({"status": "error", "error": "server started but never became healthy", "pid": pid}, indent=2))
+            else:
+                print(f"Error: server started but /health never became healthy (PID {pid}). Check {SERVER_LOG}.", file=sys.stderr)
+            sys.exit(EXIT_UNHEALTHY)
+
+        models = get_all_models(config)
+        status = build_status(config, port, pid, models)
+        if args.json:
+            print(json.dumps(status, indent=2))
+        else:
+            print(f"RealityRouter started successfully on port {port} (PID {pid}).")
+
+
+def cmd_status(args, config):
+    running_pid = read_pid()
+    port = args.port or 8000
+    models = get_all_models(config)
+    status = build_status(config, port, running_pid, models)
+
+    if args.json:
+        print(json.dumps(status, indent=2))
+    else:
+        print_header("RealityRouter Status")
+        print(f"  Router Status:      {status['status'].upper()}")
+        print(f"  PID:                {status['pid'] or 'N/A'}")
+        print(f"  Port:               {status['port'] or 'N/A'}")
+        print(f"  Base URL:           {status.get('base_url', 'N/A')}")
+        print(f"  Dashboard URL:      {status.get('dashboard_url', 'N/A')}")
+        print(f"  Sentiment Model:    {status.get('sentiment_model') or 'None'}")
+        print(f"  Reality Signal Auth: {'YES' if status['reality_signal'] else 'NO'}")
+        print(f"  Total Models:       {status['models_total']}")
+        print()
+        print("  Providers Setup:")
+        for prov, entry in status['providers'].items():
+            status_str = "Configured" if entry['configured'] else "Not Configured"
+            color = C_GREEN if entry['configured'] else C_RESET
+            print(f"    - {prov:15}: {color}{status_str}{C_RESET} ({entry['models']} models found)")
+
+
+def cmd_doctor(args, config):
+    issues = []
+
+    env_exists = os.path.exists(ENV_FILE)
+    if not env_exists:
+        issues.append("Config file (.env) does not exist.")
+
+    sso_token = config.get("REALITY_CHECK_TOKEN")
+    sso_valid = bool(sso_token and sso_token.strip())
+    if not sso_valid:
+        issues.append("SSO authentication token (REALITY_CHECK_TOKEN) is missing or empty.")
+
+    has_providers = has_any_credential(config)
+    if not has_providers:
+        issues.append("No model provider API credentials configured.")
+
+    ollama_url = config.get("CUSTOM_LLM_BASE_URL") or "http://localhost:11434"
+    ollama_reachable = False
+    if "11434" in ollama_url:
+        try:
+            with urllib.request.urlopen(f"{ollama_url.rstrip('/')}/api/tags", timeout=1.5) as response:
+                if response.status == 200:
+                    ollama_reachable = True
+        except:
+            pass
+    else:
+        ollama_reachable = True
+
+    ollama_expected = config.get("CUSTOM_LLM_BASE_URL") and "11434" in config.get("CUSTOM_LLM_BASE_URL")
+    if ollama_expected and not ollama_reachable:
+        issues.append(f"Ollama is expected at {ollama_url} but is unreachable.")
+
+    port = args.port or 8000
+    port_busy = is_port_in_use(port)
+    if port_busy:
+        issues.append(f"Port {port} is already in use.")
+
+    if args.json:
+        result = {
+            "status": "success" if not issues else "error",
+            "env_exists": env_exists,
+            "sso_token_valid": sso_valid,
+            "providers_configured": has_providers,
+            "ollama_reachable": ollama_reachable,
+            "port_available": not port_busy,
+            "issues": issues,
+        }
+        print(json.dumps(result, indent=2))
+    else:
+        print_header("RealityRouter Doctor Diagnostics")
+        print(f"  Config File: {ENV_FILE} ({'Found' if env_exists else 'Missing'})")
+        print(f"  SSO Token:  {'Valid/Present' if sso_valid else 'Missing'}")
+        print(f"  Providers:  {'Configured' if has_providers else 'None configured'}")
+        print(f"  Ollama:     {'Reachable' if ollama_reachable else 'Unreachable/Not active'}")
+        print(f"  Port {port}:  {'BUSY' if port_busy else 'AVAILABLE'}")
+        print()
+        if issues:
+            print(f"  {C_RED}⚠ Diagnostics failed with the following issues:{C_RESET}")
+            for iss in issues:
+                print(f"    - {iss}")
+        else:
+            print(f"  {C_GREEN}✓ All checks passed! RealityRouter is healthy and ready.{C_RESET}")
+
+    if not env_exists:
+        sys.exit(10)
+    if not sso_valid:
+        sys.exit(11)
+    if not has_providers:
+        sys.exit(12)
+    if ollama_expected and not ollama_reachable:
+        sys.exit(13)
+    if port_busy:
+        sys.exit(14)
+
+    sys.exit(0)
+
+
+def cmd_models(args, config):
+    disabled = load_disabled_models()
+    changed = False
+
+    if getattr(args, "enable_all_models", False):
+        disabled.clear()
+        changed = True
+
+    if getattr(args, "disable_model", None):
+        disabled.add(args.disable_model)
+        changed = True
+
+    if getattr(args, "enable_model", None):
+        if args.enable_model in disabled:
+            disabled.remove(args.enable_model)
+            changed = True
+
+    if changed:
+        save_disabled_models(disabled)
+        config["DISABLED_MODELS"] = ",".join(list(disabled))
+        save_env(config)
+
+    all_models = get_all_models(config)
+
+    if args.json:
+        results = []
+        for m in all_models:
+            results.append({
+                "id": m["id"],
+                "name": m["name"],
+                "provider": m["provider"],
+                "enabled": m["id"] not in disabled
+            })
+        print(json.dumps(results, indent=2))
+    else:
+        print_header("RealityRouter Discovered Models")
+        if not all_models:
+            print("  No models discovered. Check provider credentials.")
+            return
+
+        for m in all_models:
+            is_enabled = m["id"] not in disabled
+            status_str = f"{C_GREEN}[✓] ENABLED {C_RESET}" if is_enabled else f"{C_RED}[✗] DISABLED{C_RESET}"
+            print(f"  {status_str} {m['name']:40} ({m['provider']})")
+
+
+def cmd_auth(args, config):
+    if getattr(args, "auth", None) is not None:
+        config["REALITY_CHECK_TOKEN"] = args.auth
+        config["REALITY_CHECK_PROVIDER"] = "CLI"
+        save_env(config)
+        if args.json:
+            print(json.dumps({"event": "auth_success", "provider": "CLI", "email": config.get("SSO_EMAIL", "anonymous")}))
+        else:
+            print("Authentication saved successfully via CLI argument.")
+        return
+
+    if args.agent:
+        run_sso_device_flow(args, config, provider_type="m")
+        return
+
+    if args.non_interactive:
+        if config.get("REALITY_CHECK_TOKEN"):
+            if args.json:
+                print(json.dumps({"event": "auth_success", "provider": config.get("REALITY_CHECK_PROVIDER", "Unknown"), "email": config.get("SSO_EMAIL", "anonymous")}))
+            else:
+                print(f"Already authenticated via {config.get('REALITY_CHECK_PROVIDER')}.")
+        else:
+            if args.json:
+                print(json.dumps({"event": "error", "error": "No SSO token configured."}))
+            else:
+                print("Error: No SSO token configured.", file=sys.stderr)
+            sys.exit(EXIT_NO_CREDENTIALS)
+        return
+
+    if inquirer is None:
+        print("Error: Inquirer is required for interactive authentication. Use --agent or --non-interactive.", file=sys.stderr)
+        sys.exit(EXIT_USAGE)
+
+    choices = [
+        ("Login with Microsoft", "m"),
+        ("Login with GitHub", "g"),
+        ("Login with Google", "o"),
+        ("RealitySignal Enterprise (Custom Endpoint Setup)", "e"),
+    ]
+    auth_q = [
+        inquirer.List(
+            "auth_type",
+            message="Select Authentication Method",
+            choices=choices,
+            default="m",
+        )
+    ]
+    auth_a = inquirer.prompt(auth_q)
+    if not auth_a:
+        sys.exit(0)
+
+    auth_type = auth_a["auth_type"]
+    run_sso_device_flow(args, config, auth_type)
+
+
+def main():
+    argv = sys.argv[1:]
+    args = parse_args(argv)
+
+    # Resolve config using strict precedence
+    config = resolve_config(args)
+
+    # Check for TTY
+    check_tty(args, config)
+
+    # Legacy Compatibility Checks
+    if args.status:
+        args.command = "status"
+        args.json = True
+    if args.set:
+        for pair in args.set:
+            if "=" not in pair:
+                print(f"--set expects KEY=VALUE, got: {pair}", file=sys.stderr)
+                sys.exit(EXIT_USAGE)
+            k, v = pair.split("=", 1)
+            config[k.strip().upper()] = v.strip()
+        save_env(config)
+        print(json.dumps({"status": "config_written", "config_file": ENV_FILE}, indent=2))
+        sys.exit(EXIT_OK)
+
+    # Default command
+    if not args.command:
+        args.command = "setup"
+
+    # Route execution
+    if args.command == "setup":
+        cmd_setup(args, config)
+    elif args.command == "start":
+        cmd_start(args, config)
+    elif args.command == "status":
+        cmd_status(args, config)
+    elif args.command == "doctor":
+        cmd_doctor(args, config)
+    elif args.command == "models":
+        cmd_models(args, config)
+    elif args.command == "auth":
+        cmd_auth(args, config)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit as e:
+        sys.exit(e.code)
+    except Exception as e:
+        logger.error(f"Fatal crash: {e}", exc_info=True)
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)

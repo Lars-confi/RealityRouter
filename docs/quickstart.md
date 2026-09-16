@@ -77,6 +77,38 @@ Once running, visit the web dashboard to monitor your routing in real-time:
 
 Here you can adjust your **Cost vs. Speed** preferences using live sliders and see exactly how much you are saving compared to using flagship models for every request.
 
+---
+
+## 5. For AI Agents (Automated Quickstart)
+
+If you are an AI coding agent or automation script, you can complete the installation, configuration, diagnostics, and launch without any human intervention:
+
+### One-Click Installation
+```bash
+# Idempotent Linux install
+curl -fsSL https://raw.githubusercontent.com/Lars-confi/RealityRouter/main/install.sh | bash
+```
+
+### Auto-Configure and Zero-Prompt Setup
+Scan environment variables, configure defaults, and resolve local Ollama models instantly:
+```bash
+reality-router setup --agent
+```
+
+### Automated Diagnostic Doctor
+Verify that configurations, SSO, and ports are correctly prepared:
+```bash
+reality-router doctor --json
+```
+
+### Start Router in Background
+Start RealityRouter in detached daemon mode:
+```bash
+reality-router start --agent --detach --port 8000
+```
+
+---
+
 ## Next
 
 - [How it works](./concepts.md) — The math behind Expected Utility.

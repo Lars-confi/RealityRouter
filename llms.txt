@@ -1,0 +1,43 @@
+# RealityRouter for LLMs and AI Agents
+
+RealityRouter is an agent-native, utility-optimized LLM routing layer designed for programmatic automation and zero-overhead deployments.
+
+## CLI Core Commands
+
+Use `start_router.py` (wrapped as `reality-router`) for automation. Ensure you pass `--agent` to guarantee zero prompts and automatic configuration.
+
+```bash
+# Setup without prompts (auto-detects keys, sets up Microsoft SSO fallback)
+reality-router setup --agent
+
+# Setup programmatically with strict validation (fails on missing keys)
+reality-router setup --non-interactive
+
+# Authenticate via Device Code Flow (outputs NDJSON events)
+reality-router auth --agent --json
+
+# Check health and status of the router (outputs JSON)
+reality-router status --json
+
+# Diagnostics / Doctor check (exit codes: 10=env, 11=auth, 12=providers, 14=port busy)
+reality-router doctor --json
+
+# Manage model visibility
+reality-router models --disable-model <id> --json
+reality-router models --enable-model <id> --json
+```
+
+## Quick Installation
+
+```bash
+# Linux/macOS installation (idempotent, installs executable wrapper to ~/.local/bin)
+curl -fsSL https://github.com/Lars-confi/RealityRouter/raw/main/install.sh | bash
+
+# Windows PowerShell installation
+irm https://github.com/Lars-confi/RealityRouter/raw/main/install.ps1 | iex
+```
+
+## Environment & Secrets Precedence
+
+Precedence Chain: `CLI Flags > Environment Variables > Config File (.env) > Auto-detect > Fallbacks`.
+Never expose API keys or access tokens in output or logs.

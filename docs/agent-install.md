@@ -64,9 +64,17 @@ Nothing here is agent-only. The same flags work from a shell, a Dockerfile or a
 systemd unit:
 
 ```bash
+reality-router setup --non-interactive --set DEEPSEEK_API_KEY=...
+reality-router start --non-interactive --detach     # returns once /health is healthy
+reality-router status --json                        # JSON: port, base_url, dashboard_url
+```
+
+### Legacy Compatibility Note (Deprecated Syntax)
+For backward compatibility, the following older syntax is still supported by the CLI but is deprecated in favor of the command-oriented subcommands above:
+```bash
 reality-router --headless --set DEEPSEEK_API_KEY=...
-reality-router --headless --detach     # returns once /health is healthy
-reality-router --headless --status     # JSON: port, base_url, dashboard_url
+reality-router --headless --detach
+reality-router --headless --status
 ```
 
 Read the port from that JSON rather than assuming 8000 — RealityRouter moves to

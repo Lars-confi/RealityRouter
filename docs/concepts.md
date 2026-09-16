@@ -9,30 +9,54 @@ RealityRouter scores every model on Expected Utility — a single number that co
 
 ## Expected Utility
 
-For every incoming request, the router computes Expected Utility for each configured model `m_i`:
+For every incoming request, the router computes the Expected Utility (EU) for each configured candidate model `m_i`:
 
 ```text
-EU(m_i) = p_i · R − α · c_i − β · t_i
+EU(m_i) = (p_i · R) - (α · c_scaled) - (β · t_i) - penalty_pref
 ```
 
-The five terms:
+### Precise Units and Definitions:
 
-- `p_i` **probability of success** — the estimated likelihood this specific model produces a correct/high-quality answer to *this specific kind* of query. Calibrated by Reality Router™ from historical outcomes on similar tasks. Range: 0–1.
-- `R` **reward** — the value of a correct answer, fixed at 100.
-- `c_i` **cost** — the estimated dollar cost of running `m_i` on this query. Computed from input token count, historical output length, and the model's specific per-token pricing.
-- `t_i` **latency** — the estimated response time, derived from a rolling 5–10 minute average for this model.
-- `α` & `β` **sensitivities** — your weights on cost and latency, tuned once during setup. `α` high → router prefers cheap models. `β` high → router prefers fast ones.
+- **`p_i` (Probability of Success)**: The calibrated likelihood (`0.0` to `1.0`) that model `m_i` successfully satisfies the query and protocol constraints.
+- **`R` (Baseline Reward)**: The value of a correct response, fixed at **`100.0`**.
+- **`c_i` (Estimated Cost)**: Raw estimated dollar cost of running the request on model `m_i` in fractional USD (e.g. `$0.005`).
+- **`c_scaled` (Scaled Cost)**: To prevent tiny fractional dollar costs from being dominated by multi-second latencies, **cost is scaled by `1000.0`** (milli-dollars). Thus, a cost of `$0.015` becomes `15.0` units in the utility equation.
+- **`t_i` (Estimated Latency)**: Response latency in **seconds** (e.g. `2.5` seconds), calculated from a rolling user-specific sliding window.
+- **`α` (Cost Sensitivity)**: Cost penalty weight coefficient (alpha). Modifiable dynamically via the dashboard slider.
+- **`β` (Time Sensitivity)**: Latency penalty weight coefficient (beta). Modifiable dynamically via the dashboard slider.
+- **`penalty_pref` (Preference Penalty)**: Represents model preference overrides. Defaults to `0.0` when model preference is `100.0`. Computed as `(100.0 - preference) * 10.0`.
 
-### The decision rule
+### The Decision Rule
 
 The router selects the model with the highest expected utility:
 
 ```text
-m* = argmax  ( p_i · R  −  α · c_i  −  β · t_i )
-       i∈M
+m* = argmax [ (p_i · R) - (α · (c_i · 1000.0)) - (β · t_i) - penalty_pref ]
 ```
 
-That's it. No heuristics, no marketing tiers, no "always use the flagship." Every model — cheap, expensive, local, cloud — competes on the same math.
+### Complete Numerical Example
+
+Let's configure our weights as: **`α = 1.0`** and **`β = 2.0`**. We evaluate three candidate models for a standard coding task:
+
+1. **Model A (Cheap Local Model)**:
+   - Success Probability `p = 0.50`
+   - Latency `t = 1.0s`
+   - Cost `c = $0.000` (Local model, zero marginal cost)
+   - *Utility calculation*: `EU = (0.50 * 100) - (1.0 * (0.000 * 1000)) - (2.0 * 1.0) = 50.0 - 0.0 - 2.0 = 48.0`
+
+2. **Model B (Fast Flagship-Lite Model)**:
+   - Success Probability `p = 0.85`
+   - Latency `t = 1.5s`
+   - Cost `c = $0.002` (Milli-dollars: `2.0` units)
+   - *Utility calculation*: `EU = (0.85 * 100) - (1.0 * 2.0) - (2.0 * 1.5) = 85.0 - 2.0 - 3.0 = 80.0`
+
+3. **Model C (Flagship Heavy Model)**:
+   - Success Probability `p = 0.95`
+   - Latency `t = 3.0s`
+   - Cost `c = $0.030` (Milli-dollars: `30.0` units)
+   - *Utility calculation*: `EU = (0.95 * 100) - (1.0 * 30.0) - (2.0 * 3.0) = 95.0 - 30.0 - 6.0 = 59.0`
+
+**Result**: **Model B** has the highest Expected Utility (`80.0` vs. `48.0` vs. `59.0`) and is selected. Even though Model C has higher raw intelligence (95% success), its high cost penalty under `α = 1.0` lowers its utility. If cost sensitivity is set to `0.1`, Model C would win. If latency is critical, local Model A might win if Model B slows down. The math adjusts dynamically per call.
 
 ## Dynamic cost estimation
 
@@ -67,28 +91,35 @@ All signals — successful completions, quality failures, sentiment, validation 
 
 ## Why these probabilities can be trusted
 
-The router is only as honest as the probabilities driving it. If `p_i` is wrong, the EU math falls apart — you over-route to bad models and under-route to good ones. So Reality Router™ doesn't just "estimate" probabilities. It uses two families of statistical methods chosen specifically for their mathematical guarantees.
+The router is only as mathematically robust as the probabilities driving it. If `p_i` is miscalibrated, Expected Utility theory fails — leading to over-routing to weak models or unnecessary spending on flagship models. RealityRouter uses mathematical frameworks based on Venn-Abers calibration and conformal prediction to estimate model success probabilities.
 
-### Venn predictors
+### 1. The Target Outcome and Calibration Population
+- **Target Outcome (Success)**: We define a request as "successful" (`Y = 1.0`) if the output is structurally and syntactically valid (Protocol Success) AND is accepted by the client without triggering dissatisfaction markers (Task/Sentiment Success). Any other outcome is a failure (`Y = 0.0`).
+- **Calibration Population**: The calibration set consists of historic requests, classified by high-level extracted task features, that did not experience immediate infrastructure/network failures.
 
-Venn predictors produce probabilities that are **calibrated by construction**. Under standard exchangeability assumptions, if a Venn predictor says "70%," outcomes really do occur about 70% of the time — distribution-free, and without training-time tuning to enforce the property. That's a formal guarantee, not an empirical observation.
+### 2. Standard Statistical Assumptions
+- **Exchangeability**: The core calibration guarantee assumes that past and future requests of a given task type (e.g. "writing python tools") are exchangeable (i.e., their joint probability distribution is invariant under permutation).
+- **Distribution Shift**: In reality, user behavior and prompt distributions shift over time (non-exchangeability). To adapt to distribution shift, RealityRouter applies a time-decaying recency weighting to calibration samples, prioritizing recent outcomes to dynamically track shifting model performance.
+- **Cold-Start Handling**: For newly released models or cold-start task categories with no historical data, RealityRouter initializes `p_i` using conservative baseline capabilities from a global provider registry, quickly adapting as real local feedback events are logged.
 
-### Conformal prediction
+### 3. Venn-Abers Calibration Guarantees
+Venn-Abers predictors process task features and output a calibrated probability interval `[p_low, p_high]`.
+- **Validity Guarantee**: Under the exchangeability assumption, Venn-Abers probabilities are guaranteed to be multipatially calibrated. That is, if the predictor assigns a probability of 70%, the true long-run observed success frequency is mathematically guaranteed to approach 70%, independent of the underlying distribution.
+- **Mapping to expected utility `p_i`**: To calculate a concrete scalar Expected Utility score, the interval is mapped to a single probability estimate `p_i` using the game-theoretic minimax-regret selection:
+  ```text
+  p_i = p_high / (1.0 + p_high - p_low)
+  ```
 
-Conformal prediction produces prediction sets with **provably bounded error**. For any chosen significance level `α`, the set covers the true outcome with probability at least `1 − α` — independent of the underlying distribution. Together with Venn, these two families form the small set of methods with this kind of formal validity result.
+### 4. Conformal Prediction Coverage
+For multi-class classifications or structured output boundaries, Conformal Prediction establishes a prediction set that contains the true required output with a provably bounded error rate:
+- For a chosen significance level `ε` (e.g. 5%), the conformal set is guaranteed to cover the correct model performance category with a probability of at least `1 − ε` (95%), independent of distribution shapes.
 
-### Why not LLM-as-judge or learned calibrators?
+### 5. Why Not LLM-as-Judge or Heuristic Calibrators?
+- **LLM-as-Judge**: Introducing an evaluator LLM creates cascading errors, multiplying hallucinations and adding significant latency and API costs.
+- **Learned Heuristic Calibrators**: Standard machine-learning classifiers (like neural networks or logistic regressions) are prone to overconfidence and lack any mathematical guarantees of calibration under distribution shift.
 
-The alternatives all introduce new sources of error:
-
-- **LLM-as-judge** — a second LLM grades the first. The judge has its own bias and hallucination rate, layered on top of what you're trying to measure. You don't get one probability; you get one probability plus the judge's error rate.
-- **Learned calibrators** — a small model converts raw confidence into probability. Adds another model whose own error you have to track and re-train as distributions shift.
-- **Soft voting / ensembles** — combine multiple models' outputs. Works well empirically on some tasks, but lacks formal validity guarantees and can't tell you *how much* to trust a given decision.
-
-Reality Router™'s `p_i` is the most honest estimate you can get without introducing fresh sources of uncertainty. That matters every time the router has to decide whether to ship cheap or escalate to flagship — because it's the trustworthiness of the probability, not just its value, that determines whether the routing decision is correct.
-
-> [!NOTE]
-> The details of how Venn and conformal methods are applied internally — feature spaces, taxonomies, the specific calibration set construction — are part of the Reality Router service. The guarantees stated above hold for the published outputs.
+### 6. Dashboard Calibration Curve Calculation
+The web dashboard calibration plot is computed by partitioning recent requests into probability bins (e.g. `[0.0, 0.2]`, `[0.2, 0.4]`, ...). For each bin, the average predicted probability is plotted against the actual observed fraction of success (`Y = 1.0`). If the curve hugs the diagonal, the router's utility estimations are statistically valid.
 
 ## Protocol & quality validation
 

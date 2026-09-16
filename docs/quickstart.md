@@ -8,7 +8,7 @@ description: 60-second install + your first routed request
 Install RealityRouter, configure your providers, and route your first request — in about 60 seconds.
 
 > [!NOTE]
-> Requires Docker (recommended) or Python 3.10+. You will need an API key from at least one LLM provider (OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot, Z.ai, xAI, Alibaba Qwen, or a local Ollama instance).
+> Requires Python 3.10+ (recommended) or Docker. You will need an API key from at least one LLM provider (OpenAI, Anthropic, Gemini, Mistral, DeepSeek, Moonshot, Z.ai, xAI, Alibaba Qwen, or a local Ollama instance).
 
 ## 1. Install
 
@@ -51,22 +51,36 @@ The router auto-discovers all available models based on your keys. Toggle models
 
 ## 3. Your first routed request
 
-RealityRouter is **100% OpenAI API compatible**. Just point your client to your local instance:
+RealityRouter exposes an OpenAI-compatible API. The supported endpoints and features are listed in the API reference. Just point your client to your local instance:
 
+### Python (OpenAI 1.x Client)
 ```python
-import openai
+from openai import OpenAI
 
-openai.api_base = "http://localhost:8000/v1"
-openai.api_key  = "any"   # The router handles upstream auth
+client = OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key="rr-local",  # The router handles upstream auth
+)
 
-response = openai.ChatCompletion.create(
-    model="auto",   # Let the router choose the best model
+response = client.chat.completions.create(
+    model="auto",  # Let the router choose the best model
     messages=[
         {"role": "user", "content": "Write a high-performance Rust function to parse JSON."}
     ],
 )
 
 print(response.choices[0].message.content)
+```
+
+### curl (Protocol Smoke Test)
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer any" \
+  -d '{
+    "model": "auto",
+    "messages": [{"role": "user", "content": "Hello RealityRouter!"}]
+  }'
 ```
 
 ## 4. Control Center
@@ -81,7 +95,7 @@ Here you can adjust your **Cost vs. Speed** preferences using live sliders and s
 
 ## 5. For AI Agents (Automated Quickstart)
 
-If you are an AI coding agent or automation script, you can complete the installation, configuration, diagnostics, and launch without any human intervention:
+If you are an AI coding agent or automation script, you can complete the installation, configuration, diagnostics, and launch without interactive setup prompts. User action may still be required to provide API credentials or complete authentication:
 
 ### One-Click Installation
 ```bash

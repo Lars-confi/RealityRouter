@@ -59,10 +59,7 @@ job, not failing.
 
 ## How is this different from OpenRouter?
 
-OpenRouter is a hosted service that resells model access. RealityRouter is
-software you run yourself, with your own provider keys, and no traffic through
-anyone else's infrastructure. It is MIT-licensed, and you can read exactly how
-routing decisions are made.
+OpenRouter is a hosted service that resells model access. RealityRouter is software you run yourself, with your own provider keys. Raw model requests are not proxied through any hosted RealityRouter gateway, and go directly to model providers. Highly aggregated task feature metadata is sent to Reality Signal for calibration (see [privacy.md](privacy.md) for exact details). It is MIT-licensed (see the [LICENSE](../LICENSE) file), and you can read exactly how routing decisions are made.
 
 ## How is this different from LiteLLM?
 
@@ -95,8 +92,7 @@ went, but it does not enforce a budget ceiling.
 
 ## Do my prompts go through your servers?
 
-No. You run it, it holds your keys, and it calls providers directly from your
-machine.
+No. Raw prompts and completions never pass through RealityRouter-operated servers. They are sent directly from your machine to the selected model provider. Only high-level, anonymous task feature metadata (like token counts) is communicated to Reality Signal for calibration. See [privacy.md](privacy.md) for the exact data-flow table.
 
 ## How long does setup take?
 

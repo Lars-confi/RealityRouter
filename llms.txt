@@ -19,6 +19,9 @@ reality-router auth --agent --json
 # Check health and status of the router (outputs JSON)
 reality-router status --json
 
+# Stop background daemonized router instances gracefully
+reality-router stop --json
+
 # Diagnostics / Doctor check (exit codes: 10=env, 11=auth, 12=providers, 14=port busy)
 reality-router doctor --json
 

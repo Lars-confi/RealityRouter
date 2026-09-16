@@ -62,4 +62,4 @@ All user-specific data is stored under `~/.reality_router/`:
 - `reality_router.db` — SQLite store for events, history, and calibration cache.
 - `logs/` — text logs for debugging.
 
-Nothing leaves this directory. If you need to migrate or back up an install, copy the folder.
+Persistent local state is stored under `~/.reality_router/`. RealityRouter also communicates with configured model providers and Reality Signal as described in `privacy.md`. If you need to migrate or back up an install, copy the folder.

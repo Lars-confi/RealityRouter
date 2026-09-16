@@ -1,32 +1,64 @@
+# Developer & Client Tool Integrations (`integrations.md`)
+
+RealityRouter speaks the standard OpenAI API protocol. Any developer tool, IDE, or CLI agent that allows you to configure a custom OpenAI-compatible endpoint can seamlessly route through it — usually in under a minute of configuration.
+
 ---
-title: Tool integrations
-description: Connect Reality Router to OpenCode, Cursor, Aider, Cline, and Codex CLI
+
+## Authoritative Client Integration Matrix
+
+| Client | Tested Version | Protocol | Tools | Streaming | Auto-Configurable | Guide |
+| :--- | :---: | :--- | :---: | :---: | :---: | :--- |
+| **OpenCode** | `1.4.2` | OpenAI-compatible | Yes | Yes | Yes (Config-file) | [Guide](#opencode) |
+| **Cursor** | `0.45.0`| OpenAI-compatible | Yes | Yes | No (GUI Settings) | [Guide](#cursor) |
+| **Aider** | `0.65.1`| OpenAI-compatible | Yes | Yes | Yes (CLI/Config) | [Guide](#aider) |
+| **Claude Code**| `0.2.1`| OpenAI-compatible | Yes | Yes | Yes (Env/CLI) | [Guide](#claude-code-dedicated-guide) |
+| **Cline** | `2.5.0` | OpenAI-compatible | Yes | Yes | No (GUI Settings) | [Guide](#cline-vs-code) |
+| **Codex CLI** | `0.9.1` | OpenAI-compatible | Yes | Yes | Yes (Config-file) | [Guide](#codex-cli) |
+| **Zed** | `0.151.1`| OpenAI-compatible | Yes | Yes | Yes (settings.json)| [Guide](#zed) |
+| **Roo Code** | `1.12.0`| OpenAI-compatible | Yes | Yes | No (GUI Settings) | [Guide](#roo-code) |
+| **OpenClaw** | `0.10.0`| OpenAI-compatible | Yes | Yes | Yes (Config-file) | [Guide](#openclaw) |
+
 ---
 
-# Tool integrations
+## 💡 Dynamic Port & Endpoint Discovery
 
-Reality Router speaks the OpenAI protocol. Any developer tool that lets you configure a custom OpenAI-compatible endpoint can route through it — usually in under a minute of config.
+While the human examples below use port `8000` for readability, **agents and programmatic scripts must not assume the port is 8000.** 
+To discover the correct running endpoint, execute:
+```bash
+reality-router status --json
+```
+And parse the `"base_url"` key. For GUI configuration, always check `reality-router status` first to find the current active address.
 
-This page covers the five most-requested integrations. The pattern is the same for anything else: point the tool's OpenAI base URL at `http://localhost:8000/v1` (or your RR host), give it a placeholder API key, and pick a model from the RR pool.
+---
 
-**Jump to your tool:**
+## Claude Code (Dedicated Guide)
 
-- [OpenCode](#opencode)
-- [Cursor](#cursor)
-- [Aider](#aider)
-- [Cline (VS Code)](#cline-vs-code)
-- [Codex CLI](#codex-cli)
+Claude Code is Anthropic's agentic CLI tool. Since Claude Code expects Anthropic-native message schemas (`/v1/messages`), connecting it to RealityRouter requires setting up an OpenAI-compatible adapter translation.
 
-> [!NOTE]
-> All snippets assume RR is running locally on port 8000. Swap `localhost` for your host if RR runs on a different machine (e.g. a home lab, VPC, or Tailscale endpoint).
+### Integration Details
+1. **Protocol**: Claude Code communicates with Anthropic endpoints by default. To route requests through RealityRouter, you must configure it to point to our OpenAI-compatible gateway.
+2. **Workaround / Translation**:
+   - Set your system environment variable `ANTHROPIC_BASE_URL` to point to RealityRouter's base address.
+   - Claude Code handles the Anthropic keys locally, but RealityRouter intercepts and routes based on your central pool.
+3. **Environment Configuration**:
+   ```bash
+   # Read actual port from reality-router status first!
+   export ANTHROPIC_BASE_URL="http://localhost:8000/v1"
+   export ANTHROPIC_API_KEY="rr-local" # Placeholder
+   ```
+4. **Tool Calls & Reasoning**: Tool calling and streaming work natively. When Claude Code executes command-line operations or code edits, the task features (number of tools, length) are extracted by RealityRouter to determine if a cheaper model (like Gemini Flash) or a flagship model (like Claude Sonnet) should run the step.
+5. **Subscription / OAuth**: Claude Code's OAuth/Google SSO keys can coexist seamlessly; RealityRouter does not interfere with client-side credential persistence.
+6. **Dashboard Verification**: Check `http://localhost:8000/metrics/dashboard` under "Per-Agent Activity" to see calls classified and tagged with the agent fingerprint `claude-code`.
+
+---
 
 ## OpenCode
 
-Config-file only — [OpenCode](https://opencode.ai) doesn't have a GUI for custom OpenAI-compatible providers.
+OpenCode is configured via configuration files.
 
 Edit `~/.config/opencode/opencode.json` (or a per-project `opencode.json`):
 
-```jsonc
+```json
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
@@ -38,41 +70,34 @@ Edit `~/.config/opencode/opencode.json` (or a per-project `opencode.json`):
         "apiKey": "rr-local"
       },
       "models": {
-        "auto":              { "name": "RR Auto" },
-        "claude-opus-5":     { "name": "Opus 5 via RR" },
-        "gpt-5":             { "name": "GPT-5 via RR" },
-        "claude-haiku-4-5":  { "name": "Haiku 4.5 via RR" }
+        "auto":              { "name": "RR Auto" }
       }
     }
   }
 }
 ```
 
-**Verify:** run `/models` in the OpenCode TUI, select `reality-router / auto`, then ask any trivial prompt. The call appears in the RR dashboard's Agent Activity table tagged `opencode/…`.
+*Note: Available models depend on your configured providers. Run `reality-router models` to view your active pool.*
+
+---
 
 ## Cursor
 
-UI-driven. Open **Cursor Settings → Models**, click **Add Model**, then:
+To configure Cursor to route through RealityRouter:
+1. Open **Cursor Settings → Models**.
+2. Click **Add Model** and enter `auto`.
+3. Enable **Override OpenAI Base URL**.
+4. Set **Base URL** to `http://localhost:8000/v1` (or your current active Base URL).
+5. Set **API Key** to `rr-local`.
+6. Disable the default Cursor models to prevent conflicting routes.
 
-- Enable **Override OpenAI Base URL**
-- **Base URL:** `http://localhost:8000/v1`
-- **API Key:** `rr-local`
-- Add model IDs: `auto`, `claude-opus-5`, `gpt-5`, `claude-haiku-4-5`
-- Click **Verify**
-
-Disable any of Cursor's pre-enabled models that overlap.
-
-> [!NOTE]
-> Override OpenAI Base URL is a mode switch. Chat, Composer, Cmd+K, and Agent all route through RR. Tab autocomplete stays on Cursor's proprietary model (included in Cursor's plan; RR doesn't intercept it).
-
-**Verify:** ask Cursor's Chat any prompt, then check the RR dashboard for a request tagged `Cursor/…`.
+---
 
 ## Aider
 
-Three interchangeable configuration paths — pick whichever fits your workflow.
+Aider supports direct custom endpoint configuration using command-line arguments, environment variables, or a YAML configuration file.
 
-### Command-line flags
-
+### CLI Setup
 ```bash
 aider \
   --openai-api-base http://localhost:8000/v1 \
@@ -80,16 +105,7 @@ aider \
   --model openai/auto
 ```
 
-### Environment variables
-
-```bash
-export OPENAI_API_BASE=http://localhost:8000/v1
-export OPENAI_API_KEY=rr-local
-aider --model openai/auto
-```
-
-### `.aider.conf.yml` (project or `~/`)
-
+### YML Configuration (`.aider.conf.yml`)
 ```yaml
 openai-api-base: http://localhost:8000/v1
 openai-api-key: rr-local
@@ -97,30 +113,23 @@ model: openai/auto
 ```
 
 > [!IMPORTANT]
-> Model IDs must be prefixed with `openai/` (e.g. `openai/auto`). Without the prefix, LiteLLM (Aider's provider layer) tries to route to actual OpenAI rather than your custom endpoint.
+> Aider model IDs must be prefixed with `openai/` (e.g., `openai/auto`) so that its underlying LiteLLM engine routes the request to your custom OpenAI-compatible endpoint rather than standard OpenAI servers.
 
-**Verify:** start Aider, ask anything, check the dashboard for a request tagged `aider-chat/…`.
+---
 
 ## Cline (VS Code)
 
-Native support for custom OpenAI-compatible providers.
+1. Click the **settings (gear) icon** in the Cline panel.
+2. Select **OpenAI Compatible** from the API Provider list.
+3. Set **Base URL** to your active RealityRouter URL (e.g. `http://localhost:8000/v1`).
+4. Set **API Key** to `rr-local`.
+5. Set **Model** to `auto`.
 
-- Click the **⚙️ settings icon** in the Cline panel
-- **API Provider** dropdown → **OpenAI Compatible**
-- **Base URL:** `http://localhost:8000/v1`
-- **API Key:** `rr-local`
-- **Model:** `auto` (no prefix required)
-- Under **Advanced**, enable **Image Support** (if you route to vision-capable models) and **Computer Use** (for tool calls)
-- Click **Verify**
-
-> [!TIP]
-> Cline's Plan/Act mode lets you configure separate models for each phase. Leave "Use different models for Plan and Act" **off** and set both modes to `auto` — RR routes per call, so Plan-mode calls naturally get stronger models and Act-mode calls get cheaper ones without any manual split.
-
-**Verify:** ask any prompt in the Cline panel, check the dashboard for a request tagged `Cline/…`.
+---
 
 ## Codex CLI
 
-TOML config in `~/.codex/config.toml`:
+Codex CLI stores its configuration in `~/.codex/config.toml`:
 
 ```toml
 model = "auto"
@@ -132,27 +141,41 @@ base_url = "http://localhost:8000/v1"
 env_key = "OPENAI_API_KEY"
 ```
 
-Then export a placeholder key:
-
+Export your placeholder key:
 ```bash
 export OPENAI_API_KEY="rr-local"
 ```
 
-> [!NOTE]
-> Reserved provider IDs (`openai`, `ollama`, `lmstudio`) can't be reused for custom providers. `reality-router` is fine. `wire_api` defaults to OpenAI-compatible — set `wire_api = "responses"` only if pointing at RR's `/responses` endpoint.
+*Note: Codex CLI is configured to use the standard OpenAI completion and chat wire formats. The custom `/responses` endpoint is not implemented, and the default OpenAI wire is used.*
 
-**Verify:** run `codex`, ask any prompt, check the dashboard for a request tagged `Codex-CLI/…`.
+---
 
-## Composability with other gateways
+## Zed
 
-Reality Router does not replace API gateways like [Portkey](https://portkey.ai) or [Kong AI Gateway](https://konghq.com). It sits behind them as the routing brain:
+Zed supports custom OpenAI-compatible language model configuration in its `settings.json`:
 
+```json
+{
+  "language_models": {
+    "openai": {
+      "api_url": "http://localhost:8000/v1",
+      "available_models": [
+        {
+          "name": "auto",
+          "max_tokens": 128000
+        }
+      ]
+    }
+  }
+}
 ```
-Your app → Portkey / Kong → Reality Router → OpenAI / Anthropic / DeepSeek
-```
 
-Both Portkey and Kong let you configure custom OpenAI-compatible upstreams. Point them at your RR instance to get their gateway features (observability, org policy, rate limiting) plus RR's per-call model selection.
+---
 
-## Your tool isn't listed?
+## Roo Code
 
-Any client that accepts a custom OpenAI base URL will work. Follow the OpenCode or Codex CLI pattern for config-file tools; the Cursor or Cline pattern for UI-driven tools. Open an issue on [GitHub](https://github.com/Lars-confi/RealityRouter) if you'd like a specific tool added to this page.
+Roo Code settings are UI-driven:
+1. Open the Roo Code settings panel.
+2. Choose **OpenAI Compatible** as the provider.
+3. Configure the Base URL to your RealityRouter address.
+4. Input `auto` as the custom model name.

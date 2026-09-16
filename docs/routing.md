@@ -3,36 +3,44 @@ title: Routing strategies
 description: Single-shot vs sequential, optimal stopping
 ---
 
-# Routing strategies
+# Routing Strategies: Snap vs. Ladder (`routing.md`)
 
-Two ways for the router to pick a model: score them all upfront and send to the winner (single-shot), or start cheap and escalate only if the output fails validation (sequential). Both run the same Expected Utility math.
+RealityRouter offers two distinct strategies to optimize model selection: **Snap** (single-shot Expected Utility) and **Ladder** (sequential assessment/escalation). Both strategies are built upon the same Expected Utility mathematics but apply different request lifecycles.
 
-## Expected Utility (single-shot)
+---
 
-The default mode. The router evaluates every configured model in parallel and routes the query to the single best candidate.
+## 1. Snap: Single-Shot Expected-Utility Routing (`expected_utility`)
 
-- **Best for** — balanced workloads, low latency, mixed query types.
-- **Logic** — immediately selects the `m_i` that maximizes `p_i · R − α · c_i − β · t_i`.
-- **Network calls** — exactly one LLM call per request.
+The default operational mode. The router evaluates the utility equations for all configured models simultaneously and routes the query to the single most optimal candidate.
 
-If the chosen model's output fails quality validation (truncation, broken JSON, refusal), the router still escalates to a fallback — but the default path is one shot, one model.
+- **Public/Internal Name**: **Snap** / `expected_utility`
+- **Best For**: Low latency requirements, interactive coding sessions, and mixed difficulty workloads.
+- **Decision Engine**: Immediately selects the candidate `m_i` that maximizes `EU(m_i) = p_i · R − α · c_i − β · t_i`.
+- **Parallel Evaluation**: RealityRouter computes the expected utility for all candidates in parallel using light statistical classifiers and regional latency caches. It **does not** execute parallel LLM calls, which would multiply costs and latency.
+- **Downstream Call Count**: 
+  - *Normal Path*: Exactly one LLM call.
+  - *Validation Failure*: If the chosen model's output fails quality or protocol validation, RealityRouter triggers a sequential fallback attempt.
 
-## Tiered Assessment (sequential)
+---
 
-A multi-stage approach. The router starts with the cheapest viable model, validates the output, then decides whether the answer is good enough or whether to escalate.
+## 2. Ladder: Sequential Assessment / Escalation (`tiered_assessment`)
 
-- **Best for** — maximum cost optimization, autonomous agentic workflows where many queries are easy and a few are hard.
-- **Network calls** — usually one. Up to three on hard queries.
+A multi-stage escalation approach. The router begins with the cheapest viable model, evaluates the response, and decides whether the output is statistically sufficient or if it must escalate to a more powerful model.
 
-### How it works
+- **Public/Internal Name**: **Ladder** / `tiered_assessment`
+- **Best For**: Maximizing cost savings in autonomous agentic loops where a high proportion of queries are routine and only a few require deep reasoning.
+- **Downstream Call Count**: Usually one. Up to three sequential attempts on complex tasks.
 
-For each request:
+### The Ladder Escalation Lifecycle
 
-1. **First attempt** — start with the cheapest available model.
-2. **Post-response calibration** — once the response arrives, re-run feature extraction with diagnostic metrics appended: confidence scores, response entropy, and logprobs (if the model exposes them).
-3. **Validation** — compute a calibrated probability `p_actual` using the full feature set. This is "how likely is this answer correct, given the response we just got?"
-4. **Optimal stopping** — compare the utility of the current answer against the potential utility of escalating to a more powerful model (assuming `p_next = 1.0` for the gold-standard fallback).
-5. **Escalate only if worth it** — the router escalates only when the potential gain in accuracy outweighs the additional cost and latency.
+1. **First Attempt**: Dispatch the query to the cheapest available candidate model in the pool.
+2. **Post-Response Evaluation**: Once the completion is received, extract high-level feature metrics from the response text (confidence scores, syntax structure, presence of errors).
+3. **Calibrate Probability**: Compute a calibrated probability `p_actual` representing: *"how likely is this generated response correct, given the features of the output we just received?"*
+4. **Optimal Stopping & the `p_next = 1.0` Assumption**:
+   - The stopping algorithm compares the utility of returning the current answer against the potential utility of escalating to a more powerful "gold-standard" fallback model.
+   - **The `p_next = 1.0` Assumption**: In calculating the expected utility of the escalation path, the algorithm optimistically assumes the next-tier flagship model will succeed with 100% probability (`p_next = 1.0`). 
+   - **Why this is used**: This acts as an upper-bound counterfactual. It ensures that the router will only stop if the current cheap answer is exceptionally strong, or if the cost of the flagship is too prohibitive under your cost sensitivity `α`.
+5. **Escalate Only When Justified**: The router will only execute a sequential attempt if the expected utility margin of the flagship model exceeds the current response's quality score. Otherwise, it stops and returns the cheap response.
 
 > [!INFO]
 > **Why sequential saves money.** Most queries to a coding agent are routine — a small refactor, a quick lookup, a formatting fix. A cheap or local model nails them on the first try. The router never escalates. You pay zero or near-zero per call. Only the hard queries — the ones that genuinely need Opus or GPT-5.4 Thinking — pay the flagship price.
@@ -76,4 +84,4 @@ The router maintains an internal semaphore per model. If a model is at its limit
 - **Pick single-shot** if latency matters, your queries vary in difficulty, or your workload is mostly interactive (humans waiting on responses).
 - **Pick sequential** if you're running autonomous agents (RooCode, OpenClaw, AutoGPT), have lots of routine queries mixed with occasional hard ones, and care primarily about minimizing cost.
 
-You can change strategy at any time by re-running `./start.sh`.
+You can change strategy at any time by running `reality-router setup` or specifying it directly on startup (e.g., `reality-router start --strategy expected_utility`).

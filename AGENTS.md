@@ -9,11 +9,27 @@ Welcome! This guide is written explicitly for AI agents, developer tools, and au
 RealityRouter is an agent-native, utility-optimized LLM routing layer. It intercepts LLM requests, evaluates cost vs. time vs. accuracy constraints, and dynamically dispatches requests to the most optimal provider or local model.
 
 ```mermaid
-graph TD
-    User[Client/Agent Application] -->|Standard OpenAI API Request| RR[RealityRouter Core]
-    RR -->|Evaluate Constraints α, β| LB[Utility Load Balancer]
-    LB -->|Sentiment Check| SL[Sentiment Feedback Loop]
-    LB -->|Forward to Best Model| Provider[Model Provider: OpenAI / Anthropic / Ollama / etc.]
+sequenceDiagram
+    autonumber
+    actor User as Client Application (Cursor/Zed/Aider)
+    participant RR as RealityRouter Core
+    participant RS as Reality Signal (Remote Calibration)
+    participant MP as Model Provider (OpenAI/Anthropic/Ollama)
+    participant DB as SQLite DB & Metrics
+
+    User->>RR: POST /v1/chat/completions (model="auto")
+    Note over RR: Extract task features (tokens, code, language)
+    RR->>RS: Query optimal success probabilities (Snap/Ladder)
+    RS-->>RR: Return success probabilities (p_i)
+    Note over RR: Compute EU(m) = pR - alpha*c - beta*t
+    Note over RR: Select argmax EU model
+    RR->>MP: Forward request with native API payload
+    MP-->>RR: Return model completion response
+    Note over RR: Run protocol/schema validations
+    RR->>DB: Log latency, tokens, & validation status
+    RR->>User: Return OpenAI-compatible response
+    Note over RR: Async Feedback Loop runs sentiment check
+    RR->>RS: Report validation & sentiment feedback labels
 ```
 
 ### Key Modules:

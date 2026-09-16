@@ -5,7 +5,29 @@ description: Endpoints, request/response shapes, headers
 
 # API reference
 
-RealityRouter exposes standard OpenAI-compatible endpoints. Any client built for the OpenAI API works — just change the base URL.
+RealityRouter exposes an OpenAI-compatible API for the endpoints and features documented below.
+
+## API Compatibility Matrix
+
+The following table summarizes the tested and verified compatibility of RealityRouter endpoints and advanced features:
+
+| Capability | Status | Notes |
+| :--- | :---: | :--- |
+| `POST /v1/chat/completions` | **Supported** | Full standard request/response body support. |
+| `POST /v1/completions` | **Supported** | Legacy text completions. |
+| `GET /v1/models` | **Supported** | Returns the list of currently active and discovered models. |
+| Streaming / SSE | **Supported** | Verified streaming responses across all first-class adapters. |
+| `tools` (Function Calling) | **Supported** | Translates client tools natively or converts to plain-text prompts if unsupported. |
+| `tool_choice` | **Supported** | Standard selection rules are passed through or emulated. |
+| JSON / Structured Output | **Supported** | Native schemas and strict JSON modes are enforced. |
+| Image/Vision Input | **Supported** | Vision data is routed to vision-capable endpoints. |
+| Audio Input | *Not Supported*| Planned in upcoming version. |
+| OpenAI Responses API | *Not Supported*| Point custom clients to standard chat/completion endpoints instead. |
+| Reasoning/Thinking fields| **Supported** | Pass-through for Anthropic and Google reasoning models. |
+| Logprobs | *Not Supported*| Upstream logprobs are not currently aggregated. |
+| Embeddings | *Not Supported*| Embedding endpoints are not intercepted or routed. |
+
+---
 
 ## Base URL
 

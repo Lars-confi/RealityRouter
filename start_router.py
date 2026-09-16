@@ -33,6 +33,7 @@ REALITY_ROUTER_DIR = os.path.join(SCRIPT_DIR, "reality-router")
 ENV_FILE = os.path.join(APP_HOME, ".env")
 DISABLED_MODELS_FILE = os.path.join(APP_HOME, "disabled_models.json")
 PID_FILE = os.path.join(APP_HOME, "router.pid")
+PORT_FILE = os.path.join(APP_HOME, "router.port")
 SERVER_LOG = os.path.join(APP_HOME, "server.log")
 
 # Exit codes for non-interactive callers. Distinct on purpose: 3 means ask the
@@ -259,7 +260,7 @@ def sync_discover_ollama(base_url="http://localhost:11434"):
     return discovered
 
 
-def sync_discover_openai_compat(base_url, api_key, provider_name):
+def sync_discover_openai_compat(base_url, api_key, provider_name, env_vars=None):
     discovered = []
     try:
         base_url = base_url.rstrip("/")
@@ -283,9 +284,19 @@ def sync_discover_openai_compat(base_url, api_key, provider_name):
             else:
                 req.add_header("Authorization", f"Bearer {api_key}")
 
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        insecure = False
+        if env_vars and env_vars.get("INSECURE_SKIP_TLS_VERIFY") == "true":
+            insecure = True
+        elif os.environ.get("INSECURE_SKIP_TLS_VERIFY") == "true":
+            insecure = True
+
+        ctx = None
+        if insecure:
+            print("WARNING: INSECURE_SKIP_TLS_VERIFY is enabled. TLS/SSL verification is bypassed!")
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
         with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
             if response.status == 200:
                 data = json.loads(response.read().decode())
@@ -342,14 +353,14 @@ def get_all_models(env_vars):
         else:
             models.extend(
                 sync_discover_openai_compat(
-                    c_url, env_vars.get("CUSTOM_LLM_API_KEY", "dummy"), "custom"
+                    c_url, env_vars.get("CUSTOM_LLM_API_KEY", "dummy"), "custom", env_vars
                 )
             )
     # OpenAI
     oa_key = env_vars.get("OPENAI_API_KEY")
     if oa_key and oa_key != "dummy":
         models.extend(
-            sync_discover_openai_compat("https://api.openai.com/v1", oa_key, "openai")
+            sync_discover_openai_compat("https://api.openai.com/v1", oa_key, "openai", env_vars)
         )
 
     # Gemini
@@ -367,9 +378,15 @@ def get_all_models(env_vars):
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 )
                 req.add_header("Accept", "application/json")
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
+                
+                insecure = (env_vars.get("INSECURE_SKIP_TLS_VERIFY") == "true") or (os.environ.get("INSECURE_SKIP_TLS_VERIFY") == "true")
+                ctx = None
+                if insecure:
+                    print("WARNING: INSECURE_SKIP_TLS_VERIFY is enabled. TLS/SSL verification is bypassed!")
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+
                 with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
                     if response.status == 200:
                         data = json.loads(response.read().decode())
@@ -405,6 +422,7 @@ def get_all_models(env_vars):
                 f"https://generativelanguage.googleapis.com/{version}/openai",
                 g_key,
                 "gemini",
+                env_vars,
             )
             for m in compat_models:
                 if m["id"] not in gemini_ids:
@@ -418,7 +436,7 @@ def get_all_models(env_vars):
     if a_key and a_key != "dummy":
         models.extend(
             sync_discover_openai_compat(
-                "https://api.anthropic.com/v1", a_key, "anthropic"
+                "https://api.anthropic.com/v1", a_key, "anthropic", env_vars
             )
         )
 
@@ -426,7 +444,7 @@ def get_all_models(env_vars):
     mi_key = env_vars.get("MISTRAL_API_KEY")
     if mi_key and mi_key != "dummy":
         models.extend(
-            sync_discover_openai_compat("https://api.mistral.ai/v1", mi_key, "mistral")
+            sync_discover_openai_compat("https://api.mistral.ai/v1", mi_key, "mistral", env_vars)
         )
 
     # DeepSeek
@@ -434,7 +452,7 @@ def get_all_models(env_vars):
     if ds_key and ds_key != "dummy":
         models.extend(
             sync_discover_openai_compat(
-                "https://api.deepseek.com/v1", ds_key, "deepseek"
+                "https://api.deepseek.com/v1", ds_key, "deepseek", env_vars
             )
         )
 
@@ -1011,8 +1029,13 @@ def start_server(env_vars):
     # Ensure PYTHONPATH includes the absolute path to the core source
     env["PYTHONPATH"] = os.path.abspath(REALITY_ROUTER_DIR)
 
-    port = find_available_port(8000)
-    if port != 8000:
+    port_str = env_vars.get("_RR_PORT")
+    if port_str:
+        port = int(port_str)
+    else:
+        port = find_available_port(8000)
+
+    if port != 8000 and not port_str:
         print_status(f"Port 8000 in use, automatically switched to {port}", "warn")
 
     print(f"\n  {C_GREEN}{C_BOLD}Server active at http://0.0.0.0:{port}{C_RESET}")
@@ -1020,6 +1043,12 @@ def start_server(env_vars):
     print(f"  {C_YELLOW}Sentiment Model: {sentiment_model}{C_RESET}")
     print(f"  {C_CYAN}Press [CTRL+C] to stop the process.{C_RESET}\n")
     print(f"{C_BLUE}" + "━" * 64 + f"{C_RESET}")
+
+    # Write state files
+    with open(PORT_FILE, "w") as f:
+        f.write(str(port))
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
 
     try:
         subprocess.run(
@@ -1041,6 +1070,14 @@ def start_server(env_vars):
         print(f"\n\n  {C_YELLOW}Shutdown signal received. Server stopped.{C_RESET}")
     except Exception as e:
         print_status(f"Crash detected: {e}", "error")
+    finally:
+        # Clean up state files
+        for fpath in [PID_FILE, PORT_FILE]:
+            try:
+                if os.path.exists(fpath):
+                    os.remove(fpath)
+            except OSError:
+                pass
 
 
 def deploy_docker(env_vars):
@@ -1284,6 +1321,8 @@ def start_server_detached(env_vars, port):
     )
     with open(PID_FILE, "w") as f:
         f.write(str(proc.pid))
+    with open(PORT_FILE, "w") as f:
+        f.write(str(port))
     return proc.pid
 
 
@@ -1450,12 +1489,12 @@ def headless_main(args):
 def parse_args(argv):
     p = argparse.ArgumentParser(
         prog="reality-router",
-        description="RealityRouter Command-Line Interface. Handle setup, status, start, doctor, models, auth.",
+        description="RealityRouter Command-Line Interface. Handle setup, start, stop, status, doctor, models, auth.",
     )
     p.add_argument(
         "command",
         nargs="?",
-        choices=["setup", "start", "status", "doctor", "models", "auth"],
+        choices=["setup", "start", "stop", "status", "doctor", "models", "auth"],
         help="Command to execute"
     )
     p.add_argument(
@@ -2044,7 +2083,14 @@ def cmd_start(args, config):
 
     running_pid = read_pid()
     if pid_alive(running_pid):
-        port = args.port or 8000
+        port = None
+        try:
+            with open(PORT_FILE, "r") as f:
+                port = int(f.read().strip())
+        except Exception:
+            pass
+        if not port:
+            port = args.port or 8000
         if args.json:
             print(json.dumps(build_status(config, port, running_pid), indent=2))
         else:
@@ -2086,14 +2132,77 @@ def cmd_start(args, config):
             print(f"RealityRouter started successfully on port {port} (PID {pid}).")
 
 
-def cmd_status(args, config):
+def cmd_stop(args, config):
     running_pid = read_pid()
-    port = args.port or 8000
-    models = get_all_models(config)
-    status = build_status(config, port, running_pid, models)
+    if not pid_alive(running_pid):
+        if args.json:
+            print(json.dumps({"status": "stopped", "message": "RealityRouter is not running."}, indent=2))
+        else:
+            print("RealityRouter is not running.")
+        sys.exit(EXIT_OK)
+
+    # Terminate process
+    try:
+        import signal
+        os.kill(running_pid, signal.SIGTERM)
+    except Exception as e:
+        if args.json:
+            print(json.dumps({"status": "error", "error": f"Failed to stop process: {e}"}, indent=2))
+        else:
+            print(f"Error: Failed to stop process: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Wait for process to exit
+    for _ in range(10):
+        if not pid_alive(running_pid):
+            break
+        time.sleep(0.5)
+
+    if pid_alive(running_pid):
+        # Force kill if still alive
+        try:
+            os.kill(running_pid, signal.SIGKILL)
+        except Exception:
+            pass
+
+    # Clean up files
+    for fpath in [PID_FILE, PORT_FILE]:
+        try:
+            if os.path.exists(fpath):
+                os.remove(fpath)
+        except OSError:
+            pass
 
     if args.json:
-        print(json.dumps(status, indent=2))
+        print(json.dumps({"status": "stopped"}, indent=2))
+    else:
+        print("RealityRouter stopped successfully.")
+    sys.exit(EXIT_OK)
+
+
+def cmd_status(args, config):
+    running_pid = read_pid()
+    port = None
+    if pid_alive(running_pid):
+        try:
+            with open(PORT_FILE, "r") as f:
+                port = int(f.read().strip())
+        except Exception:
+            pass
+    if not port:
+        port = args.port or 8000
+
+    models = get_all_models(config)
+    status = build_status(config, port, running_pid, models)
+    if pid_alive(running_pid):
+        status["status"] = "running"
+    else:
+        status["status"] = "stopped"
+
+    if args.json:
+        # Include all status keys so test expectations and dynamic port requirements are both met
+        out = status.copy()
+        print(json.dumps(out, indent=2))
     else:
         print_header("RealityRouter Status")
         print(f"  Router Status:      {status['status'].upper()}")
@@ -2131,8 +2240,14 @@ def cmd_doctor(args, config):
     ollama_url = config.get("CUSTOM_LLM_BASE_URL") or "http://localhost:11434"
     ollama_reachable = False
     if "11434" in ollama_url:
+        insecure = (config.get("INSECURE_SKIP_TLS_VERIFY") == "true") or (os.environ.get("INSECURE_SKIP_TLS_VERIFY") == "true")
+        ctx = None
+        if insecure:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
         try:
-            with urllib.request.urlopen(f"{ollama_url.rstrip('/')}/api/tags", timeout=1.5) as response:
+            with urllib.request.urlopen(f"{ollama_url.rstrip('/')}/api/tags", timeout=1.5, context=ctx) as response:
                 if response.status == 200:
                     ollama_reachable = True
         except:
@@ -2324,6 +2439,8 @@ def main():
         cmd_setup(args, config)
     elif args.command == "start":
         cmd_start(args, config)
+    elif args.command == "stop":
+        cmd_stop(args, config)
     elif args.command == "status":
         cmd_status(args, config)
     elif args.command == "doctor":

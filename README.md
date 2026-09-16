@@ -126,13 +126,11 @@ compliance:
 
 ## Developer integration
 
-RealityRouter is **100% OpenAI API compatible**. You don't need to rewrite
-your agent — just change your environment variables:
+RealityRouter exposes an OpenAI-compatible API. The supported endpoints and features are listed in the API reference. You don't need to rewrite your agent — just change your environment variables:
 
-- **Base URL** — `http://localhost:8000/v1`
-- **API Key** — `any` (or your configured secret)
-- **Model** — `auto` (or any model name; the router intercepts and chooses
-  the best actual model for the job)
+- **Base URL** — `http://localhost:8000/v1` (obtain dynamically via `reality-router status`)
+- **API Key** — any non-empty placeholder value for local ingress in the current version. RealityRouter ingress does not currently validate this value; see `SECURITY.md` before remote deployment.
+- **Model** — `auto` (to let the router choose the best model) or a specific model ID (which pins the request to that model, bypassing initial selection while still supporting validation and escalation)
 
 ---
 
@@ -152,6 +150,12 @@ If you are an AI coding agent (like Zed, Claude Code, Cursor, Roo Code, etc.) or
    - Run `reality-router doctor --json` to perform active checks. The command exits with precise exit codes (`0` if healthy, `10` if config file missing, `11` if auth missing, `12` if provider keys missing, `14` if port is busy).
 5. **Machine-Readable Status**:
    - Run `reality-router status --json` to get detailed stats about the daemon status, port, pid, and active provider models.
+
+---
+
+## License
+
+RealityRouter is MIT licensed. See the [LICENSE](LICENSE) file for the full text.
 
 ---
 

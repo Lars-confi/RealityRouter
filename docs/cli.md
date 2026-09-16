@@ -77,12 +77,13 @@ Runs system diagnostics and checks health of connected adapters.
   - Connection status to local Ollama endpoints.
   - Port availability.
 - **Exit Codes**:
-  - `0`: All clear / Healthy.
-  - `2`: Invalid CLI arguments.
-  - `3`: Missing API credentials.
-  - `4`: Missing or empty SSO / Auth token.
-  - `5`: Unhealthy / Daemon crash.
-  - `6`: Binding port busy.
+  - `0`: Success / All clear / Healthy (`EXIT_OK`).
+  - `2`: Invalid CLI arguments or usage error (`EXIT_USAGE`).
+  - `3`: Missing model provider credentials or auth token (`EXIT_NO_CREDENTIALS`).
+  - `4`: Credentials present but no models discovered (`EXIT_NO_MODELS`).
+  - `5`: Server started but unhealthy or /health failed (`EXIT_UNHEALTHY`).
+  - `6`: Binding port busy (`EXIT_PORT_BUSY`).
+  - `7`: Router already running (`EXIT_ALREADY_RUNNING`).
 
 ### 6. `models`
 Inspects and manages candidate models available for routing.

@@ -91,6 +91,10 @@ PROVIDER_KEYS = {
     "deepseek": [("DEEPSEEK_API_KEY", "DeepSeek API Key")],
     "huggingface": [("HUGGINGFACE_API_KEY", "Hugging Face API Key")],
     "gemini": [("GEMINI_API_KEY", "Google Gemini API Key")],
+    "moonshot": [("MOONSHOT_API_KEY", "Moonshot API Key")],
+    "zai": [("ZAI_API_KEY", "Z.ai API Key")],
+    "xai": [("XAI_API_KEY", "xAI API Key")],
+    "dashscope": [("DASHSCOPE_API_KEY", "Alibaba Qwen API Key")],
     "custom/local": [
         ("CUSTOM_LLM_BASE_URL", "Base URL (e.g., http://localhost:11434/v1)"),
         ("CUSTOM_LLM_API_KEY", "API Key (or dummy)"),
@@ -124,12 +128,11 @@ def resolve_host_port(args, config):
         env_port = os.environ.get("REALITY_ROUTER_PORT") or config.get("REALITY_ROUTER_PORT")
         if env_port:
             try:
-                p_val = int(env_port)
-                port = find_available_port(p_val)
+                port = int(env_port)
             except ValueError:
-                port = find_available_port(8000)
+                port = 8000
         else:
-            port = find_available_port(8000)
+            port = 8000
     return host, port
 
 
@@ -569,6 +572,10 @@ def wizard_providers(env_vars):
         ("anthropic", "Anthropic"),
         ("mistral", "Mistral"),
         ("deepseek", "DeepSeek"),
+        ("moonshot", "Moonshot (Kimi)"),
+        ("zai", "Z.ai (GLM)"),
+        ("xai", "xAI (Grok)"),
+        ("dashscope", "Alibaba Qwen"),
         ("custom/local", "Custom/Ollama"),
     ]
 
@@ -661,6 +668,22 @@ def wizard_providers(env_vars):
                 elif choice == "deepseek":
                     test_models = sync_discover_openai_compat(
                         "https://api.deepseek.com/v1", new_val, "deepseek", temp_env
+                    )
+                elif choice == "moonshot":
+                    test_models = sync_discover_openai_compat(
+                        "https://api.moonshot.ai/v1", new_val, "moonshot", temp_env
+                    )
+                elif choice == "zai":
+                    test_models = sync_discover_openai_compat(
+                        "https://api.z.ai/api/paas/v4", new_val, "zai", temp_env
+                    )
+                elif choice == "xai":
+                    test_models = sync_discover_openai_compat(
+                        "https://api.x.ai/v1", new_val, "xai", temp_env
+                    )
+                elif choice == "dashscope":
+                    test_models = sync_discover_openai_compat(
+                        "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", new_val, "dashscope", temp_env
                     )
                 elif choice == "custom/local":
                     # We need both URL and Key to test. If we only have one, skip validation for now.

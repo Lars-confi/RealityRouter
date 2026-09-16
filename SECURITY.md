@@ -13,7 +13,7 @@ Only the latest commit/version on the `main` branch of the RealityRouter reposit
 
 ## Responsible Vulnerability Disclosure
 
-If you find any security vulnerability in RealityRouter (including but not limited to leaks, privilege escalations, or remote execution risks), please report it responsibly by opening a confidential inquiry or emailing the maintainers directly at `security@realityrouter.local` (or via private channels on the project repository hosting site).
+If you find any security vulnerability in RealityRouter (including but not limited to leaks, privilege escalations, or remote execution risks), please report it responsibly by opening a private vulnerability report or a confidential ticket through the project repository's private hosting channels on Forgejo.
 
 Please do not open a public GitHub/Gitea issue for unresolved security issues.
 

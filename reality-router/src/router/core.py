@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -1592,8 +1592,25 @@ class RouterCore:
                 request.parameters and request.parameters.get("tools")
             )
 
+            # Check for model pinning & tier-biasing
+            model_param = request.parameters.get("model") if request.parameters else None
+            candidate_models = self.models
+            if model_param and model_param != "auto":
+                if model_param in self.models:
+                    candidate_models = {model_param: self.models[model_param]}
+                elif model_param == "tier:cheap":
+                    costs = [info.get("cost", 0.0) for info in self.models.values()]
+                    if costs:
+                        median_cost = statistics.median(costs)
+                        candidate_models = {mid: info for mid, info in self.models.items() if info.get("cost", 0.0) <= median_cost}
+                elif model_param == "tier:flagship":
+                    costs = [info.get("cost", 0.0) for info in self.models.values()]
+                    if costs:
+                        median_cost = statistics.median(costs)
+                        candidate_models = {mid: info for mid, info in self.models.items() if info.get("cost", 0.0) > median_cost}
+
             model_tasks = []
-            for mid, info in self.models.items():
+            for mid, info in candidate_models.items():
                 # If vision is detected, only include models that strictly support it
                 if has_images:
                     caps = pricing_manager.get_model_capabilities(mid)
@@ -1664,7 +1681,7 @@ class RouterCore:
                     auth_token = settings.reality_check_token
                     logger.info(f"RC Call Token source: settings")
                     if auth_token:
-                        logger.info(f"RC Call Token starts with: {auth_token[:15]}...")
+                        logger.info("RC Call Token is configured/attached securely")
 
                     headers = {
                         "Content-Type": "application/json",
@@ -1686,7 +1703,7 @@ class RouterCore:
                         # Always use bypass header as standard Authorization is stripped by Azure
                         headers["X-Reality-Check-Token"] = full_token
                         logger.info(
-                            f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token: {full_token[:20]}...)"
+                            f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token is configured/attached securely)"
                         )
                     else:
                         logger.warning(
@@ -2317,7 +2334,7 @@ class RouterCore:
                                 # Always use bypass header as standard Authorization is stripped by Azure
                                 headers["X-Reality-Check-Token"] = full_token
                                 logger.info(
-                                    f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token: {full_token[:20]}...)"
+                                    f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token is configured/attached securely)"
                                 )
                             else:
                                 logger.warning(
@@ -2709,7 +2726,7 @@ class RouterCore:
                                         # Always use bypass header as standard Authorization is stripped by Azure
                                         headers["X-Reality-Check-Token"] = full_token
                                         logger.info(
-                                            f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token: {full_token[:20]}...)"
+                                            f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token is configured/attached securely)"
                                         )
                                     else:
                                         logger.warning(
@@ -2767,7 +2784,7 @@ class RouterCore:
                                     # Always use bypass header as standard Authorization is stripped by Azure
                                     headers["X-Reality-Check-Token"] = full_token
                                     logger.info(
-                                        f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token: {full_token[:20]}...)"
+                                        f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token is configured/attached securely)"
                                     )
                                 else:
                                     logger.warning(
@@ -3109,7 +3126,7 @@ class RouterCore:
                                         # Always use bypass header as standard Authorization is stripped by Azure
                                         headers["X-Reality-Check-Token"] = full_token
                                         logger.info(
-                                            f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token: {full_token[:20]}...)"
+                                            f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token is configured/attached securely)"
                                         )
                                     else:
                                         logger.warning(
@@ -3205,7 +3222,7 @@ class RouterCore:
                                     # Always use bypass header as standard Authorization is stripped by Azure
                                     headers["X-Reality-Check-Token"] = full_token
                                     logger.info(
-                                        f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token: {full_token[:20]}...)"
+                                        f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token is configured/attached securely)"
                                     )
                                 else:
                                     logger.warning(
@@ -3534,6 +3551,324 @@ async def get_agent_card():
     }
 
 
+def calculate_savings(core, chosen_model_id, usage):
+    if not core.models:
+        return 0.0, 0.0
+
+    most_expensive_model_id = None
+    max_cost_rate = -1.0
+    for mid, info in core.models.items():
+        cost_rate = info.get("cost", 0.0)
+        if cost_rate > max_cost_rate:
+            max_cost_rate = cost_rate
+            most_expensive_model_id = mid
+
+    if not most_expensive_model_id:
+        return 0.0, 0.0
+
+    prompt_tokens = usage.get("prompt_tokens", 0) if isinstance(usage, dict) else 0
+    completion_tokens = usage.get("completion_tokens", 0) if isinstance(usage, dict) else 0
+
+    def get_model_cost(info, p_tok, c_tok):
+        p_cost = info.get("prompt_cost", info.get("cost", 0.0))
+        c_cost = info.get("completion_cost", info.get("cost", 0.0))
+        return (p_tok * p_cost / 1000.0) + (c_tok * c_cost / 1000.0)
+
+    chosen_info = core.models.get(chosen_model_id)
+    if not chosen_info:
+        return 0.0, 0.0
+
+    chosen_cost = get_model_cost(chosen_info, prompt_tokens, completion_tokens)
+
+    flagship_info = core.models.get(most_expensive_model_id)
+    flagship_cost = get_model_cost(flagship_info, prompt_tokens, completion_tokens)
+
+    saved = max(0.0, flagship_cost - chosen_cost)
+    return chosen_cost, saved
+
+
+@router.post("/messages")
+async def anthropic_messages(
+    fastapi_request: Request,
+    Authorization: str = Header(None),
+):
+    try:
+        body = await fastapi_request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    try:
+        model = body.get("model", "auto")
+        messages = body.get("messages", [])
+        system = body.get("system", "")
+        max_tokens = body.get("max_tokens", 1024)
+        temperature = body.get("temperature", 0.7)
+        stream = body.get("stream", False)
+        tools = body.get("tools")
+
+        # Map to standard OpenAI-style messages
+        openai_messages = []
+        if system:
+            openai_messages.append({"role": "system", "content": system})
+        for msg in messages:
+            openai_messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
+
+        # Map to query string (last user message)
+        last_msg = messages[-1] if messages else {"content": ""}
+        content = last_msg.get("content", "")
+        if isinstance(content, list):
+            query_text = ""
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    query_text += block.get("text", "")
+            if not query_text and content:
+                query_text = str(content)
+        else:
+            query_text = str(content)
+
+        parameters = {
+            "model": model,
+            "messages": openai_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": stream,
+        }
+        if tools:
+            parameters["tools"] = tools
+
+        routing_req = RoutingRequest(
+            query=query_text,
+            agent_id=resolve_agent_id(
+                None,
+                fastapi_request.headers,
+                messages=openai_messages,
+            ),
+            parameters=parameters,
+            authorization=Authorization,
+        )
+
+        core = router_core
+        settings = get_settings()
+
+        if stream:
+            async def anthropic_stream_generator():
+                msg_id = f"msg_{int(time.time())}"
+                routing_task = asyncio.create_task(core.route_request(routing_req))
+                
+                while not routing_task.done():
+                    yield "event: ping\ndata: {}\n\n"
+                    await asyncio.sleep(2)
+                
+                try:
+                    routing_rsp = await routing_task
+                except Exception as e:
+                    err_event = {
+                        "type": "error",
+                        "error": {
+                            "type": "api_error",
+                            "message": f"Routing failed: {str(e)}"
+                        }
+                    }
+                    yield f"event: error\ndata: {json.dumps(err_event)}\n\n"
+                    return
+
+                text_content = (
+                    routing_rsp.response.get("text", "")
+                    if isinstance(routing_rsp.response, dict)
+                    else ""
+                ) or (
+                    routing_rsp.response.get("reasoning_content", "")
+                    if isinstance(routing_rsp.response, dict)
+                    else ""
+                )
+
+                usage = (
+                    routing_rsp.response.get("usage", {})
+                    if isinstance(routing_rsp.response, dict)
+                    else {}
+                )
+                input_tokens = usage.get("prompt_tokens", 0)
+                output_tokens = usage.get("completion_tokens", 0)
+
+                msg_start = {
+                    "type": "message_start",
+                    "message": {
+                        "id": msg_id,
+                        "type": "message",
+                        "role": "assistant",
+                        "model": routing_rsp.model_id,
+                        "content": [],
+                        "stop_reason": None,
+                        "stop_sequence": None,
+                        "usage": {
+                            "input_tokens": input_tokens,
+                            "output_tokens": 0
+                        }
+                    }
+                }
+                yield f"event: message_start\ndata: {json.dumps(msg_start)}\n\n"
+
+                if text_content:
+                    block_start = {
+                        "type": "content_block_start",
+                        "index": 0,
+                        "content_block": {
+                            "type": "text",
+                            "text": ""
+                        }
+                    }
+                    yield f"event: content_block_start\ndata: {json.dumps(block_start)}\n\n"
+
+                    block_delta = {
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {
+                            "type": "text_delta",
+                            "text": text_content
+                        }
+                    }
+                    yield f"event: content_block_delta\ndata: {json.dumps(block_delta)}\n\n"
+
+                    block_stop = {
+                        "type": "content_block_stop",
+                        "index": 0
+                    }
+                    yield f"event: content_block_stop\ndata: {json.dumps(block_stop)}\n\n"
+
+                finish_reason = (
+                    routing_rsp.response.get("finish_reason")
+                    if isinstance(routing_rsp.response, dict)
+                    else "end_turn"
+                )
+                if finish_reason == "stop" or not finish_reason:
+                    stop_reason = "end_turn"
+                elif finish_reason == "tool_calls":
+                    stop_reason = "tool_use"
+                else:
+                    stop_reason = finish_reason
+
+                msg_delta = {
+                    "type": "message_delta",
+                    "delta": {
+                        "stop_reason": stop_reason,
+                        "stop_sequence": None
+                    },
+                    "usage": {
+                        "output_tokens": output_tokens
+                    }
+                }
+                yield f"event: message_delta\ndata: {json.dumps(msg_delta)}\n\n"
+
+                msg_stop = {
+                    "type": "message_stop"
+                }
+                yield f"event: message_stop\ndata: {json.dumps(msg_stop)}\n\n"
+
+            strategy = body.get("strategy") or settings.default_strategy
+            headers_dict = {
+                "X-RR-Model": "auto",
+                "X-RR-Strategy": strategy,
+                "X-RR-Cost": "0.000000",
+                "X-RR-Saved": "0.000000",
+            }
+            return StreamingResponse(
+                anthropic_stream_generator(),
+                media_type="text/event-stream",
+                headers=headers_dict
+            )
+
+        routing_rsp = await core.route_request(routing_req)
+        usage = (
+            routing_rsp.response.get("usage", {})
+            if isinstance(routing_rsp.response, dict)
+            else {}
+        )
+
+        text_content = (
+            routing_rsp.response.get("text", "")
+            if isinstance(routing_rsp.response, dict)
+            else ""
+        ) or (
+            routing_rsp.response.get("reasoning_content", "")
+            if isinstance(routing_rsp.response, dict)
+            else ""
+        )
+
+        anthropic_content = []
+        if text_content:
+            anthropic_content.append({
+                "type": "text",
+                "text": text_content
+            })
+
+        tool_calls = routing_rsp.response.get("tool_calls") if isinstance(routing_rsp.response, dict) else None
+        if tool_calls:
+            for tc in tool_calls:
+                if isinstance(tc, dict):
+                    fn = tc.get("function", {})
+                    arguments = {}
+                    if isinstance(fn.get("arguments"), str):
+                        try:
+                            arguments = json.loads(fn["arguments"])
+                        except Exception:
+                            arguments = {}
+                    elif isinstance(fn.get("arguments"), dict):
+                        arguments = fn["arguments"]
+
+                    anthropic_content.append({
+                        "type": "tool_use",
+                        "id": tc.get("id", f"toolu_{int(time.time())}"),
+                        "name": fn.get("name", ""),
+                        "input": arguments
+                    })
+
+        finish_reason = (
+            routing_rsp.response.get("finish_reason")
+            if isinstance(routing_rsp.response, dict)
+            else "end_turn"
+        )
+        if finish_reason == "stop" or not finish_reason:
+            stop_reason = "end_turn"
+        elif finish_reason == "tool_calls":
+            stop_reason = "tool_use"
+        else:
+            stop_reason = finish_reason
+
+        input_tokens = usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("completion_tokens", 0)
+
+        chosen_cost, saved = calculate_savings(core, routing_rsp.model_id, usage)
+        strategy = body.get("strategy") or settings.default_strategy
+
+        headers_dict = {
+            "X-RR-Model": routing_rsp.model_id,
+            "X-RR-Strategy": strategy,
+            "X-RR-Cost": f"{chosen_cost:.6f}",
+            "X-RR-Saved": f"{saved:.6f}",
+        }
+
+        response_body = {
+            "id": f"msg_{int(time.time())}",
+            "type": "message",
+            "role": "assistant",
+            "model": routing_rsp.model_id,
+            "content": anthropic_content,
+            "stop_reason": stop_reason,
+            "stop_sequence": None,
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens
+            }
+        }
+
+        return JSONResponse(content=response_body, headers=headers_dict)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/chat/completions")
 async def chat_completions(
     request: ChatCompletionRequest,
@@ -3730,25 +4065,43 @@ async def chat_completions(
                     if isinstance(choice, dict):
                         logprobs = choice.get("logprobs")
 
-        return {
-            "id": f"chatcmpl-{int(time.time())}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": routing_rsp.model_id,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": message,
-                    "logprobs": logprobs,
-                    "finish_reason": (
-                        routing_rsp.response.get("finish_reason") or "stop"
-                        if isinstance(routing_rsp.response, dict)
-                        else "stop"
-                    ),
-                }
-            ],
-            "usage": usage,
+        chosen_cost, saved = calculate_savings(core, routing_rsp.model_id, usage)
+        settings = get_settings()
+        strategy = (request.parameters or {}).get("strategy") if hasattr(request, "parameters") else None
+        if not strategy:
+            strategy = (request.model_dump().get("strategy") if hasattr(request, "model_dump") else None)
+        if not strategy:
+            strategy = settings.default_strategy
+
+        headers_dict = {
+            "X-RR-Model": routing_rsp.model_id,
+            "X-RR-Strategy": strategy,
+            "X-RR-Cost": f"{chosen_cost:.6f}",
+            "X-RR-Saved": f"{saved:.6f}",
         }
+
+        return JSONResponse(
+            content={
+                "id": f"chatcmpl-{int(time.time())}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": routing_rsp.model_id,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": message,
+                        "logprobs": logprobs,
+                        "finish_reason": (
+                            routing_rsp.response.get("finish_reason") or "stop"
+                            if isinstance(routing_rsp.response, dict)
+                            else "stop"
+                        ),
+                    }
+                ],
+                "usage": usage,
+            },
+            headers=headers_dict
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -129,7 +129,7 @@ CLI Arguments > Process Environment Variables > Config File (.env) > Auto-detect
 - **Subsystem**: Calibration
 - **Restart Required**: Yes
 
-### `REALITY_SIGNAL_SNAP_URL`
+### `REALITY_ROUTING_URL`
 - **Purpose**: API endpoint querying single-shot expected-utility predictions.
 - **Type**: String (URL)
 - **Default**: `https://api.realitysignal.com/v1/snap`
@@ -137,7 +137,7 @@ CLI Arguments > Process Environment Variables > Config File (.env) > Auto-detect
 - **Subsystem**: Routing Core
 - **Restart Required**: Yes
 
-### `REALITY_SIGNAL_LATER_URL`
+### `REALITY_REROUTING_URL`
 - **Purpose**: API endpoint querying sequential assessment calibration curves.
 - **Type**: String (URL)
 - **Default**: `https://api.realitysignal.com/v1/ladder`
@@ -160,7 +160,7 @@ CLI Arguments > Process Environment Variables > Config File (.env) > Auto-detect
 ### `COST_SENSITIVITY` (alpha)
 - **Purpose**: Penalty weight per dollar in Expected Utility scoring. Larger values strongly avoid expensive models.
 - **Type**: Float (`0.0` to `100.0`)
-- **Default**: `1.0`
+- **Default**: `0.5`
 - **Security Scope**: Non-Secret
 - **Subsystem**: Utility Calculation
 - **Restart Required**: Yes
@@ -168,7 +168,7 @@ CLI Arguments > Process Environment Variables > Config File (.env) > Auto-detect
 ### `TIME_SENSITIVITY` (beta)
 - **Purpose**: Penalty weight per second of response time. Larger values strongly favor fast models.
 - **Type**: Float (`0.0` to `100.0`)
-- **Default**: `1.0`
+- **Default**: `0.5`
 - **Security Scope**: Non-Secret
 - **Subsystem**: Utility Calculation
 - **Restart Required**: Yes

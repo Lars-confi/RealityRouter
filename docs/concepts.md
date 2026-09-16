@@ -104,7 +104,9 @@ The router is only as mathematically robust as the probabilities driving it. If 
 
 ### 3. Venn-Abers Calibration Guarantees
 Venn-Abers predictors process task features and output a calibrated probability interval `[p_low, p_high]`.
-- **Validity Guarantee**: Under the exchangeability assumption, Venn-Abers probabilities are guaranteed to be multipatially calibrated. That is, if the predictor assigns a probability of 70%, the true long-run observed success frequency is mathematically guaranteed to approach 70%, independent of the underlying distribution.
+- **Validity Guarantee**: Under the exchangeability assumption, Venn-Abers probabilities are guaranteed to be multipatically (multi-partially) calibrated. Formally, a Venn-Abers predictor wraps a binary classifier to produce probability intervals $[p_{low}, p_{high}]$ that are guaranteed to be valid under exchangeability. That is, if the predictor assigns an average probability, the true long-run observed success frequency is mathematically guaranteed to converge to that value:
+  $$\lim_{N \to \infty} \frac{1}{N} \sum_{n=1}^{N} (y_n - p_n) = 0$$
+  independent of the underlying distribution.
 - **Mapping to expected utility `p_i`**: To calculate a concrete scalar Expected Utility score, the interval is mapped to a single probability estimate `p_i` using the game-theoretic minimax-regret selection:
   ```text
   p_i = p_high / (1.0 + p_high - p_low)

@@ -50,8 +50,7 @@ To maintain mathematically valid utility predictions:
 1. **Calibration Population**: Only requests that complete with a valid model completion (i.e. `network_exception` is false) are sent to the Reality Signal calibration pool.
 2. **Exchangeability Assumption**: We assume user queries within similar agent sessions share similar task classifications. 
 3. **Probability Adjustments**: A sequence of `validation_failure` or `sentiment_rejected` labels immediately updates local weights. Over time, the computed utility `p_i` (the probability of task success) for that model decreases, automatically routing future similar tasks to more robust (and possibly more expensive) models.
-4. **Wiping/Resetting History**: You can reset your local database and delete regional historical profiles using:
+4. **Wiping/Resetting History**: You can reset your local database and delete regional historical profiles by manually removing your database file (typically at `~/.reality_router/router.db` or `.reality_router/router.db` depending on setup):
    ```bash
-   reality-router setup --agent --set-clean
+   rm -f ~/.reality_router/router.db
    ```
-   or by manually removing `~/.reality_router/router.db`.

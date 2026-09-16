@@ -112,6 +112,27 @@ def find_available_port(start_port=8000, max_attempts=100):
     return start_port
 
 
+def resolve_host_port(args, config):
+    host = getattr(args, "host", None)
+    if host is None:
+        host = os.environ.get("REALITY_ROUTER_HOST") or config.get("REALITY_ROUTER_HOST") or "0.0.0.0"
+
+    port_arg = getattr(args, "port", None)
+    if port_arg is not None:
+        port = port_arg
+    else:
+        env_port = os.environ.get("REALITY_ROUTER_PORT") or config.get("REALITY_ROUTER_PORT")
+        if env_port:
+            try:
+                p_val = int(env_port)
+                port = find_available_port(p_val)
+            except ValueError:
+                port = find_available_port(8000)
+        else:
+            port = find_available_port(8000)
+    return host, port
+
+
 def load_env():
     env_vars = {}
     if os.path.exists(ENV_FILE):
@@ -160,6 +181,10 @@ def save_env(env_vars):
 
     with open(ENV_FILE, "w") as f:
         f.write("\n".join(out) + "\n")
+    try:
+        os.chmod(ENV_FILE, 0o600)
+    except Exception:
+        pass
 
 
 def load_disabled_models():
@@ -615,7 +640,7 @@ def wizard_providers(env_vars):
                 test_models = []
                 if choice == "openai":
                     test_models = sync_discover_openai_compat(
-                        "https://api.openai.com/v1", new_val, "openai"
+                        "https://api.openai.com/v1", new_val, "openai", temp_env
                     )
                 elif choice == "gemini":
                     # Simple check for gemini discovery
@@ -623,18 +648,19 @@ def wizard_providers(env_vars):
                         "https://generativelanguage.googleapis.com/v1beta/openai",
                         new_val,
                         "gemini",
+                        temp_env,
                     )
                 elif choice == "anthropic":
                     test_models = sync_discover_openai_compat(
-                        "https://api.anthropic.com/v1", new_val, "anthropic"
+                        "https://api.anthropic.com/v1", new_val, "anthropic", temp_env
                     )
                 elif choice == "mistral":
                     test_models = sync_discover_openai_compat(
-                        "https://api.mistral.ai/v1", new_val, "mistral"
+                        "https://api.mistral.ai/v1", new_val, "mistral", temp_env
                     )
                 elif choice == "deepseek":
                     test_models = sync_discover_openai_compat(
-                        "https://api.deepseek.com/v1", new_val, "deepseek"
+                        "https://api.deepseek.com/v1", new_val, "deepseek", temp_env
                     )
                 elif choice == "custom/local":
                     # We need both URL and Key to test. If we only have one, skip validation for now.
@@ -645,7 +671,7 @@ def wizard_providers(env_vars):
                             test_models = sync_discover_ollama(test_url)
                         else:
                             test_models = sync_discover_openai_compat(
-                                test_url, test_key, "custom"
+                                test_url, test_key, "custom", temp_env
                             )
                     else:
                         break  # Can't test yet
@@ -1020,7 +1046,7 @@ def wizard_reality_check_auth(env_vars):
     return None
 
 
-def start_server(env_vars):
+def start_server(env_vars, host, port):
     print_header("Final Step: Ignition")
     print_status("Building environment and launching core...")
 
@@ -1029,16 +1055,7 @@ def start_server(env_vars):
     # Ensure PYTHONPATH includes the absolute path to the core source
     env["PYTHONPATH"] = os.path.abspath(REALITY_ROUTER_DIR)
 
-    port_str = env_vars.get("_RR_PORT")
-    if port_str:
-        port = int(port_str)
-    else:
-        port = find_available_port(8000)
-
-    if port != 8000 and not port_str:
-        print_status(f"Port 8000 in use, automatically switched to {port}", "warn")
-
-    print(f"\n  {C_GREEN}{C_BOLD}Server active at http://0.0.0.0:{port}{C_RESET}")
+    print(f"\n  {C_GREEN}{C_BOLD}Server active at http://{host}:{port}{C_RESET}")
     sentiment_model = env_vars.get("SENTIMENT_MODEL_ID", "Not Configured")
     print(f"  {C_YELLOW}Sentiment Model: {sentiment_model}{C_RESET}")
     print(f"  {C_CYAN}Press [CTRL+C] to stop the process.{C_RESET}\n")
@@ -1058,7 +1075,7 @@ def start_server(env_vars):
                 "uvicorn",
                 "src.main:app",
                 "--host",
-                "0.0.0.0",
+                host,
                 "--port",
                 str(port),
                 "--no-access-log",
@@ -1293,7 +1310,7 @@ def resolve_sentiment_model(models, explicit=None):
     return ids[0], "first discovered model; no pricing or naming signal"
 
 
-def start_server_detached(env_vars, port):
+def start_server_detached(env_vars, host, port):
     """Launch uvicorn in its own session and return immediately."""
     env = os.environ.copy()
     env.update(env_vars)
@@ -1307,7 +1324,7 @@ def start_server_detached(env_vars, port):
             "uvicorn",
             "src.main:app",
             "--host",
-            "0.0.0.0",
+            host,
             "--port",
             str(port),
             "--no-access-log",
@@ -1444,6 +1461,8 @@ def headless_main(args):
     env_vars.setdefault("USER_LOCATION", "unknown")
     save_env(env_vars)
 
+    host, port = resolve_host_port(args, env_vars)
+
     if args.port:
         if not port_is_free(args.port):
             print(
@@ -1453,18 +1472,15 @@ def headless_main(args):
                 file=sys.stderr,
             )
             return EXIT_PORT_BUSY
-        port = args.port
-    else:
-        port = find_available_port(8000)
 
     if not args.detach:
         # Foreground: correct for Docker and systemd, which want to own the
         # process. start_server() handles its own output.
         env_vars["_RR_PORT"] = str(port)
-        start_server(env_vars)
+        start_server(env_vars, host, port)
         return EXIT_OK
 
-    pid = start_server_detached(env_vars, port)
+    pid = start_server_detached(env_vars, host, port)
     if not wait_for_health(port):
         print(
             json.dumps(
@@ -1566,6 +1582,11 @@ def parse_args(argv):
         "--json",
         action="store_true",
         help="Output machine-readable JSON events or results"
+    )
+    p.add_argument(
+        "--host",
+        type=str,
+        help="Bind this host (default: consume REALITY_ROUTER_HOST or fallback to 0.0.0.0)"
     )
     p.add_argument(
         "--port",
@@ -1942,7 +1963,8 @@ def cmd_setup(args, config):
         action = action_a["action"]
 
         if action == "s":
-            start_server(config)
+            h, p = resolve_host_port(args, config)
+            start_server(config, h, p)
             return
         elif action == "d":
             deploy_docker(config)
@@ -2038,7 +2060,8 @@ def cmd_setup(args, config):
                 deploy_docker(config)
                 return
 
-        start_server(config)
+        h, p = resolve_host_port(args, config)
+        start_server(config, h, p)
 
     except (KeyboardInterrupt, EOFError):
         print(f"\n\n  {C_RED}Setup aborted.{C_RESET}")
@@ -2081,20 +2104,22 @@ def cmd_start(args, config):
             cmd_setup(args, config)
             config = resolve_config(args)
 
+    host, port = resolve_host_port(args, config)
+
     running_pid = read_pid()
     if pid_alive(running_pid):
-        port = None
+        running_port = None
         try:
             with open(PORT_FILE, "r") as f:
-                port = int(f.read().strip())
+                running_port = int(f.read().strip())
         except Exception:
             pass
-        if not port:
-            port = args.port or 8000
+        if not running_port:
+            running_port = port
         if args.json:
-            print(json.dumps(build_status(config, port, running_pid), indent=2))
+            print(json.dumps(build_status(config, running_port, running_pid), indent=2))
         else:
-            print(f"RealityRouter is already running (PID {running_pid}) on port {port}.")
+            print(f"RealityRouter is already running (PID {running_pid}) on port {running_port}.")
         sys.exit(EXIT_ALREADY_RUNNING)
 
     if args.port:
@@ -2104,9 +2129,6 @@ def cmd_start(args, config):
             else:
                 print(f"Error: port {args.port} is busy.", file=sys.stderr)
             sys.exit(EXIT_PORT_BUSY)
-        port = args.port
-    else:
-        port = find_available_port(8000)
 
     if not args.detach:
         config["_RR_PORT"] = str(port)
@@ -2114,9 +2136,9 @@ def cmd_start(args, config):
             print(json.dumps({"status": "starting", "port": port}, indent=2))
         else:
             print(f"Starting RealityRouter on port {port}...")
-        start_server(config)
+        start_server(config, host, port)
     else:
-        pid = start_server_detached(config, port)
+        pid = start_server_detached(config, host, port)
         if not wait_for_health(port):
             if args.json:
                 print(json.dumps({"status": "error", "error": "server started but never became healthy", "pid": pid}, indent=2))

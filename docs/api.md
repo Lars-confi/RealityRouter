@@ -64,6 +64,16 @@ curl http://localhost:8000/v1/chat/completions \
 - `"gpt-5.4-thinking"`, `"claude-opus-4"`, etc. — pin to a specific model. Useful for debugging or when you have hard constraints.
 - `"tier:cheap"`, `"tier:flagship"` — bias the router toward a price tier without naming a specific model.
 
+### Supported / Tested Parameters
+
+We support and actively test the following subset of request parameters:
+- `messages` (List of message objects; supports role user, assistant, system, and content as string or list of text blocks)
+- `model` (Pinning, tier-biasing, or auto-routing)
+- `tools` (Function-calling tool definitions)
+- `temperature` (Generation temperature)
+- `max_tokens` (Output token limit)
+- `stream` (Event stream control)
+
 ### Response shape
 
 Same as OpenAI's chat.completion response, with an additional `x-rr-*` set of headers exposing the routing decision:

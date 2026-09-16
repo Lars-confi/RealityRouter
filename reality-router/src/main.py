@@ -3,6 +3,9 @@ Main entry point for the Reality Router application
 """
 
 import logging
+import time
+
+STARTUP_TIME = time.time()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -66,7 +69,15 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    active_models = len(router_core.load_balancer.models) if hasattr(router_core, "load_balancer") else 0
+    uptime = int(time.time() - STARTUP_TIME)
+    return {
+        "status": "healthy",
+        "uptime_seconds": uptime,
+        "uptime_s": uptime,
+        "active_models": active_models,
+        "models_active": active_models,
+    }
 
 
 if __name__ == "__main__":

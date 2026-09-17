@@ -4256,3 +4256,290 @@ async def completions(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- OpenAI Responses API ---------------------------------------------------
+#
+# Codex CLI and other current OpenAI clients speak the Responses API and no
+# longer offer a chat-completions mode -- setting `wire_api = "chat"` is
+# rejected outright by Codex 0.154. Without this endpoint those tools cannot
+# use the router at all; they call /v1/responses and get a 404.
+#
+# This is purely additive. It reuses core.route_request() unchanged, so
+# expected-utility scoring, cost accounting, agent detection and metrics
+# behave exactly as they do for /chat/completions. No existing path is
+# modified.
+#
+# The protocol translation is LiteLLM's. It ships a completion<->responses
+# bridge precisely so a Responses API can be served on top of providers that
+# only speak chat completions, which is every provider the router talks to --
+# DeepSeek and Anthropic have no native Responses API, so proxying straight to
+# litellm.aresponses() would not work here.
+#
+# The import is deliberately lazy. These are LiteLLM internals rather than a
+# stable public interface, so if a future release moves them only this
+# endpoint degrades to a 501 instead of the router failing to start.
+
+
+class ResponsesRequest(BaseModel):
+    """The part of an OpenAI Responses request the router acts on.
+
+    Unknown fields are kept rather than rejected: clients send a long tail of
+    optional parameters, and refusing them would break tools for no gain.
+    """
+
+    model: str = "auto"
+    input: Union[str, List[Dict[str, Any]]] = ""
+    instructions: Optional[str] = None
+    tools: Optional[List[Dict[str, Any]]] = None
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = None
+    stream: bool = False
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_output_tokens: Optional[int] = None
+    previous_response_id: Optional[str] = None
+    store: Optional[bool] = None
+    metadata: Optional[Dict[str, Any]] = None
+    agent_id: Optional[str] = "default"
+
+    class Config:
+        extra = "allow"
+
+
+def _responses_transformer():
+    """LiteLLM's responses<->completion bridge, imported on demand."""
+    from litellm.responses.litellm_completion_transformation.transformation import (
+        LiteLLMCompletionResponsesConfig,
+    )
+
+    return LiteLLMCompletionResponsesConfig
+
+
+def _responses_query_text(messages: List[Dict[str, Any]]) -> str:
+    """Text of the last user turn, used as the routing query."""
+    for m in reversed(messages or []):
+        if not isinstance(m, dict) or m.get("role") != "user":
+            continue
+        content = m.get("content")
+        if isinstance(content, str):
+            if content:
+                return content
+            continue
+        if isinstance(content, list):
+            text = " ".join(
+                str(b.get("text", ""))
+                for b in content
+                if isinstance(b, dict) and b.get("text")
+            ).strip()
+            if text:
+                return text
+    return ""
+
+
+def _responses_sse_events(resp: Dict[str, Any]):
+    """Replay a finished response as the SSE sequence a client expects.
+
+    The router resolves the whole answer before replying -- it forces
+    stream=False on the provider call so the routing logic can score the
+    result -- so there is no token stream to forward. This emits the ordered
+    event sequence over the completed object, the same approach
+    /chat/completions already takes with its single synthetic chunk.
+    """
+    seq = 0
+
+    def ev(name: str, payload: Dict[str, Any]) -> str:
+        nonlocal seq
+        body = {**payload, "type": name, "sequence_number": seq}
+        seq += 1
+        return f"event: {name}\ndata: {json.dumps(body)}\n\n"
+
+    pending = {**resp, "status": "in_progress", "output": []}
+    yield ev("response.created", {"response": pending})
+    yield ev("response.in_progress", {"response": pending})
+
+    for idx, item in enumerate(resp.get("output") or []):
+        item_id = item.get("id") if isinstance(item, dict) else None
+        item_type = item.get("type") if isinstance(item, dict) else None
+        is_message = item_type == "message"
+        is_call = item_type == "function_call"
+
+        # Open every item in progress, as OpenAI does. A function call opens
+        # with empty arguments; they arrive in the argument events below.
+        opening = item
+        if is_message or is_call:
+            opening = {**item, "status": "in_progress"}
+        if is_call:
+            opening["arguments"] = ""
+        yield ev("response.output_item.added", {"output_index": idx, "item": opening})
+
+        if is_call:
+            # Clients may build tool-call arguments only from these events.
+            # OpenClaw's parser does: without them every call reached its
+            # tools with {} arguments. Codex tolerated their absence.
+            args = item.get("arguments") or ""
+            base = {"item_id": item_id, "output_index": idx}
+            if args:
+                yield ev("response.function_call_arguments.delta", {**base, "delta": args})
+            yield ev("response.function_call_arguments.done", {**base, "arguments": args})
+
+        if is_message:
+            for cidx, part in enumerate(item.get("content") or []):
+                text = (part.get("text") or "") if isinstance(part, dict) else ""
+                base = {
+                    "item_id": item_id,
+                    "output_index": idx,
+                    "content_index": cidx,
+                }
+                yield ev(
+                    "response.content_part.added",
+                    {**base, "part": {"type": "output_text", "text": "", "annotations": []}},
+                )
+                if text:
+                    yield ev("response.output_text.delta", {**base, "delta": text})
+                yield ev("response.output_text.done", {**base, "text": text})
+                yield ev("response.content_part.done", {**base, "part": part})
+
+        yield ev("response.output_item.done", {"output_index": idx, "item": item})
+
+    yield ev("response.completed", {"response": resp})
+
+
+@router.post("/responses")
+async def responses(
+    request: ResponsesRequest,
+    fastapi_request: Request,
+    Authorization: str = Header(None),
+):
+    try:
+        try:
+            cfg = _responses_transformer()
+        except Exception as e:
+            logger.error(f"Responses API unavailable in this litellm build: {e}")
+            raise HTTPException(
+                status_code=501,
+                detail=(
+                    "Responses API support needs litellm's "
+                    "responses/completion transformation module"
+                ),
+            )
+
+        req_dict = request.model_dump(exclude_none=True)
+
+        if request.previous_response_id:
+            # The router keeps no server-side conversation store, so history
+            # cannot be resumed by id. Clients that send the full input each
+            # turn are unaffected; this is logged rather than rejected so a
+            # stray id does not fail an otherwise valid request.
+            logger.warning(
+                "Responses: previous_response_id is not supported "
+                "(no server-side conversation store); using supplied input only"
+            )
+
+        messages: List[Dict[str, Any]] = []
+        if request.instructions:
+            messages.append(
+                cfg.transform_instructions_to_system_message(request.instructions)
+            )
+        messages.extend(
+            cfg.transform_responses_api_input_to_messages(request.input, req_dict)
+        )
+
+        chat_tools = None
+        if request.tools:
+            chat_tools, _ = cfg.transform_responses_api_tools_to_chat_completion_tools(
+                request.tools
+            )
+
+        params: Dict[str, Any] = {"messages": messages, "model": request.model}
+        if chat_tools:
+            params["tools"] = chat_tools
+        if request.tool_choice is not None:
+            params["tool_choice"] = request.tool_choice
+        if request.temperature is not None:
+            params["temperature"] = request.temperature
+        if request.top_p is not None:
+            params["top_p"] = request.top_p
+        if request.max_output_tokens is not None:
+            params["max_tokens"] = request.max_output_tokens
+
+        routing_req = RoutingRequest(
+            query=_responses_query_text(messages),
+            agent_id=resolve_agent_id(
+                request.agent_id, fastapi_request.headers, messages=messages
+            ),
+            parameters=params,
+            authorization=Authorization,
+        )
+
+        routing_rsp = await router_core.route_request(routing_req)
+        payload = (
+            routing_rsp.response if isinstance(routing_rsp.response, dict) else {}
+        )
+
+        message: Dict[str, Any] = {
+            "role": "assistant",
+            "content": payload.get("text", "") or payload.get("reasoning_content", ""),
+        }
+        if payload.get("tool_calls") is not None:
+            message["tool_calls"] = payload["tool_calls"]
+
+        chat_completion = {
+            "id": f"chatcmpl-{int(time.time())}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": routing_rsp.model_id,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": message,
+                    "finish_reason": payload.get("finish_reason") or "stop",
+                }
+            ],
+            "usage": payload.get("usage", {}) or {},
+        }
+
+        responses_obj = cfg.transform_chat_completion_response_to_responses_api_response(
+            request_input=request.input,
+            responses_api_request=req_dict,
+            chat_completion_response=chat_completion,
+        )
+        result = (
+            responses_obj.model_dump()
+            if hasattr(responses_obj, "model_dump")
+            else dict(responses_obj)
+        )
+        # Report the model the router actually chose, not the requested alias.
+        result["model"] = routing_rsp.model_id
+
+        # A tool-call-only reply comes back from the conversion with an empty
+        # message item (text None) ahead of the calls. OpenAI sends no such
+        # item; clients render it as a blank assistant turn, so drop it.
+        def _empty_message(item: Any) -> bool:
+            return (
+                isinstance(item, dict)
+                and item.get("type") == "message"
+                and not any(
+                    isinstance(c, dict) and c.get("text")
+                    for c in item.get("content") or []
+                )
+            )
+
+        output_items = result.get("output") or []
+        if any(not _empty_message(i) for i in output_items):
+            result["output"] = [i for i in output_items if not _empty_message(i)]
+
+        if not request.stream:
+            return result
+
+        async def stream_generator():
+            for chunk in _responses_sse_events(result):
+                yield chunk
+
+        return StreamingResponse(
+            stream_generator(), media_type="text/event-stream"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Responses API error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

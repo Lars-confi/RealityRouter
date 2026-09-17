@@ -17,6 +17,14 @@ The router automatically identifies which client is calling it. Detection runs i
 
 If no identification is found, the router uses `default`. You can monitor per-agent success rates in the dashboard.
 
+> [!NOTE]
+> Not every client identifies itself. Tools that reach the router through a
+> generic SDK — Aider goes via LiteLLM's OpenAI client, for example — send only
+> that library's User-Agent, so they appear as `OpenAI/Python …` rather than by
+> name. Where a tool lets you set custom headers, sending `X-Agent-ID` gives it a
+> stable identity; see [Tool integrations](integrations.md) for the per-tool
+> configuration.
+
 > [!INFO]
 > **Why this matters.** Per-agent identification feeds into Reality Router™ calibration. The router learns "Zed asks structurally different questions than Cursor, which asks different questions than AutoGPT" and tunes its probabilities accordingly.
 

@@ -115,6 +115,29 @@ model: openai/auto
 > [!IMPORTANT]
 > Aider model IDs must be prefixed with `openai/` (e.g., `openai/auto`) so that its underlying LiteLLM engine routes the request to your custom OpenAI-compatible endpoint rather than standard OpenAI servers.
 
+### Naming Aider in the dashboard
+
+Aider reaches the router through LiteLLM's OpenAI SDK and sends nothing that
+identifies it — its User-Agent is `OpenAI/Python`, and its system prompt never
+mentions Aider. Left alone it appears in Agent Activity as `OpenAI/Python …`,
+indistinguishable from any other Python client.
+
+To have it show up as Aider, tell it to send the `X-Agent-ID` header. Add a
+`.aider.model.settings.yml` in your project or home directory:
+
+```yaml
+- name: openai/auto
+  extra_params:
+    extra_headers:
+      X-Agent-ID: "aider"
+```
+
+The name is yours to choose — use something like `aider-backend` if you want to
+separate one checkout's usage from another's.
+
+**Verify:** ask Aider anything, then check the dashboard's Agent Activity panel.
+Without the header you will see `OpenAI/Python …`; with it, the name you set.
+
 ---
 
 ## Cline (VS Code)

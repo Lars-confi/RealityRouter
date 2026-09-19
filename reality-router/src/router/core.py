@@ -3586,60 +3586,213 @@ def calculate_savings(core, chosen_model_id, usage):
     return chosen_cost, saved
 
 
+def _anthropic_adapter():
+    """LiteLLM's Anthropic<->OpenAI adapter, imported on demand.
+
+    Lazy on purpose: this is a LiteLLM internal rather than a stable public
+    interface, so if a future release moves it only /v1/messages degrades to a
+    501 instead of the router failing to start.
+    """
+    from litellm.llms.anthropic.experimental_pass_through.adapters.transformation import (
+        LiteLLMAnthropicMessagesAdapter,
+    )
+
+    return LiteLLMAnthropicMessagesAdapter()
+
+
+def _anthropic_query_text(messages: List[Dict[str, Any]]) -> str:
+    """Text of the most recent user turn, used as the routing query.
+
+    Skips turns that carry only tool_result blocks, which are machine output
+    rather than a question worth routing on.
+    """
+    for msg in reversed(messages or []):
+        if not isinstance(msg, dict) or msg.get("role") != "user":
+            continue
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            if content.strip():
+                return content
+            continue
+        if isinstance(content, list):
+            text = "".join(
+                str(b.get("text", ""))
+                for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            ).strip()
+            if text:
+                return text
+    return ""
+
+
+def _anthropic_response_from_routing(adapter, routing_rsp, tool_name_mapping):
+    """Convert the router's chat-completions style result into an Anthropic
+    Messages response. Returns (response_dict, openai_style_usage)."""
+    import litellm
+
+    payload = routing_rsp.response if isinstance(routing_rsp.response, dict) else {}
+    tool_calls = payload.get("tool_calls") or None
+
+    message: Dict[str, Any] = {
+        "role": "assistant",
+        "content": payload.get("text", "") or payload.get("reasoning_content", "") or None,
+    }
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+
+    usage = payload.get("usage", {}) or {}
+    # A turn that produced tool calls must end as tool_use, or Anthropic clients
+    # will not execute them -- some providers report "stop" alongside tool calls.
+    finish_reason = "tool_calls" if tool_calls else (payload.get("finish_reason") or "stop")
+
+    chat_completion = {
+        "id": f"chatcmpl-{int(time.time())}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": routing_rsp.model_id,
+        "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
+        "usage": {
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+        },
+    }
+
+    resp = adapter.translate_openai_response_to_anthropic(
+        litellm.ModelResponse(**chat_completion),
+        tool_name_mapping=tool_name_mapping or None,
+    )
+    out = resp.model_dump() if hasattr(resp, "model_dump") else dict(resp)
+    for block in out.get("content") or []:
+        if isinstance(block, dict) and block.get("provider_specific_fields") is None:
+            block.pop("provider_specific_fields", None)
+    # Report the model the router actually chose, not the requested alias.
+    out["model"] = routing_rsp.model_id
+    return out, usage
+
+
+def _anthropic_sse_events(resp: Dict[str, Any]):
+    """Replay a finished Anthropic response as the SSE sequence clients expect.
+
+    The router resolves the whole answer before replying (it forces
+    stream=False on the provider call so the routing logic can score the
+    result), so there is no token stream to forward. This emits the ordered
+    Messages event sequence over the completed object -- including tool_use
+    blocks, as an input_json_delta, which the previous hand-written stream
+    never emitted at all.
+    """
+
+    def ev(name: str, payload: Dict[str, Any]) -> str:
+        return f"event: {name}\ndata: {json.dumps(payload)}\n\n"
+
+    usage = resp.get("usage") or {}
+    start = {
+        **resp,
+        "content": [],
+        "stop_reason": None,
+        "stop_sequence": None,
+        "usage": {"input_tokens": usage.get("input_tokens", 0), "output_tokens": 0},
+    }
+    yield ev("message_start", {"type": "message_start", "message": start})
+
+    blocks = [
+        b
+        for b in (resp.get("content") or [])
+        if isinstance(b, dict) and b.get("type") in ("text", "tool_use")
+    ]
+    for i, block in enumerate(blocks):
+        if block["type"] == "text":
+            yield ev(
+                "content_block_start",
+                {"type": "content_block_start", "index": i, "content_block": {"type": "text", "text": ""}},
+            )
+            if block.get("text"):
+                yield ev(
+                    "content_block_delta",
+                    {"type": "content_block_delta", "index": i, "delta": {"type": "text_delta", "text": block["text"]}},
+                )
+        else:
+            yield ev(
+                "content_block_start",
+                {
+                    "type": "content_block_start",
+                    "index": i,
+                    "content_block": {"type": "tool_use", "id": block.get("id"), "name": block.get("name"), "input": {}},
+                },
+            )
+            yield ev(
+                "content_block_delta",
+                {
+                    "type": "content_block_delta",
+                    "index": i,
+                    "delta": {"type": "input_json_delta", "partial_json": json.dumps(block.get("input") or {})},
+                },
+            )
+        yield ev("content_block_stop", {"type": "content_block_stop", "index": i})
+
+    yield ev(
+        "message_delta",
+        {
+            "type": "message_delta",
+            "delta": {"stop_reason": resp.get("stop_reason"), "stop_sequence": None},
+            "usage": {"output_tokens": usage.get("output_tokens", 0)},
+        },
+    )
+    yield ev("message_stop", {"type": "message_stop"})
+
+
 @router.post("/messages")
 async def anthropic_messages(
     fastapi_request: Request,
     Authorization: str = Header(None),
 ):
+    """Anthropic Messages API, used by Claude Code and the Anthropic SDKs.
+
+    Request and response translation is delegated to LiteLLM's Anthropic
+    adapter. The previous hand-written translation passed Anthropic-format tool
+    definitions and tool_use / tool_result blocks straight through to providers
+    that expect OpenAI format, and its streaming path emitted text only. Tool
+    calls were therefore rejected (OpenAI: "Missing required parameter:
+    'tools[0].type'"), leaked as raw provider markup (DeepSeek's DSML), or were
+    silently dropped -- Claude Code could chat through the router but not use
+    tools.
+    """
     try:
         body = await fastapi_request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
 
     try:
+        adapter = _anthropic_adapter()
+    except Exception as e:
+        logger.error(f"Anthropic Messages API unavailable in this litellm build: {e}")
+        raise HTTPException(
+            status_code=501,
+            detail="Anthropic Messages API support needs litellm's anthropic pass-through adapter",
+        )
+
+    try:
+        stream = bool(body.get("stream", False))
         model = body.get("model", "auto")
-        messages = body.get("messages", [])
-        system = body.get("system", "")
-        max_tokens = body.get("max_tokens", 1024)
-        temperature = body.get("temperature", 0.7)
-        stream = body.get("stream", False)
-        tools = body.get("tools")
 
-        # Map to standard OpenAI-style messages
-        openai_messages = []
-        if system:
-            openai_messages.append({"role": "system", "content": system})
-        for msg in messages:
-            openai_messages.append({
-                "role": msg.get("role", "user"),
-                "content": msg.get("content", "")
-            })
+        openai_req, tool_name_mapping = adapter.translate_anthropic_to_openai(body)
+        openai_req = dict(openai_req)
+        openai_messages = openai_req.get("messages", [])
 
-        # Map to query string (last user message)
-        last_msg = messages[-1] if messages else {"content": ""}
-        content = last_msg.get("content", "")
-        if isinstance(content, list):
-            query_text = ""
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    query_text += block.get("text", "")
-            if not query_text and content:
-                query_text = str(content)
-        else:
-            query_text = str(content)
-
-        parameters = {
+        # Only what the client actually sent is forwarded. In particular there is
+        # no invented temperature: the old default of 0.7 was rejected by GPT-5
+        # family models, which accept only 1, and Anthropic's own default is 1.0.
+        parameters: Dict[str, Any] = {
             "model": model,
             "messages": openai_messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
             "stream": stream,
         }
-        if tools:
-            parameters["tools"] = tools
+        for key in ("tools", "tool_choice", "max_tokens", "temperature", "top_p", "stop"):
+            if openai_req.get(key) is not None:
+                parameters[key] = openai_req[key]
 
         routing_req = RoutingRequest(
-            query=query_text,
+            query=_anthropic_query_text(body.get("messages", [])),
             agent_id=resolve_agent_id(
                 None,
                 fastapi_request.headers,
@@ -3651,122 +3804,33 @@ async def anthropic_messages(
 
         core = router_core
         settings = get_settings()
+        strategy = body.get("strategy") or settings.default_strategy
 
         if stream:
+
             async def anthropic_stream_generator():
-                msg_id = f"msg_{int(time.time())}"
                 routing_task = asyncio.create_task(core.route_request(routing_req))
-                
+
                 while not routing_task.done():
                     yield "event: ping\ndata: {}\n\n"
                     await asyncio.sleep(2)
-                
+
                 try:
                     routing_rsp = await routing_task
+                    resp, _ = _anthropic_response_from_routing(
+                        adapter, routing_rsp, tool_name_mapping
+                    )
                 except Exception as e:
                     err_event = {
                         "type": "error",
-                        "error": {
-                            "type": "api_error",
-                            "message": f"Routing failed: {str(e)}"
-                        }
+                        "error": {"type": "api_error", "message": f"Routing failed: {str(e)}"},
                     }
                     yield f"event: error\ndata: {json.dumps(err_event)}\n\n"
                     return
 
-                text_content = (
-                    routing_rsp.response.get("text", "")
-                    if isinstance(routing_rsp.response, dict)
-                    else ""
-                ) or (
-                    routing_rsp.response.get("reasoning_content", "")
-                    if isinstance(routing_rsp.response, dict)
-                    else ""
-                )
+                for chunk in _anthropic_sse_events(resp):
+                    yield chunk
 
-                usage = (
-                    routing_rsp.response.get("usage", {})
-                    if isinstance(routing_rsp.response, dict)
-                    else {}
-                )
-                input_tokens = usage.get("prompt_tokens", 0)
-                output_tokens = usage.get("completion_tokens", 0)
-
-                msg_start = {
-                    "type": "message_start",
-                    "message": {
-                        "id": msg_id,
-                        "type": "message",
-                        "role": "assistant",
-                        "model": routing_rsp.model_id,
-                        "content": [],
-                        "stop_reason": None,
-                        "stop_sequence": None,
-                        "usage": {
-                            "input_tokens": input_tokens,
-                            "output_tokens": 0
-                        }
-                    }
-                }
-                yield f"event: message_start\ndata: {json.dumps(msg_start)}\n\n"
-
-                if text_content:
-                    block_start = {
-                        "type": "content_block_start",
-                        "index": 0,
-                        "content_block": {
-                            "type": "text",
-                            "text": ""
-                        }
-                    }
-                    yield f"event: content_block_start\ndata: {json.dumps(block_start)}\n\n"
-
-                    block_delta = {
-                        "type": "content_block_delta",
-                        "index": 0,
-                        "delta": {
-                            "type": "text_delta",
-                            "text": text_content
-                        }
-                    }
-                    yield f"event: content_block_delta\ndata: {json.dumps(block_delta)}\n\n"
-
-                    block_stop = {
-                        "type": "content_block_stop",
-                        "index": 0
-                    }
-                    yield f"event: content_block_stop\ndata: {json.dumps(block_stop)}\n\n"
-
-                finish_reason = (
-                    routing_rsp.response.get("finish_reason")
-                    if isinstance(routing_rsp.response, dict)
-                    else "end_turn"
-                )
-                if finish_reason == "stop" or not finish_reason:
-                    stop_reason = "end_turn"
-                elif finish_reason == "tool_calls":
-                    stop_reason = "tool_use"
-                else:
-                    stop_reason = finish_reason
-
-                msg_delta = {
-                    "type": "message_delta",
-                    "delta": {
-                        "stop_reason": stop_reason,
-                        "stop_sequence": None
-                    },
-                    "usage": {
-                        "output_tokens": output_tokens
-                    }
-                }
-                yield f"event: message_delta\ndata: {json.dumps(msg_delta)}\n\n"
-
-                msg_stop = {
-                    "type": "message_stop"
-                }
-                yield f"event: message_stop\ndata: {json.dumps(msg_stop)}\n\n"
-
-            strategy = body.get("strategy") or settings.default_strategy
             headers_dict = {
                 "X-RR-Model": "auto",
                 "X-RR-Strategy": strategy,
@@ -3776,94 +3840,24 @@ async def anthropic_messages(
             return StreamingResponse(
                 anthropic_stream_generator(),
                 media_type="text/event-stream",
-                headers=headers_dict
+                headers=headers_dict,
             )
 
         routing_rsp = await core.route_request(routing_req)
-        usage = (
-            routing_rsp.response.get("usage", {})
-            if isinstance(routing_rsp.response, dict)
-            else {}
+        response_body, usage = _anthropic_response_from_routing(
+            adapter, routing_rsp, tool_name_mapping
         )
-
-        text_content = (
-            routing_rsp.response.get("text", "")
-            if isinstance(routing_rsp.response, dict)
-            else ""
-        ) or (
-            routing_rsp.response.get("reasoning_content", "")
-            if isinstance(routing_rsp.response, dict)
-            else ""
-        )
-
-        anthropic_content = []
-        if text_content:
-            anthropic_content.append({
-                "type": "text",
-                "text": text_content
-            })
-
-        tool_calls = routing_rsp.response.get("tool_calls") if isinstance(routing_rsp.response, dict) else None
-        if tool_calls:
-            for tc in tool_calls:
-                if isinstance(tc, dict):
-                    fn = tc.get("function", {})
-                    arguments = {}
-                    if isinstance(fn.get("arguments"), str):
-                        try:
-                            arguments = json.loads(fn["arguments"])
-                        except Exception:
-                            arguments = {}
-                    elif isinstance(fn.get("arguments"), dict):
-                        arguments = fn["arguments"]
-
-                    anthropic_content.append({
-                        "type": "tool_use",
-                        "id": tc.get("id", f"toolu_{int(time.time())}"),
-                        "name": fn.get("name", ""),
-                        "input": arguments
-                    })
-
-        finish_reason = (
-            routing_rsp.response.get("finish_reason")
-            if isinstance(routing_rsp.response, dict)
-            else "end_turn"
-        )
-        if finish_reason == "stop" or not finish_reason:
-            stop_reason = "end_turn"
-        elif finish_reason == "tool_calls":
-            stop_reason = "tool_use"
-        else:
-            stop_reason = finish_reason
-
-        input_tokens = usage.get("prompt_tokens", 0)
-        output_tokens = usage.get("completion_tokens", 0)
 
         chosen_cost, saved = calculate_savings(core, routing_rsp.model_id, usage)
-        strategy = body.get("strategy") or settings.default_strategy
-
         headers_dict = {
             "X-RR-Model": routing_rsp.model_id,
             "X-RR-Strategy": strategy,
             "X-RR-Cost": f"{chosen_cost:.6f}",
             "X-RR-Saved": f"{saved:.6f}",
         }
-
-        response_body = {
-            "id": f"msg_{int(time.time())}",
-            "type": "message",
-            "role": "assistant",
-            "model": routing_rsp.model_id,
-            "content": anthropic_content,
-            "stop_reason": stop_reason,
-            "stop_sequence": None,
-            "usage": {
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens
-            }
-        }
-
         return JSONResponse(content=response_body, headers=headers_dict)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

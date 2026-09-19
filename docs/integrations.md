@@ -43,12 +43,16 @@ Claude Code is Anthropic's agentic CLI tool. Since Claude Code expects Anthropic
 3. **Environment Configuration**:
    ```bash
    # Read actual port from reality-router status first!
-   export ANTHROPIC_BASE_URL="http://localhost:8000/v1"
+   # No /v1 on the end: Claude Code appends /v1/messages itself.
+   export ANTHROPIC_BASE_URL="http://localhost:8000"
    export ANTHROPIC_API_KEY="rr-local" # Placeholder
    ```
+   > **Do not add `/v1`.** With `http://localhost:8000/v1` Claude Code calls
+   > `/v1/v1/messages`, gets a 404, and reports it misleadingly as
+   > *"There's an issue with the selected model."*
 4. **Tool Calls & Reasoning**: Tool calling and streaming work natively. When Claude Code executes command-line operations or code edits, the task features (number of tools, length) are extracted by RealityRouter to determine if a cheaper model (like Gemini Flash) or a flagship model (like Claude Sonnet) should run the step.
 5. **Subscription / OAuth**: Claude Code's OAuth/Google SSO keys can coexist seamlessly; RealityRouter does not interfere with client-side credential persistence.
-6. **Dashboard Verification**: Check `http://localhost:8000/metrics/dashboard` under "Per-Agent Activity" to see calls classified and tagged with the agent fingerprint `claude-code`.
+6. **Dashboard Verification**: Check `http://localhost:8000/metrics/dashboard` under "Per-Agent Activity" to see calls tagged with the agent fingerprint `claude-cli/<version>` (for example `claude-cli/2.1.278`).
 
 ---
 

@@ -3890,7 +3890,13 @@ async def chat_completions(
                 fastapi_request.headers,
                 messages=request.messages,
             ),
-            parameters=request.model_dump(exclude={"agent_id"}),
+            # exclude_unset: forward only what the client actually sent. The
+            # request models carry defaults (temperature=1.0, top_p=1.0,
+            # presence_penalty=0.0, frequency_penalty=0.0) that were forwarded
+            # to every provider as if the client had set them, and GPT-5
+            # family models reject them -- so those models failed on every
+            # request and the router fell through to its next choice.
+            parameters=request.model_dump(exclude={"agent_id"}, exclude_unset=True),
             authorization=Authorization,
         )
 
@@ -4117,7 +4123,14 @@ async def completions(
             agent_id=resolve_agent_id(
                 request.agent_id, fastapi_request.headers, prompt=prompt_text
             ),
-            parameters=request.model_dump(exclude={"agent_id"}),
+            # Forward only what the client sent, as in /chat/completions --
+            # except max_tokens, whose default of 16 is the OpenAI spec's own
+            # default for this endpoint. Autocomplete-style clients rely on it;
+            # dropping it would silently allow unbounded completions.
+            parameters={
+                "max_tokens": 16,
+                **request.model_dump(exclude={"agent_id"}, exclude_unset=True),
+            },
             authorization=Authorization,
         )
 

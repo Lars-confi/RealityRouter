@@ -2217,7 +2217,6 @@ class RouterCore:
                 and "messages" in request.parameters
                 and request.parameters["messages"]
             ):
-                from fastapi import HTTPException
 
                 first_msg_str = json.dumps(
                     request.parameters["messages"][0], sort_keys=True

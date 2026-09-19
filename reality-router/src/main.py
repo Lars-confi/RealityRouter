@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.models.database import init_db
+from src.router.auth import log_auth_status, require_api_key
 from src.router.core import get_agent_card
 from src.router.core import router as router_router
 from src.router.metrics import router as metrics_router
@@ -33,6 +34,10 @@ app = FastAPI(
     description="Intelligent routing system for Language Model requests",
     version="0.0.6",
 )
+
+# Inbound API-key auth; a no-op unless ROUTER_API_KEYS is set. Registered
+# before CORS so CORS wraps it and 401s still carry CORS headers.
+app.middleware("http")(require_api_key)
 
 # Add CORS middleware
 app.add_middleware(
@@ -59,6 +64,7 @@ from src.router.core import router_core
 
 @app.on_event("startup")
 async def startup_event():
+    log_auth_status()
     asyncio.create_task(router_core.run_capability_probes())
 
 

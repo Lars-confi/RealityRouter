@@ -23,7 +23,7 @@ for. Verified September 2026.
 | **Claude Code** | `2.1.278` | Anthropic Messages | ✅ | environment variables | `claude-cli/…` | [Guide](#claude-code-dedicated-guide) |
 | **OpenClaw** | `2026.4.14` | Chat Completions or Responses | ✅ | config file | `OpenClaw` | [Guide](#openclaw) |
 | **Hermes** | `0.10.0` | Chat Completions | ✅ | `config.yaml` | `Hermes` | [Guide](#hermes) |
-| **Cursor** | `3.x`, Pro plan | Chat Completions, sent from Cursor's cloud | ✅ | settings panel + public URL | `Cursor/1.0` | [Guide](#cursor) — **cannot reach `localhost`** |
+| **Cursor** | `3.x`, Pro plan | Chat Completions, sent from Cursor's cloud | ✅ | settings panel + public URL + API key | `Cursor/1.0` | [Guide](#cursor) — **cannot reach `localhost`; needs a public URL** |
 | **Roo Code** | not verified | OpenAI-compatible | — | settings panel | — | [Guide](#roo-code) |
 
 ---
@@ -36,6 +36,42 @@ To discover the correct running endpoint, execute:
 reality-router status --json
 ```
 And parse the `"base_url"` key. For GUI configuration, always check `reality-router status` first to find the current active address.
+
+---
+
+## 🔑 API keys (required before exposing the router)
+
+By default the router accepts any request, which is fine while it listens only
+on `localhost` or a private network. **Before making it reachable from anywhere
+else** — a public tunnel, a server, a shared network — turn on API keys.
+
+1. Generate a long random key:
+   ```bash
+   openssl rand -hex 32
+   ```
+2. Add it to `~/.reality_router/.env` (several keys can be comma-separated, for
+   example one per person or tool, so each can be revoked alone):
+   ```
+   ROUTER_API_KEYS=<your-key>
+   ```
+3. Restart the router (`reality-router stop && reality-router start`, or restart
+   the container). The log confirms: *Inbound API-key auth is on (1 key(s)
+   configured).*
+
+From then on, every client must send one of the keys, in whichever form it
+already uses:
+
+| Sent as | Used by |
+| :--- | :--- |
+| `Authorization: Bearer <key>` | OpenAI-compatible clients: Cursor, OpenCode, Cline, Zed, Codex, Aider, VS Code, OpenClaw |
+| `x-api-key: <key>` | Anthropic clients: Claude Code |
+| Browser login prompt (any username, key as password) | The dashboard |
+
+In practice: put the key wherever this page says `rr-local`. Requests without a
+valid key get `401`. `/health` stays open so monitoring keeps working.
+
+The key only authenticates clients to the router. It is never sent on to a
+provider; the router always calls providers with its own keys.
 
 ---
 
@@ -174,11 +210,27 @@ HTTPS address:
   upgrade before anything is sent.
 - Tab autocomplete never uses a custom endpoint.
 
-Using RealityRouter with Cursor therefore means making the router reachable at
-a public HTTPS address — through Cloudflare Tunnel or ngrok, for example.
-**Only do this with authentication in front of the router.** RealityRouter has
-no built-in authentication yet, and an unauthenticated router at a public address
-is an open proxy: anyone who finds it can spend your provider credits.
+So Cursor needs the router at a public HTTPS address, protected by an API key:
+
+1. **Turn on API keys first** — see [API keys](#-api-keys-required-before-exposing-the-router).
+   Do not skip this: without a key, a public router is an open proxy, and anyone
+   who finds the address can spend your provider credits.
+2. **Give the router a public HTTPS address.** The quickest is a Cloudflare
+   quick tunnel, which needs no account:
+   ```bash
+   cloudflared tunnel --url http://localhost:8000
+   ```
+   It prints an address like `https://<random-words>.trycloudflare.com`. That
+   address changes every time the tunnel restarts; for a permanent one, use a
+   named Cloudflare tunnel or ngrok with a reserved domain.
+3. In **Cursor Settings → Models**:
+   - **OpenAI API Key:** your router key (not an OpenAI key).
+   - **Override OpenAI Base URL:** on, set to `https://<your-address>/v1`.
+   - **Add model:** `auto`.
+4. Pick `auto` in the chat's model picker and send a message.
+
+**Verify:** the dashboard's Agent Activity shows `Cursor/1.0`. Stop the tunnel
+when you are not using it.
 
 ---
 

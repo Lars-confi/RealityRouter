@@ -56,6 +56,9 @@ class Settings(BaseModel):
     custom_llm_base_url: Optional[str] = Field(default=None)
     custom_llm_api_key: Optional[str] = Field(default=None)
     reality_check_token: Optional[str] = Field(default=None)
+
+    # Inbound auth: keys clients must present. Empty means auth is off.
+    router_api_keys: List[str] = Field(default_factory=list)
     reality_check_provider: Optional[str] = Field(default=None)
     reality_routing_url: str = Field(
         default="https://snap-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io"
@@ -89,6 +92,13 @@ class Settings(BaseModel):
     load_balancing_strategy: str = Field(default="weighted")
 
 
+def _parse_router_api_keys(data: Dict[str, Any]) -> None:
+    """ROUTER_API_KEYS is comma-separated in .env; blanks are dropped."""
+    val = data.get("router_api_keys")
+    if isinstance(val, str):
+        data["router_api_keys"] = [k.strip() for k in val.split(",") if k.strip()]
+
+
 # Global settings instance
 # Initialize with lowercase keys mapping from the manually loaded .env file
 _settings_data = {k.lower(): v for k, v in _env_vars.items()}
@@ -113,6 +123,8 @@ if "model_preferences" in _settings_data and isinstance(
         )
     except Exception:
         _settings_data["model_preferences"] = {}
+
+_parse_router_api_keys(_settings_data)
 
 settings = Settings(**_settings_data)
 
@@ -147,6 +159,8 @@ def reload_settings() -> Settings:
             )
         except Exception:
             _settings_data["model_preferences"] = {}
+
+    _parse_router_api_keys(_settings_data)
 
     settings = Settings(**_settings_data)
     return settings

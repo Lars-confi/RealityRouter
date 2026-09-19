@@ -21,23 +21,26 @@ Please do not open a public GitHub/Gitea issue for unresolved security issues.
 
 ## 1. Ingress Security & Network Exposure
 
-RealityRouter serves as an API proxy. Currently, **local HTTP ingress does not perform active cryptographic signature or token validation** of incoming requests. The `Authorization` header is accepted, but any placeholder key is permitted for local access.
+RealityRouter serves as an API proxy. **By default it accepts any request**, so any placeholder key works for local access. Setting `ROUTER_API_KEYS` in `~/.reality_router/.env` turns on API-key authentication: every request except `/health` must then carry one of the configured keys (see section 2).
 
 ### ⚠️ Critical Ingress Warning
-> **DO NOT EXPOSE THE REALITYROUTER HTTP PORT DIRECTLY TO AN UNTRUSTED OR PUBLIC NETWORK.**
+> **DO NOT EXPOSE THE REALITYROUTER HTTP PORT TO AN UNTRUSTED OR PUBLIC NETWORK WITHOUT `ROUTER_API_KEYS` SET.**
 > By default, RealityRouter bindings (e.g. `0.0.0.0:8000`) allow connections from external hosts. If exposed without restriction, malicious clients could use your router to dispatch models, consuming your configured API credentials and incurring major costs.
 
 ### Hardening Recommendations:
 - **Keep on localhost**: Bind the server explicitly to localhost (`127.0.0.1`) if only local tools (e.g., Cline, Aider, Claude Code) are using it.
 - **Private Network**: Keep RealityRouter inside a restricted private network (e.g., Tailscale, private subnet, or VPC) where only approved clients have route access.
-- **Reverse Proxy / VPN**: Put RealityRouter behind an authenticated reverse proxy (like Nginx, Caddy, or Apache) with TLS enabled and active Basic/Bearer authentication to validate incoming clients.
+- **API keys before exposure**: If the router must be reachable from outside — a public tunnel for Cursor, for example, whose requests come from Cursor's cloud — set `ROUTER_API_KEYS` first and only expose it over HTTPS.
+- **Reverse Proxy / VPN**: For anything beyond key authentication (rate limits, SSO, IP allow-lists), put RealityRouter behind a reverse proxy (like Nginx or Caddy) with TLS enabled.
 
 ---
 
 ## 2. Ingress & Dashboard Authentication Status
 
-- **API Ingress Authentication**: Accepts `Authorization` header placeholders but does not cryptographically enforce a secret key by default in local single-user mode.
-- **Dashboard Authentication**: The developer metrics dashboard (`/metrics/dashboard`) is unauthenticated. Ensure it is protected using private network configurations or basic-auth reverse proxies.
+- **Off by default**: with `ROUTER_API_KEYS` unset, the API and the dashboard are unauthenticated. Keep the router on localhost or a private network.
+- **On with `ROUTER_API_KEYS`**: a comma-separated list of keys. Every path except `/`, `/health` and the agent card requires one, sent as `Authorization: Bearer <key>`, as `x-api-key: <key>`, or as HTTP Basic with the key as the password. The dashboard uses Basic, so the browser shows a login prompt. Keys are compared in constant time, and failed attempts are logged with the client address but never the presented key.
+- **Keys stay at the router**: a client's key is not forwarded to any provider. Providers are always called with the router's own credentials.
+- **Use long random keys** (`openssl rand -hex 32`). The router warns at startup if a key is shorter than 24 characters. Use one key per person or tool so each can be revoked by removing it and restarting.
 
 ---
 

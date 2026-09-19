@@ -123,9 +123,26 @@ for the user.
 Give them the exact click path and the three values, then **wait for them to
 confirm they have saved**. Do not report success until they say so.
 
-- **Cursor** — Settings → Models → Add Model. Enable *Override OpenAI Base
-  URL*, set the base URL and key above, add model ids (`auto` plus any specific
-  ones they want), click Verify. Disable overlapping pre-enabled models.
+- **Cursor** — **cannot use a `localhost` or private-network URL.** Cursor
+  sends requests from its own cloud, which refuses private addresses, and the
+  base-URL override needs a Cursor Pro plan. It works only with the router at a
+  public HTTPS address, protected by an API key. **That exposes the router to the
+  internet, so ask the user explicitly before doing it**, and explain that
+  without the key anyone who finds the address could spend their credits. With
+  their agreement:
+  1. Generate a key (`openssl rand -hex 32`), add `ROUTER_API_KEYS=<key>` to
+     `~/.reality_router/.env` (append; keep the other lines), restart the
+     router, and confirm the log says *Inbound API-key auth is on*. Then check
+     that a request without the key gets `401`.
+  2. Start a tunnel (`cloudflared tunnel --url http://localhost:<port>`) and
+     note the `https://…trycloudflare.com` address.
+  3. The user, in Cursor Settings → Models: **OpenAI API Key** = the router
+     key, **Override OpenAI Base URL** = `https://<address>/v1`, add model
+     `auto`.
+
+  Once `ROUTER_API_KEYS` is set, **every other tool on this router needs the key
+  too**. Put it wherever this skill says `rr-local`, and update tools that are
+  already connected.
 - **Cline** — ⚙️ in the Cline panel → API Provider → *OpenAI Compatible*. Set
   base URL, key and model `auto`. Leave "use different models for Plan and Act"
   **off** and set both to `auto`; the router already picks stronger models for
@@ -138,6 +155,7 @@ they just configured, then:
 
 ```bash
 curl -s --max-time 5 "<url>/metrics/summary" | head -c 400
+# If ROUTER_API_KEYS is set: curl -s -u "x:<key>" ... instead
 ```
 
 Then open the dashboard and look at the **Agent Activity** section:

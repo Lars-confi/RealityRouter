@@ -714,7 +714,7 @@ async def get_dashboard():
         <div style="max-width: 1200px; margin: 0 auto;">
             <div style="text-align: center; margin-bottom: 40px;">
                 <h1 style="display: inline-block; margin-bottom: 5px; letter-spacing: 2px;">REALITY ROUTER CONTROL CENTER</h1>
-                <div id="version-badge" style="font-size: 0.85em; color: #8b949e; margin-top: 5px;">Version: <span id="current-version">0.0.6</span></div>
+                <div id="version-badge" style="font-size: 0.85em; color: #8b949e; margin-top: 5px;">Version: <span id="current-version">0.0.7</span></div>
                 <div id="update-alert" style="display: none; margin-top: 10px; color: #f39c12; font-weight: bold; background: rgba(243, 156, 18, 0.1); padding: 5px 15px; border-radius: 5px; border: 1px solid rgba(243, 156, 18, 0.3);">
                     ⚠️ A new version is available! Run the installer to update.
                 </div>
@@ -1031,7 +1031,20 @@ async def get_dashboard():
                         const latestVersion = tags[0].name.replace(/^v/, '');
                         const currentVersion = document.getElementById('current-version').innerText.replace(/^v/, '');
 
-                        if (latestVersion !== currentVersion) {
+                        function isNewer(latest, current) {
+                            const latestParts = latest.split('.').map(Number);
+                            const currentParts = current.split('.').map(Number);
+                            const maxLen = Math.max(latestParts.length, currentParts.length);
+                            for (let i = 0; i < maxLen; i++) {
+                                const l = latestParts[i] || 0;
+                                const c = currentParts[i] || 0;
+                                if (l > c) return true;
+                                if (l < c) return false;
+                            }
+                            return false;
+                        }
+
+                        if (isNewer(latestVersion, currentVersion)) {
                             const alertEl = document.getElementById('update-alert');
                             alertEl.style.display = 'inline-block';
                             alertEl.innerHTML = `⚠️ Version ${latestVersion} is available! Run the installer to update.`;

@@ -210,24 +210,43 @@ HTTPS address:
   upgrade before anything is sent.
 - Tab autocomplete never uses a custom endpoint.
 
-So Cursor needs the router at a public HTTPS address, protected by an API key:
+So Cursor needs the router at a public HTTPS address, protected by an API key.
+One command does both:
+
+```bash
+reality-router expose
+```
+
+It checks that the router is enforcing an API key — generating one and telling
+you to restart if it isn't — then opens a Cloudflare tunnel ([`cloudflared`](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+must be installed) and prints the base URL and key to paste into Cursor. The
+tunnel is closed when you stop the command, so nothing stays exposed.
+
+<details>
+<summary>Doing it by hand instead</summary>
 
 1. **Turn on API keys first** — see [API keys](#-api-keys-required-before-exposing-the-router).
    Do not skip this: without a key, a public router is an open proxy, and anyone
    who finds the address can spend your provider credits.
-2. **Give the router a public HTTPS address.** The quickest is a Cloudflare
-   quick tunnel, which needs no account:
+2. **Give the router a public HTTPS address**, for example a Cloudflare quick
+   tunnel, which needs no account:
    ```bash
    cloudflared tunnel --url http://localhost:8000
    ```
-   It prints an address like `https://<random-words>.trycloudflare.com`. That
-   address changes every time the tunnel restarts; for a permanent one, use a
-   named Cloudflare tunnel or ngrok with a reserved domain.
-3. In **Cursor Settings → Models**:
-   - **OpenAI API Key:** your router key (not an OpenAI key).
-   - **Override OpenAI Base URL:** on, set to `https://<your-address>/v1`.
-   - **Add model:** `auto`.
-4. Pick `auto` in the chat's model picker and send a message.
+   It prints an address like `https://<random-words>.trycloudflare.com`.
+</details>
+
+The quick-tunnel address changes every time the tunnel restarts, so Cursor needs
+the new one each session. For a permanent address, use a named Cloudflare tunnel
+or ngrok with a reserved domain and skip `expose`.
+
+Then, in **Cursor Settings → Models**:
+
+- **OpenAI API Key:** your router key (not an OpenAI key).
+- **Override OpenAI Base URL:** on, set to `https://<your-address>/v1`.
+- **Add model:** `auto`.
+
+Pick `auto` in the chat's model picker and send a message.
 
 **Verify:** the dashboard's Agent Activity shows `Cursor/1.0`. Stop the tunnel
 when you are not using it.

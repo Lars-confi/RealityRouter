@@ -3,6 +3,9 @@ import argparse
 import json
 import logging
 import os
+import re
+import secrets
+import shutil
 import socket
 import ssl
 import subprocess
@@ -1528,12 +1531,12 @@ def headless_main(args):
 def parse_args(argv):
     p = argparse.ArgumentParser(
         prog="reality-router",
-        description="RealityRouter Command-Line Interface. Handle setup, start, stop, status, doctor, models, auth.",
+        description="RealityRouter Command-Line Interface. Handle setup, start, stop, status, doctor, models, auth, expose.",
     )
     p.add_argument(
         "command",
         nargs="?",
-        choices=["setup", "start", "stop", "status", "doctor", "models", "auth"],
+        choices=["setup", "start", "stop", "status", "doctor", "models", "auth", "expose"],
         help="Command to execute"
     )
     p.add_argument(
@@ -2225,6 +2228,171 @@ def cmd_stop(args, config):
     sys.exit(EXIT_OK)
 
 
+def _running_port(args):
+    """The port the running router is on, or None if it is not running."""
+    pid = read_pid()
+    if not pid_alive(pid):
+        return None
+    try:
+        with open(PORT_FILE, "r") as f:
+            return int(f.read().strip())
+    except Exception:
+        return args.port or 8000
+
+
+def _auth_is_enforced(port):
+    """Ask the running router whether it requires a key.
+
+    Checked against the live process rather than .env, because the router reads
+    its keys at startup: a key added to .env after the router started is not in
+    effect yet, and exposing it in that state would publish an open proxy.
+    """
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/models")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return r.status == 401
+    except urllib.error.HTTPError as e:
+        return e.code == 401
+    except Exception:
+        return False
+
+
+def cmd_expose(args, config):
+    """Put the router at a public HTTPS address, for clients that cannot reach
+    a local one.
+
+    Cursor is the reason this exists: it sends requests from its own cloud,
+    which refuses private addresses, so `localhost` can never work. The tunnel
+    is the easy half. The half worth being careful about is that a public router
+    without authentication is an open proxy to the operator's provider keys, so
+    this refuses to run until the router actually enforces a key.
+    """
+    port = _running_port(args)
+    def fail(message, code=EXIT_UNHEALTHY):
+        if args.json:
+            print(json.dumps({"status": "error", "error": message}, indent=2))
+        else:
+            print_status(message, "error")
+        sys.exit(code)
+
+    if not port:
+        fail("RealityRouter is not running. Start it first: reality-router start")
+
+    if not _auth_is_enforced(port):
+        existing = load_env().get("ROUTER_API_KEYS", "").strip()
+        if existing:
+            fail(
+                "An API key is configured but the running router is not enforcing it. "
+                "Restart the router, then run this again: reality-router stop && reality-router start"
+            )
+
+        key = secrets.token_hex(32)
+        env_vars = load_env()
+        env_vars["ROUTER_API_KEYS"] = key
+        save_env(env_vars)
+        restart_note = (
+            "Restart the router to apply it, then run 'reality-router expose' again: "
+            "reality-router stop && reality-router start"
+        )
+        if args.json:
+            print(json.dumps({
+                "status": "key_created",
+                "api_key": key,
+                "config_file": ENV_FILE,
+                "next": restart_note,
+            }, indent=2))
+        else:
+            print_status("No API key was set, so one was generated and saved.", "success")
+            print(f"\n  {C_BOLD}Your router API key:{C_RESET}\n  {C_CYAN}{key}{C_RESET}\n")
+            print_status(restart_note, "warn")
+        sys.exit(EXIT_OK)
+
+    tunnel_bin = shutil.which("cloudflared")
+    if not tunnel_bin:
+        if args.json:
+            fail("cloudflared is not installed; install it or use another HTTPS tunnel", EXIT_USAGE)
+        print_status("cloudflared is not installed.", "error")
+        print("\n  macOS:  brew install cloudflared")
+        print("  Linux:  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/")
+        print("\n  Any other HTTPS tunnel works too (ngrok, a reverse proxy you own).")
+        print(f"  Point it at http://localhost:{port} and use its address with /v1 appended.\n")
+        sys.exit(EXIT_USAGE)
+
+    key = load_env().get("ROUTER_API_KEYS", "").split(",")[0].strip()
+
+    if not args.json:
+        print_header("Exposing RealityRouter")
+        print(f"  Router:   http://localhost:{port}  ({ICON_CHECK} API key required)")
+        print(f"  Tunnel:   cloudflared\n")
+        print_status("Starting tunnel...", "info")
+
+    proc = subprocess.Popen(
+        [tunnel_bin, "tunnel", "--no-autoupdate", "--url", f"http://localhost:{port}"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    public_url = None
+    try:
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            line = proc.stdout.readline()
+            if not line:
+                if proc.poll() is not None:
+                    break
+                continue
+            found = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line)
+            if found:
+                public_url = found.group(0)
+                break
+
+        if not public_url:
+            proc.terminate()
+            fail("The tunnel did not report a public address. Is cloudflared able to reach the internet?")
+
+        base_url = f"{public_url}/v1"
+        if args.json:
+            print(json.dumps({
+                "status": "exposed",
+                "url": public_url,
+                "base_url": base_url,
+                "api_key": key,
+                "note": "This address is temporary and stops working when this command exits.",
+            }, indent=2), flush=True)
+        else:
+            print_status("Tunnel is up.", "success")
+            print(f"\n  {C_BOLD}Base URL:{C_RESET}  {C_CYAN}{base_url}{C_RESET}")
+            print(f"  {C_BOLD}API key: {C_RESET}  {C_CYAN}{key}{C_RESET}\n")
+            print(f"  {C_BOLD}Cursor{C_RESET} (Settings -> Models):")
+            print("    - OpenAI API Key: the key above (not an OpenAI key)")
+            print("    - Override OpenAI Base URL: on")
+            print(f"    - Base URL: {base_url}")
+            print("    - Add model: auto\n")
+            print(f"  {C_YELLOW}Anyone with this address and key can spend your provider credits.{C_RESET}")
+            print(f"  {C_YELLOW}The address changes each time this command runs, and stops working when it exits.{C_RESET}\n")
+            print(f"  {C_CYAN}Press [CTRL+C] to close the tunnel.{C_RESET}\n")
+
+        # Hold the tunnel open. It is a child process, so quitting closes it --
+        # which is the intent: nothing stays exposed after this command ends.
+        proc.wait()
+    except KeyboardInterrupt:
+        if not args.json:
+            print_status("Closing tunnel.", "info")
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                proc.kill()
+    if args.json:
+        print(json.dumps({"status": "closed"}, indent=2), flush=True)
+    else:
+        print_status("Tunnel closed. The router is local-only again.", "success")
+
+
 def cmd_status(args, config):
     running_pid = read_pid()
     port = None
@@ -2494,6 +2662,8 @@ def main():
         cmd_models(args, config)
     elif args.command == "auth":
         cmd_auth(args, config)
+    elif args.command == "expose":
+        cmd_expose(args, config)
 
 
 if __name__ == "__main__":

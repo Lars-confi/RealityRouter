@@ -95,7 +95,7 @@ Tools split into two groups, and this determines what you can actually do.
 |---|---|
 | OpenCode | `~/.config/opencode/opencode.json` |
 | Codex CLI | `~/.codex/config.toml` |
-| Aider | `~/.aider.conf.yml`, or `OPENAI_API_BASE` + `OPENAI_API_KEY` env |
+| Aider | `~/.aider.conf.yml`, or the `OPENAI_API_BASE` + `OPENAI_API_KEY` variables |
 | Zed | `~/.config/zed/settings.json` |
 | Hermes | `~/.hermes/config.yaml` → the `model:` block |
 | Continue / VSCodium | `~/.continue/config.json` |

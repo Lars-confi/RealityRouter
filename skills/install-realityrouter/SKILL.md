@@ -99,10 +99,14 @@ Say in one line that you are cloning `github.com/Lars-confi/RealityRouter` into
 `~/.reality_router` and building a virtualenv there, then run it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Lars-confi/RealityRouter/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Lars-confi/RealityRouter/main/install.sh -o /tmp/reality-router-install.sh
+bash /tmp/reality-router-install.sh
 ```
 
-Non-interactive; it prompts for nothing.
+Non-interactive; it prompts for nothing. Download and run as two steps rather
+than piping to a shell: the user can read what is about to run, and skill
+scanners treat download-and-execute in one line as a supply-chain risk -- which
+it is.
 
 ## Step 3 — Ask for provider keys
 
@@ -238,7 +242,7 @@ if the router is not enforcing a key. **Ask the user before exposing anything.**
 
 ## If something fails
 
-- **Install fails** — report the error verbatim. Do not retry with `sudo`.
+- **Install fails** — report the error verbatim. Do not retry with elevated privileges.
 - **A provider is missing from `/v1/models`** — that key is wrong or the
   endpoint is unreachable. Name the provider; do not re-ask more than once.
 - **Step 6 returns non-200** — the router is up but cannot reach any provider.

@@ -58,12 +58,38 @@ realityrouter.dev serves the `/.well-known/skills/` convention, so these are
 installable directly:
 
 ```bash
-hermes skills search realityrouter.dev
+hermes skills inspect well-known:https://realityrouter.dev/.well-known/skills/install-realityrouter
 hermes skills install well-known:https://realityrouter.dev/.well-known/skills/install-realityrouter
 ```
 
 The endpoint is an index at `/.well-known/skills/index.json` plus a `SKILL.md`
 per skill, served from this repository, so it never drifts from what is here.
+
+Straight from GitHub works too, and `tap` keeps the repository as a source:
+
+```bash
+hermes skills tap add Lars-confi/RealityRouter
+hermes skills install Lars-confi/RealityRouter/skills/install-realityrouter
+```
+
+**`connect-tool-to-realityrouter` will be blocked by Hermes's skill scanner**,
+and it is worth knowing why before you `--force` it. The scanner flags any skill
+that reads or writes another agent's configuration file as `persistence`:
+
+```
+CRITICAL persistence  references Hermes configuration files directly
+                      ls ~/.hermes/config.yaml
+HIGH     persistence  references other agent configuration files
+                      ls ~/.codex/config.toml
+HIGH     network      uses tunneling service for external access
+                      cloudflared tunnel --url http://localhost:<port>
+```
+
+Editing those files is precisely what the skill is for — it points your tools at
+the router — and the tunnel line is the documented way to reach the router from
+Cursor. A scanner cannot tell that apart from malware by pattern alone. Run
+`hermes skills inspect` first, read it, then install with `--force` if you are
+satisfied. `install-realityrouter` scans clean and needs no flag.
 
 ### Everything else
 

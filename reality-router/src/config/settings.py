@@ -60,6 +60,10 @@ class Settings(BaseModel):
     # Inbound auth: keys clients must present. Empty means auth is off.
     router_api_keys: List[str] = Field(default_factory=list)
     reality_check_provider: Optional[str] = Field(default=None)
+    # Google and Microsoft credentials last an hour; these let the router
+    # refresh instead of silently falling back to an uncalibrated 0.5.
+    reality_check_refresh_token: Optional[str] = Field(default=None)
+    reality_check_token_expires_at: Optional[str] = Field(default=None)
     reality_routing_url: str = Field(
         default="https://snap-api.blackglacier-173a252d.swedencentral.azurecontainerapps.io"
     )

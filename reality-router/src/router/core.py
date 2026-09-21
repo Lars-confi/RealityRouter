@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.config.settings import get_settings, load_models_from_config
+from src.router.sso import get_reality_check_token, note_auth_failure
 from src.models.database import RoutingLog, SessionLocal, get_db, init_db
 from src.models.routing import RoutingRequest, RoutingResponse
 from src.router.load_balancer import load_balancer
@@ -1678,7 +1679,7 @@ class RouterCore:
                 url = get_routing_url()
                 try:
                     # Use stored token from settings or forwarded header
-                    auth_token = settings.reality_check_token
+                    auth_token = get_reality_check_token()
                     logger.info(f"RC Call Token source: settings")
                     if auth_token:
                         logger.info("RC Call Token is configured/attached securely")
@@ -1753,6 +1754,13 @@ class RouterCore:
                         logger.warning(
                             f"Reality Router API ERROR {resp.status_code} for model {m['id']} at {url}. Response: {error_body}"
                         )
+                        if resp.status_code == 401:
+                            # Expiry we did not predict: revoked, clock skew, or
+                            # a token minted before expiries were recorded. Ask
+                            # for a refresh rather than 401ing for the life of
+                            # the process -- which is how a router ends up
+                            # serving a flat 0.5 for months without a word.
+                            note_auth_failure()
                 except Exception as e:
                     logger.exception(
                         f"Reality Router call failed for {m['id']} at {url}: {repr(e)}"
@@ -2312,7 +2320,7 @@ class RouterCore:
                                 f"Sending feedback to Reality Router ({fb_strategy}) for decision {rc_id_str}: {sentiment} (Payload: {fb_payload})"
                             )
                             # Use stored token from settings or forwarded header
-                            auth_token = settings.reality_check_token
+                            auth_token = get_reality_check_token()
                             headers = {
                                 "Content-Type": "application/json",
                                 "Accept": "application/json",
@@ -2704,7 +2712,7 @@ class RouterCore:
                                         if strategy == "expected_utility"
                                         else get_rerouting_url()
                                     )
-                                    auth_token = settings.reality_check_token
+                                    auth_token = get_reality_check_token()
                                     headers = {
                                         "Content-Type": "application/json",
                                         "Accept": "application/json",
@@ -2762,7 +2770,7 @@ class RouterCore:
                                     if strategy == "expected_utility"
                                     else get_rerouting_url()
                                 )
-                                auth_token = settings.reality_check_token
+                                auth_token = get_reality_check_token()
                                 headers = {
                                     "Content-Type": "application/json",
                                     "Accept": "application/json",
@@ -3104,7 +3112,7 @@ class RouterCore:
                                         if strategy == "expected_utility"
                                         else get_rerouting_url()
                                     )
-                                    auth_token = settings.reality_check_token
+                                    auth_token = get_reality_check_token()
                                     headers = {
                                         "Content-Type": "application/json",
                                         "Accept": "application/json",
@@ -3200,7 +3208,7 @@ class RouterCore:
                                 http2=False, trust_env=False
                             ) as client:
                                 # Post-hoc assessment for tiered rerouting always uses get_rerouting_url()
-                                auth_token = settings.reality_check_token
+                                auth_token = get_reality_check_token()
                                 headers = {
                                     "Content-Type": "application/json",
                                     "Accept": "application/json",

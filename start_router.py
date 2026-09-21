@@ -946,7 +946,7 @@ def wizard_reality_check_auth(env_vars):
         else:
             # Microsoft Device Code Flow
             data = urllib.parse.urlencode(
-                {"client_id": client_id, "scope": "openid User.Read"}
+                {"client_id": client_id, "scope": "openid User.Read offline_access"}
             ).encode()
             req = urllib.request.Request(
                 "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode",
@@ -1058,6 +1058,10 @@ def wizard_reality_check_auth(env_vars):
             env_vars["SSO_EMAIL"] = sso_email
             env_vars["REALITY_CHECK_TOKEN"] = f"Bearer {token}"
             env_vars["REALITY_CHECK_PROVIDER"] = provider_name
+            # Google and Microsoft credentials are valid for an hour. Keep the
+            # refresh token and the expiry so the router can renew instead of
+            # dying quietly an hour after a successful login.
+            env_vars.update(_token_lifetime_fields(token_data))
             save_env(env_vars)
             print_status("Authentication successful!", "success")
             time.sleep(1.5)
@@ -1403,6 +1407,7 @@ def build_status(env_vars, port=None, pid=None, models=None):
         "config_file": ENV_FILE,
         "sentiment_model": env_vars.get("SENTIMENT_MODEL_ID"),
         "reality_signal": bool(env_vars.get("REALITY_CHECK_TOKEN")),
+        "reality_signal_auth": calibration_auth_state(env_vars),
         "providers": providers,
         "models_total": len(models),
     }
@@ -1757,6 +1762,69 @@ def check_tty(args, config):
         sys.exit(EXIT_USAGE)
 
 
+def calibration_auth_state(env_vars):
+    """Is the Reality Signal credential usable, and for how long?
+
+    Worth reporting rather than leaving in a log: when this credential dies the
+    router keeps serving, the dashboard keeps filling in, and every model just
+    silently scores 0.5. The failure is invisible from the outside, which is how
+    it survived unnoticed for months.
+    """
+    token = (env_vars.get("REALITY_CHECK_TOKEN") or "").strip()
+    provider = (env_vars.get("REALITY_CHECK_PROVIDER") or "").strip()
+    if not token:
+        return {"state": "missing", "provider": provider or None,
+                "detail": "No Reality Signal token. Routing falls back to uncalibrated 0.5."}
+    if token == "local_unauthenticated":
+        return {"state": "unauthenticated", "provider": provider or None,
+                "detail": "Local/enterprise mode: no calibration service is being called."}
+
+    expires_at = env_vars.get("REALITY_CHECK_TOKEN_EXPIRES_AT")
+    has_refresh = bool((env_vars.get("REALITY_CHECK_REFRESH_TOKEN") or "").strip())
+    if not expires_at:
+        # GitHub tokens do not expire. Anything else without a recorded expiry
+        # predates this being tracked and cannot be renewed automatically.
+        if provider == "GitHub":
+            return {"state": "valid", "provider": provider, "expires_at": None,
+                    "detail": "GitHub tokens do not expire."}
+        return {"state": "unknown", "provider": provider or None, "expires_at": None,
+                "refreshable": has_refresh,
+                "detail": "No expiry recorded. Run 'reality-router auth' to refresh this credential."}
+
+    try:
+        remaining = int(float(expires_at) - time.time())
+    except (TypeError, ValueError):
+        remaining = 0
+    state = "valid" if remaining > 0 else ("refreshable" if has_refresh else "expired")
+    detail = f"Valid for {remaining}s." if remaining > 0 else (
+        "Expired; the router will renew it on the next scoring call."
+        if has_refresh else
+        "Expired and no refresh token stored. Run 'reality-router auth'.")
+    return {"state": state, "provider": provider or None,
+            "expires_in_seconds": remaining, "refreshable": has_refresh, "detail": detail}
+
+
+def _token_lifetime_fields(token_data):
+    """What to persist so a credential can outlive its first hour.
+
+    GitHub's token does not expire and returns no refresh token, so this comes
+    back empty for it and nothing changes.
+    """
+    fields = {}
+    if not isinstance(token_data, dict):
+        return fields
+    if token_data.get("refresh_token"):
+        fields["REALITY_CHECK_REFRESH_TOKEN"] = token_data["refresh_token"]
+    if token_data.get("expires_in"):
+        try:
+            fields["REALITY_CHECK_TOKEN_EXPIRES_AT"] = str(
+                int(time.time() + int(token_data["expires_in"]))
+            )
+        except (TypeError, ValueError):
+            pass
+    return fields
+
+
 def run_sso_device_flow(args, config, provider_type):
     if provider_type == "e":
         snap_url = config.get("REALITY_ROUTING_URL", "http://localhost:8001")
@@ -1822,7 +1890,7 @@ def run_sso_device_flow(args, config, provider_type):
                 "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
             }
         else:
-            data = urllib.parse.urlencode({"client_id": client_id, "scope": "openid User.Read"}).encode()
+            data = urllib.parse.urlencode({"client_id": client_id, "scope": "openid User.Read offline_access"}).encode()
             req = urllib.request.Request("https://login.microsoftonline.com/common/oauth2/v2.0/devicecode", data=data)
             with urllib.request.urlopen(req) as response:
                 device_data = json.loads(response.read().decode())
@@ -1918,6 +1986,7 @@ def run_sso_device_flow(args, config, provider_type):
                     pass
             config["SSO_EMAIL"] = sso_email
             config["REALITY_CHECK_TOKEN"] = f"Bearer {token}"
+            config.update(_token_lifetime_fields(token_data))
             config["REALITY_CHECK_PROVIDER"] = provider_name
             save_env(config)
 
@@ -2494,6 +2563,12 @@ def cmd_doctor(args, config):
     sso_valid = bool(sso_token and sso_token.strip())
     if not sso_valid:
         issues.append("SSO authentication token (REALITY_CHECK_TOKEN) is missing or empty.")
+    calibration = calibration_auth_state(config)
+    if calibration["state"] == "expired":
+        issues.append(
+            "Reality Signal credential has expired and cannot be refreshed. "
+            "Routing is running on uncalibrated 0.5 probabilities. Run 'reality-router auth'."
+        )
 
     has_providers = has_any_credential(config)
     if not has_providers:
@@ -2543,6 +2618,7 @@ def cmd_doctor(args, config):
             "ollama_reachable": ollama_reachable,
             "port_available": not port_busy,
             "router_running": router_here,
+            "calibration": calibration,
             "issues": issues,
             "warnings": warnings,
         }
@@ -2551,6 +2627,7 @@ def cmd_doctor(args, config):
         print_header("RealityRouter Doctor Diagnostics")
         print(f"  Config File: {ENV_FILE} ({'Found' if env_exists else 'Missing'})")
         print(f"  SSO Token:  {'Valid/Present' if sso_valid else 'Missing'}")
+        print(f"  Calibration: {calibration['state']} - {calibration['detail']}")
         print(f"  Providers:  {'Configured' if has_providers else 'None configured'}")
         print(f"  Ollama:     {'Reachable' if ollama_reachable else 'Unreachable/Not active'}")
         print(f"  Port {port}:  {'BUSY' if port_busy else 'AVAILABLE'}")

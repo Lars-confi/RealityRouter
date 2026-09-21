@@ -216,6 +216,26 @@ up their coding tool — **invoke `connect-tool-to-realityrouter`, passing the
 
 ---
 
+## Optional: require an API key
+
+The router accepts any request by default, which is right while it listens on
+localhost. It is **not** right the moment it is reachable from anywhere else --
+another machine, a shared network, a tunnel -- because an open router spends the
+user's provider credits for whoever finds it.
+
+If the user wants that, or if a tool needs a public address (Cursor does, because
+its requests come from Cursor's cloud):
+
+1. Generate a key: `openssl rand -hex 32`
+2. Add `ROUTER_API_KEYS=<key>` to `~/.reality_router/.env` -- append it, keep the
+   other lines, and do not print the key into a shared transcript
+3. Restart the router. The log confirms: *Inbound API-key auth is on*
+4. Verify a request without the key gets `401`
+5. Every connected tool now needs that key in place of `rr-local`
+
+For a public address, `reality-router expose` does the tunnel and refuses to run
+if the router is not enforcing a key. **Ask the user before exposing anything.**
+
 ## If something fails
 
 - **Install fails** — report the error verbatim. Do not retry with `sudo`.

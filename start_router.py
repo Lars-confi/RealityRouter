@@ -1714,12 +1714,41 @@ def resolve_config(args):
     return config
 
 
+def _port_from_file():
+    try:
+        with open(PORT_FILE, "r") as f:
+            return int(f.read().strip())
+    except Exception:
+        return None
+
+
+def router_is_serving(port, timeout=2.0):
+    """Is a healthy router already answering on this port?
+
+    Deliberately not PID-based. The router is commonly started by something
+    other than this CLI -- Docker, systemd, a supervisor -- and in that case no
+    PID file exists, so anything that asks "is it running?" via the PID alone
+    answers "stopped" about a router that is serving requests perfectly well.
+    """
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=timeout) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
 def check_tty(args, config):
     if not sys.stdin.isatty():
         if args.agent or args.non_interactive:
             return
         # Allow purely non-interactive queries even without TTY
-        if args.command in ["status", "doctor", "models"]:
+        if args.command in ["status", "doctor", "models", "stop"]:
+            return
+        # --json is itself a declaration that a machine is calling: the caller
+        # cannot answer a prompt, and llms.txt documents `--set` and
+        # `stop --json` without --agent. Commands that genuinely need input
+        # still fail on their own further down.
+        if getattr(args, "json", False) or getattr(args, "set", None):
             return
         # If starting and configuration is fully present, it can run headlessly
         if args.command == "start" and has_any_credential(config) and config.get("REALITY_CHECK_TOKEN") and config.get("SENTIMENT_MODEL_ID"):
@@ -2183,6 +2212,20 @@ def cmd_start(args, config):
 def cmd_stop(args, config):
     running_pid = read_pid()
     if not pid_alive(running_pid):
+        # A router this CLI did not start has no PID file, but it is still
+        # serving. Saying "stopped" would tell a caller it had stopped
+        # something that is in fact still up.
+        port = args.port or _port_from_file() or 8000
+        if router_is_serving(port):
+            msg = (f"A RealityRouter is serving on port {port} but was not started by this CLI "
+                   "(Docker, systemd or started by hand). Stop it the same way it was started, "
+                   "e.g. 'docker compose down'.")
+            if args.json:
+                print(json.dumps({"status": "running", "managed_by": "external",
+                                  "port": port, "message": msg}, indent=2))
+            else:
+                print(msg)
+            sys.exit(EXIT_OK)
         if args.json:
             print(json.dumps({"status": "stopped", "message": "RealityRouter is not running."}, indent=2))
         else:
@@ -2409,6 +2452,12 @@ def cmd_status(args, config):
     status = build_status(config, port, running_pid, models)
     if pid_alive(running_pid):
         status["status"] = "running"
+        status["managed_by"] = "cli"
+    elif router_is_serving(port):
+        # Started by Docker, systemd or by hand. It is serving; saying
+        # "stopped" here sends an agent off to start a second one.
+        status["status"] = "running"
+        status["managed_by"] = "external"
     else:
         status["status"] = "stopped"
 
@@ -2468,14 +2517,22 @@ def cmd_doctor(args, config):
     else:
         ollama_reachable = True
 
-    ollama_expected = config.get("CUSTOM_LLM_BASE_URL") and "11434" in config.get("CUSTOM_LLM_BASE_URL")
-    if ollama_expected and not ollama_reachable:
-        issues.append(f"Ollama is expected at {ollama_url} but is unreachable.")
+    # A configured-but-absent Ollama is only fatal when it is the only way to
+    # answer a request. With cloud providers configured it is a warning: the
+    # router routes around it, and doctor returning "error" for it teaches
+    # agents to ignore doctor.
+    ollama_expected = bool(config.get("CUSTOM_LLM_BASE_URL") and "11434" in config.get("CUSTOM_LLM_BASE_URL"))
+    ollama_missing = ollama_expected and not ollama_reachable
+    warnings = []
+    if ollama_missing:
+        msg = f"Ollama is expected at {ollama_url} but is unreachable."
+        (issues if not has_providers else warnings).append(msg)
 
     port = args.port or 8000
     port_busy = is_port_in_use(port)
-    if port_busy:
-        issues.append(f"Port {port} is already in use.")
+    router_here = port_busy and router_is_serving(port)
+    if port_busy and not router_here:
+        issues.append(f"Port {port} is already in use by something that is not RealityRouter.")
 
     if args.json:
         result = {
@@ -2485,7 +2542,9 @@ def cmd_doctor(args, config):
             "providers_configured": has_providers,
             "ollama_reachable": ollama_reachable,
             "port_available": not port_busy,
+            "router_running": router_here,
             "issues": issues,
+            "warnings": warnings,
         }
         print(json.dumps(result, indent=2))
     else:
@@ -2502,6 +2561,8 @@ def cmd_doctor(args, config):
                 print(f"    - {iss}")
         else:
             print(f"  {C_GREEN}✓ All checks passed! RealityRouter is healthy and ready.{C_RESET}")
+        for w in warnings:
+            print(f"  {C_YELLOW}! {w}{C_RESET}")
 
     if not env_exists:
         sys.exit(10)
@@ -2509,9 +2570,9 @@ def cmd_doctor(args, config):
         sys.exit(11)
     if not has_providers:
         sys.exit(12)
-    if ollama_expected and not ollama_reachable:
+    if ollama_missing and not has_providers:
         sys.exit(13)
-    if port_busy:
+    if port_busy and not router_here:
         sys.exit(14)
 
     sys.exit(0)

@@ -1,46 +1,113 @@
 # RealityRouter for LLMs and AI Agents
 
-RealityRouter is an agent-native, utility-optimized LLM routing layer designed for programmatic automation and zero-overhead deployments.
+RealityRouter is a self-hosted, OpenAI-compatible LLM router. For each request it
+scores every model in the user's pool on expected utility — probability of
+success, cost, latency — and routes to the cheapest model likely to succeed. The
+user brings their own provider keys; nothing is proxied through a third party.
 
-## CLI Core Commands
+This file is the short, operational version. Full docs:
+https://realityrouter.dev/llms-full.txt
 
-Use `start_router.py` (wrapped as `reality-router`) for automation. Ensure you pass `--agent` to guarantee zero prompts and automatic configuration.
+## First: find the endpoint, never assume it
 
 ```bash
-# Setup without prompts (auto-detects keys, sets up Microsoft SSO fallback)
-reality-router setup --agent
-
-# Setup programmatically with strict validation (fails on missing keys)
-reality-router setup --non-interactive
-
-# Authenticate via Device Code Flow (outputs NDJSON events)
-reality-router auth --agent --json
-
-# Check health and status of the router (outputs JSON)
 reality-router status --json
-
-# Stop background daemonized router instances gracefully
-reality-router stop --json
-
-# Diagnostics / Doctor check (exit codes: 10=env, 11=auth, 12=providers, 14=port busy)
-reality-router doctor --json
-
-# Manage model visibility
-reality-router models --disable-model <id> --json
-reality-router models --enable-model <id> --json
 ```
 
-## Quick Installation
+Parse `base_url` (for example `http://localhost:8000/v1`) and `dashboard_url`.
+**Do not hardcode port 8000** — the router moves when the port is taken.
+`status` reports `"status": "running"` for a router started any way, including
+Docker or systemd, with `managed_by` saying which.
+
+## Endpoints
+
+| Path | Protocol | Used by |
+| :--- | :--- | :--- |
+| `/v1/chat/completions` | OpenAI Chat Completions | most clients |
+| `/v1/responses` | OpenAI Responses API | Codex CLI, OpenClaw |
+| `/v1/messages` | Anthropic Messages | Claude Code |
+| `/v1/models` | model list | discovery |
+| `/metrics/dashboard` | HTML dashboard | humans |
+| `/health` | liveness, never requires a key | monitoring |
+
+Send `"model": "auto"` to let the router choose. Any id from `/v1/models` pins
+one instead.
+
+## Authentication
+
+By default the router accepts any request, so any placeholder key (`rr-local`)
+works. If `ROUTER_API_KEYS` is set in `~/.reality_router/.env` (comma-separated),
+every path except `/`, `/health` and the agent card requires one of those keys,
+sent as `Authorization: Bearer <key>`, as `x-api-key: <key>` (Anthropic clients),
+or as HTTP Basic with the key as the password (the dashboard, in a browser).
+
+To find out which applies: `curl -o /dev/null -w '%{http_code}' <base_url>/models`
+— 401 means a key is required.
+
+Turn keys on **before** the router is reachable from anywhere you do not control.
+An unauthenticated router at a public address is an open proxy to the operator's
+provider credits. `reality-router expose` puts the router behind a public HTTPS
+tunnel and refuses to run unless a key is being enforced — it is how Cursor is
+supported, because Cursor's requests come from Cursor's cloud and can never reach
+`localhost`.
+
+## CLI, headless
+
+Every command below is safe without a TTY. `--json` means a machine is calling
+and no command will prompt.
 
 ```bash
-# Linux/macOS installation (idempotent, installs executable wrapper to ~/.local/bin)
+reality-router setup --agent            # zero-prompt setup, auto-detects keys
+reality-router setup --non-interactive  # strict: fails if anything is missing
+reality-router auth --agent --json      # SSO device flow, NDJSON events
+reality-router status --json            # endpoint, port, pid, model counts
+reality-router doctor --json            # active diagnostics, see exit codes
+reality-router stop --json              # stop a CLI-started router
+reality-router expose                   # public HTTPS address + API key
+reality-router models --json
+reality-router models --disable-model <id> --json
+reality-router models --enable-model <id> --json
+reality-router --set KEY=VALUE --json   # write config without hand-editing .env
+```
+
+`doctor` exit codes: `0` healthy, `10` no config file, `11` no SSO token,
+`12` no provider credentials, `13` Ollama configured, unreachable, and no other
+provider, `14` port taken by something that is not RealityRouter. A healthy
+router occupying its own port is not an error, and a missing Ollama alongside
+working cloud providers is reported under `warnings`, not `issues`.
+
+## Installation
+
+```bash
+# Linux/macOS (idempotent, installs a wrapper to ~/.local/bin)
 curl -fsSL https://github.com/Lars-confi/RealityRouter/raw/main/install.sh | bash
 
-# Windows PowerShell installation
+# Windows PowerShell
 irm https://github.com/Lars-confi/RealityRouter/raw/main/install.ps1 | iex
 ```
 
-## Environment & Secrets Precedence
+Two agent skills cover install and tool wiring end to end, including which
+questions to ask the user: `skills/install-realityrouter` and
+`skills/connect-tool-to-realityrouter`. See `docs/agent-install.md`.
 
-Precedence Chain: `CLI Flags > Environment Variables > Config File (.env) > Auto-detect > Fallbacks`.
-Never expose API keys or access tokens in output or logs.
+## Connecting a client
+
+Point the tool at `base_url` and set its model to `auto`. Per-tool specifics,
+including the traps, are in `docs/integrations.md`:
+
+- **Claude Code** — `ANTHROPIC_BASE_URL` **without** `/v1`; it appends
+  `/v1/messages` itself
+- **Codex CLI** — Responses API only; leave `wire_api` unset
+- **VS Code** — built-in chat, Custom Endpoint, no Copilot plan needed
+- **Cursor** — needs a public address and a key (see above)
+- **Aider** — add `X-Agent-ID` via `.aider.model.settings.yml` to be named in the
+  dashboard; it identifies itself as `OpenAI/Python` otherwise
+- **Zed, Cline, OpenCode, OpenClaw, Hermes, Roo Code** — OpenAI-compatible
+  provider blocks
+
+## Environment & secrets
+
+Precedence: `CLI flags > environment variables > .env > auto-detect > fallbacks`.
+Config lives in `~/.reality_router/.env` (mode 600). Never print API keys, SSO
+tokens or router keys into output, logs or a shared transcript. Ask the user for
+provider keys rather than reading them out of other tools' configuration.

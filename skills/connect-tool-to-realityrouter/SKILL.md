@@ -9,7 +9,11 @@ RealityRouter presents an OpenAI-compatible endpoint. Connecting a tool means
 changing three settings in that tool:
 
 - **Base URL** — the router's `base_url`, established in Step 0
-- **API key** — `rr-local` (a placeholder; RealityRouter does not check it)
+- **API key** — `rr-local` if the router has no keys set. If `ROUTER_API_KEYS`
+  is set in `~/.reality_router/.env`, it must be one of those keys, or the
+  request gets a 401. Check with:
+  `curl -s -o /dev/null -w '%{http_code}' <url>/v1/models` — 401 means a key
+  is required, 200 means any placeholder works.
 - **Model** — `auto` (the router chooses per request)
 
 **Do not hardcode port 8000.** RealityRouter moves to the next free port when
@@ -20,7 +24,8 @@ This skill assumes the router is already running. It is **idempotent and
 re-runnable** — run it again for each tool the user wants to add.
 
 Nothing here touches provider credentials. The only secret-shaped value you
-write is `rr-local`, which is not a secret. The one exception is Hermes, whose
+write is `rr-local`, which is not a secret (unless the router requires a key --
+see Step 3). The one exception is Hermes, whose
 config file holds a real provider key you will be replacing — see below.
 
 ---

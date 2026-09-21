@@ -1,0 +1,17 @@
+{
+  "name": "confidentia",
+  "owner": {
+    "name": "Confidentia AI",
+    "url": "https://realityrouter.dev"
+  },
+  "description": "Plugins from Confidentia AI",
+  "plugins": [
+    {
+      "name": "reality-router",
+      "source": "./",
+      "description": "Install RealityRouter and connect your coding tools to it",
+      "homepage": "https://realityrouter.dev",
+      "license": "MIT"
+    }
+  ]
+}

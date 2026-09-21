@@ -31,6 +31,18 @@ click path and waits — it will not claim success until you confirm you saved.
 
 ### Claude Code
 
+```
+/plugin marketplace add Lars-confi/RealityRouter
+/plugin install reality-router@confidentia
+```
+
+Both skills arrive namespaced, as `reality-router:install-realityrouter` and
+`reality-router:connect-tool-to-realityrouter`, and update when the repository
+does.
+
+<details>
+<summary>Copying the files instead</summary>
+
 ```bash
 mkdir -p ~/.claude/skills
 cp -r skills/install-realityrouter ~/.claude/skills/
@@ -38,13 +50,27 @@ cp -r skills/connect-tool-to-realityrouter ~/.claude/skills/
 ```
 
 Project-scoped instead of personal? Use `.claude/skills/` in the repo.
+</details>
+
+### Hermes, and anything reading well-known skill endpoints
+
+realityrouter.dev serves the `/.well-known/skills/` convention, so these are
+installable directly:
+
+```bash
+hermes skills search realityrouter.dev
+hermes skills install well-known:https://realityrouter.dev/.well-known/skills/install-realityrouter
+```
+
+The endpoint is an index at `/.well-known/skills/index.json` plus a `SKILL.md`
+per skill, served from this repository, so it never drifts from what is here.
 
 ### Everything else
 
 The skills are plain Markdown with YAML frontmatter, and the content is
 runtime-agnostic — only the file location and frontmatter convention differ.
-For a runtime that reads a rules or instructions file, point it at the canonical
-copies:
+Codex CLI, OpenCode, Cursor, Cline and Zed have no skill package format; they
+read rules or instructions files. Point those at the canonical copies:
 
 ```
 https://raw.githubusercontent.com/Lars-confi/RealityRouter/main/skills/install-realityrouter/SKILL.md
@@ -59,7 +85,7 @@ first.
 
 ## Requirements
 
-`install-realityrouter` uses the non-interactive flags on `start_router.py`
-(`--headless`, `--set`, `--detach`, `--status`). Without them the skill falls
+`install-realityrouter` uses the non-interactive commands on `start_router.py`
+(`setup --non-interactive`, `--set`, `start --detach`, `status --json`). Without them the skill falls
 back to handing off to the interactive wizard, which works but is not
 unattended.

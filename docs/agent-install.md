@@ -16,13 +16,26 @@ once, but you connect tools repeatedly.
 
 ## Setup
 
-For Claude Code:
+In Claude Code, install the plugin:
+
+```
+/plugin marketplace add Lars-confi/RealityRouter
+/plugin install reality-router@confidentia
+```
+
+That is the whole setup. Both skills arrive namespaced —
+`reality-router:install-realityrouter` and
+`reality-router:connect-tool-to-realityrouter` — and update when you pull.
+
+<details>
+<summary>Copying the files instead</summary>
 
 ```bash
 git clone https://github.com/Lars-confi/RealityRouter
 mkdir -p ~/.claude/skills
 cp -r RealityRouter/skills/* ~/.claude/skills/
 ```
+</details>
 
 For other runtimes, see [`skills/README.md`](https://github.com/Lars-confi/RealityRouter/blob/main/skills/README.md).
 The skills are plain Markdown and the content is portable; only the file

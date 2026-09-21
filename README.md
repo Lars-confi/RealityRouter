@@ -116,7 +116,9 @@ compliance:
 - **[Multi-agent support](docs/agents.md)** — protocol detection and
   sticky sessions.
 - **[Agent-assisted install](docs/agent-install.md)** — let a coding agent
-  install and wire it up for you.
+  install and wire it up for you (Claude Code:
+  `/plugin marketplace add Lars-confi/RealityRouter` then
+  `/plugin install reality-router@confidentia`).
 - **[API reference](docs/api.md)** — OpenAI-compatible endpoints.
 - **[Dashboard](docs/dashboard.md)** — CLI event viewer + web dashboard.
 - **[FAQ](docs/faq.md)** — cost, model choice, privacy, and how this compares

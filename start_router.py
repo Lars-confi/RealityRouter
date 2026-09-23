@@ -1550,6 +1550,11 @@ def parse_args(argv):
         help="Agent mode: choose sensible defaults, auto-detect, zero prompts"
     )
     p.add_argument(
+        "--no-env-keys",
+        action="store_true",
+        help="Do not adopt provider API keys found in the environment"
+    )
+    p.add_argument(
         "--non-interactive",
         action="store_true",
         help="Non-interactive mode: never prompt, crash if settings missing"
@@ -1687,16 +1692,32 @@ def resolve_config(args):
         config["REALITY_REROUTING_URL"] = args.reality_rerouting_url
 
     # 4. Auto-detect
-    # Print presence of credentials if any (never values)
-    detected_keys = []
-    for provider, pairs in PROVIDER_KEYS.items():
-        for k, name in pairs:
-            if k in os.environ:
-                detected_keys.append(k)
-                config[k] = os.environ[k]
+    #
+    # Provider keys sitting in the environment are adopted and written to .env.
+    # That is convenient on a workstation and surprising everywhere else: the
+    # environment an installer runs in is not necessarily the user's. When an
+    # agent installs the router, the agent's own credential is in that
+    # environment, so the router would quietly start billing it -- and the
+    # user, who handed over one key deliberately, never hears about it.
+    #
+    # Adoption stays (it is genuinely useful), but it is now recorded and
+    # reported by whoever calls this, and --no-env-keys turns it off.
+    global ADOPTED_ENV_KEYS
+    ADOPTED_ENV_KEYS = []
+    if getattr(args, "no_env_keys", False):
+        skipped = [k for _, pairs in PROVIDER_KEYS.items() for k, _ in pairs if k in os.environ]
+        if skipped:
+            logger.info(f"--no-env-keys: ignoring {len(skipped)} provider key(s) found in the environment")
+    else:
+        for provider, pairs in PROVIDER_KEYS.items():
+            for k, name in pairs:
+                if k in os.environ and os.environ[k] != config.get(k):
+                    ADOPTED_ENV_KEYS.append(k)
+                    config[k] = os.environ[k]
 
-    if detected_keys:
-        logger.debug(f"Auto-detected environment variables present: {', '.join(detected_keys)}")
+    if ADOPTED_ENV_KEYS:
+        # Names only, never values.
+        logger.info(f"Adopted provider keys from the environment: {', '.join(ADOPTED_ENV_KEYS)}")
 
     # Auto-detect Ollama if not explicitly configured
     if not config.get("CUSTOM_LLM_BASE_URL"):
@@ -1740,6 +1761,31 @@ def router_is_serving(port, timeout=2.0):
             return r.status == 200
     except Exception:
         return False
+
+
+ADOPTED_ENV_KEYS = []
+
+
+def report_adopted_env_keys():
+    """Say which provider keys were taken from the environment.
+
+    Never prints a value. The point is that the person who asked for this
+    install can see a key they did not hand over has been written to their
+    config, and can remove it.
+    """
+    if not ADOPTED_ENV_KEYS:
+        return
+    print()
+    print_status(
+        f"Adopted {len(ADOPTED_ENV_KEYS)} provider key(s) found in this shell's environment "
+        f"and wrote them to {ENV_FILE}:",
+        "warn",
+    )
+    for k in ADOPTED_ENV_KEYS:
+        print(f"    {k}")
+    print("  These will be used and billed like any other configured key.")
+    print("  Re-run with --no-env-keys to leave them out, and remove the lines from the config file.")
+    print()
 
 
 def check_tty(args, config):
@@ -2026,9 +2072,14 @@ def cmd_setup(args, config):
             config["REALITY_CHECK_PROVIDER"] = "AgentAuto"
         save_env(config)
         if args.json:
-            print(json.dumps({"status": "setup_complete", "config": {k: "set" for k, v in config.items() if v}}, indent=2))
+            print(json.dumps({
+                "status": "setup_complete",
+                "config": {k: "set" for k, v in config.items() if v},
+                "adopted_env_keys": ADOPTED_ENV_KEYS,
+            }, indent=2))
         else:
             print("Setup completed successfully in Agent mode.")
+            report_adopted_env_keys()
         return
 
     if args.non_interactive or args.headless:
@@ -2051,9 +2102,13 @@ def cmd_setup(args, config):
             config["SENTIMENT_MODEL_ID"] = sentiment
         save_env(config)
         if args.json:
-            print(json.dumps({"status": "setup_complete"}, indent=2))
+            print(json.dumps({
+                "status": "setup_complete",
+                "adopted_env_keys": ADOPTED_ENV_KEYS,
+            }, indent=2))
         else:
             print("Setup completed successfully in Non-interactive mode.")
+            report_adopted_env_keys()
         return
 
     # Interactive wizard setup

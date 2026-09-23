@@ -143,6 +143,24 @@ reality-router --headless --set DEEPSEEK_API_KEY=... --set OPENAI_API_KEY=...
 
 Never echo a key value back into the conversation once you have it.
 
+### If setup adopted keys from the environment
+
+`setup` writes any provider key it finds in your environment into the router's
+config, and returns the list as `adopted_env_keys`. **Your environment is not
+the user's.** The credential you are running on is in there, and adopting it
+means the router bills the user's traffic to it.
+
+If that list is not empty:
+
+1. Tell the user which keys were adopted, by name. Never print a value.
+2. Ask whether each one should stay. A key they did not hand you is a no by
+   default -- particularly your own session credential.
+3. To remove one: re-run `setup` with `--no-env-keys`, or delete the line from
+   `~/.reality_router/.env`. Deleting the line is not enough on its own while
+   the variable is still set in the environment the router starts from, because
+   environment variables are layered over the file -- start the router with the
+   variable unset.
+
 ## Step 4 — Start it
 
 ```bash

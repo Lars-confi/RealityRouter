@@ -19,6 +19,23 @@ The fastest way to get started is using the one-line installer.
 curl -fsSL https://raw.githubusercontent.com/Lars-confi/RealityRouter/main/install.sh | bash
 ```
 
+`https://realityrouter.dev/install.sh` redirects to that same file, if you want
+something shorter to type or to quote.
+
+**Reading it first.** The installer is a shell script, and piping one straight
+into a shell is a habit worth breaking. To check that what you downloaded is the
+file we publish:
+
+```bash
+curl -fsSL https://realityrouter.dev/install.sh -o install.sh
+curl -s https://realityrouter.dev/install.sh.sha256 | shasum -a 256 -c -
+bash install.sh
+```
+
+The checksum is computed from the bytes we serve, so it catches a corrupted or
+intercepted download. It is not a statement about the contents — for that, read
+the script, or pin a commit you have reviewed.
+
 ### Windows (PowerShell)
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Lars-confi/RealityRouter/main/install.ps1'))

@@ -47,6 +47,16 @@ It is **not** a way to cap your spend — there is no budget ceiling — and it 
 not tell you which single model to standardise on. It removes that decision
 instead, per request.
 
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Lars-confi/RealityRouter/main/install.sh | bash
+```
+
+`realityrouter.dev/install.sh` redirects to the same file. To check what you
+downloaded before running it, see
+[verifying the installer](docs/quickstart.md#linux--macos).
+
 [FAQ](docs/faq.md) · [Quickstart](docs/quickstart.md) · [Agent-assisted install](docs/agent-install.md)
 
 ---

@@ -143,6 +143,7 @@ def test_status_command_json_output(capsys):
 
     with patch("start_router.read_pid", return_value=None), \
          patch("start_router.port_is_free", return_value=True), \
+         patch("start_router.router_is_serving", return_value=False), \
          patch("start_router.get_all_models", return_value=[]):
         start_router.cmd_status(args, config)
         

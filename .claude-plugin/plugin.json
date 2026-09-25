@@ -1,7 +1,7 @@
 {
   "name": "reality-router",
   "description": "Install RealityRouter and point coding tools at it. RealityRouter is a self-hosted, OpenAI-compatible LLM router that scores every model in your pool on cost, latency and probability of success, and sends each request to the cheapest one likely to succeed.",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "author": {
     "name": "Confidentia AI",
     "url": "https://realityrouter.dev"

@@ -32,7 +32,7 @@ init_db()
 app = FastAPI(
     title="Reality Router",
     description="Intelligent routing system for Language Model requests",
-    version="0.0.7",
+    version="0.0.8",
 )
 
 # Inbound API-key auth; a no-op unless ROUTER_API_KEYS is set. Registered

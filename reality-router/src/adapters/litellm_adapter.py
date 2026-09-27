@@ -13,6 +13,34 @@ from ..models.routing import RoutingRequest
 from .base_adapter import BaseAdapter
 
 
+
+def extract_message_text(content) -> str:
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        parts = []
+
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+                continue
+
+            if not isinstance(part, dict):
+                continue
+
+            part_type = part.get("type")
+
+            if part_type in {"text", "input_text", "output_text"}:
+                text = part.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+
+        return "\n".join(parts).strip()
+
+    return ""
+
+
 class LiteLLMAdapter(BaseAdapter):
     """Adapter for routing requests via LiteLLM"""
 
@@ -100,7 +128,8 @@ class LiteLLMAdapter(BaseAdapter):
                 for msg in gemini_messages:
                     if msg.get("role") in ["assistant", "model"]:
                         if msg.get("tool_calls"):
-                            flattened_content = msg.get("content", "") or ""
+                            raw_content = msg.get("content", "") or ""
+                            flattened_content = extract_message_text(raw_content)
                             for tc in msg["tool_calls"]:
                                 if isinstance(tc, dict):
                                     fn = tc.get("function", {})

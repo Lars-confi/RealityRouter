@@ -101,6 +101,7 @@ class MetricsCollector:
         first_token_top_logprobs: str = None,
         second_token_logprob: float = None,
         second_token_top_logprobs: str = None,
+        potential_cost: float = None,
     ):
         """
         Collect routing metrics and update model performance in database
@@ -134,6 +135,7 @@ class MetricsCollector:
                 first_token_top_logprobs=first_token_top_logprobs,
                 second_token_logprob=second_token_logprob,
                 second_token_top_logprobs=second_token_top_logprobs,
+                potential_cost=potential_cost if potential_cost is not None else cost,
             )
 
             db.add(log_entry)
@@ -143,6 +145,7 @@ class MetricsCollector:
 
             db.commit()
             logger.info(f"Collected metrics for model {model_id} (Success: {success})")
+            return log_entry
 
         except Exception as e:
             logger.error(f"Error collecting metrics: {str(e)}")

@@ -3,6 +3,19 @@ import json
 from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 from src.main import app
+from src.models.database import SessionLocal, RoutingLog, init_db
+from src.models.routing import RoutingRequest
+from src.router.core import RouterCore
+
+
+class MockHTTPXResponse:
+    def __init__(self, json_data, status_code=200):
+        self._json_data = json_data
+        self.status_code = status_code
+        self.text = json.dumps(json_data)
+
+    def json(self):
+        return self._json_data
 
 
 @pytest.fixture
@@ -158,3 +171,104 @@ def test_dashboard_reset_endpoint(test_client, mock_db):
     # Verify that the DB query deletes were actually executed
     assert mock_db.query.return_value.delete.call_count == 2
     assert mock_db.commit.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_long_query_potential_cost_persistence(test_client):
+    """
+    Verifies that for a long query (>1500 chars):
+    1. A router pool with a free model (cost=0.0) and an expensive model (cost=0.02) is configured.
+    2. Submits a RoutingRequest with a query longer than 1500 characters.
+    3. Verifies that RoutingLog.potential_cost in the database is strictly greater than 0.0.
+    4. Verifies that /metrics/summary calculates positive savings!
+    """
+    init_db()
+    db = SessionLocal()
+    try:
+        db.query(RoutingLog).delete()
+        db.commit()
+    finally:
+        db.close()
+
+    router = RouterCore()
+    router.utility_calculator.reward = 10.0
+    router.models = {
+        "free-model": {
+            "name": "Free Local Model",
+            "cost": 0.0,
+            "prompt_cost": 0.0,
+            "completion_cost": 0.0,
+            "time": 0.5,
+            "probability": 0.95,
+            "supports_function_calling": True,
+        },
+        "expensive-model": {
+            "name": "Expensive Flagship Model",
+            "cost": 0.02,
+            "prompt_cost": 0.02,
+            "completion_cost": 0.02,
+            "time": 1.0,
+            "probability": 0.95,
+            "supports_function_calling": True,
+        },
+    }
+
+    mock_adapter = AsyncMock()
+    mock_adapter.forward_request.return_value = {
+        "text": "Success Response",
+        "usage": {
+            "prompt_tokens": 600,
+            "completion_tokens": 100,
+            "total_tokens": 700,
+        },
+    }
+    router.adapters = {
+        "free-model": mock_adapter,
+        "expensive-model": mock_adapter,
+    }
+
+    router.load_balancer.models = {}
+    router.load_balancer.add_model("free-model", "Free Local Model", 1.0)
+    router.load_balancer.add_model("expensive-model", "Expensive Flagship Model", 1.0)
+    router.load_balancer.is_model_healthy = MagicMock(return_value=True)
+
+    long_query = "Explain reality router architecture in detail. " + ("detailed explanation of routing logic " * 50)
+    assert len(long_query) > 1500
+
+    request = RoutingRequest(
+        query=long_query,
+        agent_id="test_long_query_agent",
+        parameters={"messages": [{"role": "user", "content": long_query}]},
+    )
+
+    async def mock_rc_post(url, json=None, headers=None, **kwargs):
+        return MockHTTPXResponse({"prob_true": 0.95, "decision_id": 1234})
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
+        response = await router.route_request(request, strategy="expected_utility")
+
+    assert response.model_id == "free-model"
+
+    # Verify database persistence
+    db = SessionLocal()
+    try:
+        log_entry = (
+            db.query(RoutingLog)
+            .filter(RoutingLog.agent_id == "test_long_query_agent")
+            .order_by(RoutingLog.timestamp.desc())
+            .first()
+        )
+        assert log_entry is not None
+        assert log_entry.cost == 0.0
+        assert log_entry.potential_cost > 0.0
+    finally:
+        db.close()
+
+    # Verify /metrics/summary calculates positive savings
+    summary_resp = test_client.get("/metrics/summary")
+    assert summary_resp.status_code == 200
+    summary_data = summary_resp.json()
+    assert summary_data["total_requests"] >= 1
+    assert summary_data["potential_max_cost"] > summary_data["total_cost"]
+    savings = summary_data["potential_max_cost"] - summary_data["total_cost"]
+    assert savings > 0.0

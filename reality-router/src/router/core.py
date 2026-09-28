@@ -1949,7 +1949,7 @@ class RouterCore:
                 # Fallback to local default if not in request
                 log_strategy = get_settings().default_strategy
 
-            metrics_collector.collect_routing_metrics(
+            log_entry = metrics_collector.collect_routing_metrics(
                 db=db,
                 model_id=decision.model_id,
                 model_name=decision.name,
@@ -1984,16 +1984,7 @@ class RouterCore:
                     if response.get("second_token_top_logprobs")
                     else None
                 ),
-            )
-
-            # Retrieve the log entry we just created to update extra fields
-            log_entry = (
-                db.query(RoutingLog)
-                .filter(RoutingLog.model_id == decision.model_id)
-                .filter(RoutingLog.query == request.query)
-                .filter(RoutingLog.agent_id == (request.agent_id or "default"))
-                .order_by(RoutingLog.timestamp.desc())
-                .first()
+                potential_cost=potential_max_cost,
             )
 
             if log_entry:
@@ -2003,7 +1994,6 @@ class RouterCore:
                     log_entry.user_sentiment = user_sentiment
                 if decision.reality_check_id:
                     log_entry.reality_check_id = str(decision.reality_check_id)
-                log_entry.potential_cost = potential_max_cost
                 db.commit()
                 logger.info(f"Updated log entry {log_entry.id} with RC ID and features")
 

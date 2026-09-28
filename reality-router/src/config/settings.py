@@ -87,6 +87,8 @@ class Settings(BaseModel):
     enable_sticky_sessions: bool = Field(default=False)
     cost_sensitivity: float = Field(default=0.5)
     time_sensitivity: float = Field(default=0.5)
+    agent_handling: str = Field(default="auto")
+    ladder_escalation_threshold: float = Field(default=10.0)
 
     # Model settings
     models_config: Dict[str, Any] = Field(default_factory=dict)

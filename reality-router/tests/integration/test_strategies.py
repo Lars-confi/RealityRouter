@@ -57,7 +57,7 @@ async def test_ladder_strategy_success_on_first_try(base_router):
     3. The post-hoc assessment returns high confidence (e.g. 0.95).
     4. The router accepts the answer and stops, without escalating to more expensive models.
     """
-    base_router.utility_calculator.reward = 10.0
+    base_router.utility_calculator.reward = 100.0
     request = RoutingRequest(
         query="Explain 1+1",
         agent_id="test_agent",
@@ -88,7 +88,7 @@ async def test_ladder_strategy_escalation_flow(base_router):
     5. The post-hoc validator returns high confidence (e.g. 0.95).
     6. Router stops at the second tier, returning the second model's response.
     """
-    base_router.utility_calculator.reward = 10.0
+    base_router.utility_calculator.reward = 100.0
     request = RoutingRequest(
         query="Write a complex compiler",
         agent_id="test_agent",
@@ -204,3 +204,97 @@ async def test_routing_max_tokens_clamping(base_router):
         # Verify the parameters were clamped
         assert clamped_request.parameters["max_tokens"] == 4096
         assert clamped_request.parameters["max_completion_tokens"] == 4096
+
+
+@pytest.mark.asyncio
+async def test_ladder_tool_call_short_circuit(base_router):
+    """
+    Verifies that when a model generates a valid tool call in tool_agent mode,
+    it is immediately accepted on rung 1 without evaluating or calling rung 2.
+    """
+    request = RoutingRequest(
+        query="List project files",
+        agent_id="test_agent_tools",
+        parameters={
+            "messages": [{"role": "user", "content": "List project files"}],
+            "tools": [{"type": "function", "function": {"name": "list_directory", "parameters": {}}}],
+        }
+    )
+
+    tool_call_response = {
+        "text": "",
+        "tool_calls": [
+            {
+                "id": "call_abc123",
+                "type": "function",
+                "function": {"name": "list_directory", "arguments": "{\"path\": \".\"}"},
+            }
+        ],
+        "finish_reason": "tool_calls",
+    }
+
+    mock_tool_adapter = AsyncMock()
+    mock_tool_adapter.forward_request.return_value = tool_call_response
+
+    mock_second_adapter = AsyncMock()
+    mock_second_adapter.forward_request.return_value = {"text": "Should not be called"}
+
+    base_router.adapters["gemini-3.1-flash-lite"] = mock_tool_adapter
+    base_router.adapters["gemini-2.5-flash"] = mock_second_adapter
+
+    ladder_post_calls = 0
+
+    async def mock_rc_post(url, json=None, headers=None, **kwargs):
+        nonlocal ladder_post_calls
+        if "ladder-api" in url and "decide" in url:
+            ladder_post_calls += 1
+        return MockHTTPXResponse({"prob_true": 0.5, "decision_id": 701})
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
+        response = await base_router.route_request(request, strategy="tiered_assessment")
+
+        # Rung 1 (cheapest model) accepted immediately
+        assert response.model_id == "gemini-3.1-flash-lite"
+        mock_tool_adapter.forward_request.assert_called_once()
+        mock_second_adapter.forward_request.assert_not_called()
+        # Post-hoc rerouting decide endpoint skipped due to short circuit
+        assert ladder_post_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_ladder_hysteresis_prevents_unnecessary_escalation(base_router):
+    """
+    Verifies that when p_actual is reasonably high (e.g. 0.90),
+    EU_escalate <= ladder_escalation_threshold (10.0), so escalation to rung 2 is prevented.
+    """
+    base_router.utility_calculator.reward = 100.0
+    request = RoutingRequest(
+        query="Write a simple function",
+        agent_id="test_agent",
+        parameters={"messages": [{"role": "user", "content": "Write a simple function"}]},
+    )
+
+    ladder_calls = 0
+
+    async def mock_rc_post(url, json=None, headers=None, **kwargs):
+        nonlocal ladder_calls
+        if "snap-api" in url:
+            return MockHTTPXResponse({"prob_true": 0.5, "decision_id": 801})
+        else:
+            ladder_calls += 1
+            # Return p_actual = 0.90 -> (1.0 - 0.90)*100 - cost - time = 10.0 - ~1.5 = 8.5 <= 10.0
+            return MockHTTPXResponse({"prob_true": 0.90, "decision_id": 802})
+
+    mock_first_adapter = AsyncMock()
+    mock_first_adapter.forward_request.return_value = {"text": "def add(a, b): return a + b", "finish_reason": "stop"}
+    mock_second_adapter = AsyncMock()
+
+    base_router.adapters["gemini-3.1-flash-lite"] = mock_first_adapter
+    base_router.adapters["gemini-2.5-flash"] = mock_second_adapter
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
+        response = await base_router.route_request(request, strategy="tiered_assessment")
+
+        assert response.model_id == "gemini-3.1-flash-lite"
+        mock_second_adapter.forward_request.assert_not_called()
+        assert ladder_calls == 1

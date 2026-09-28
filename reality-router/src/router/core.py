@@ -23,6 +23,11 @@ from src.config.settings import get_settings, load_models_from_config
 from src.router.sso import get_reality_check_token, note_auth_failure
 from src.models.database import RoutingLog, SessionLocal, get_db, init_db
 from src.models.routing import RoutingRequest, RoutingResponse
+from src.router.agent_detector import (
+    TrajectoryTracker,
+    classify_observation,
+    detect_interaction_mode,
+)
 from src.router.load_balancer import load_balancer
 from src.router.metrics import metrics_collector
 from src.utils.capability_tester import capability_manager
@@ -240,6 +245,7 @@ class RouterCore:
         self.load_balancer = load_balancer
         self.concurrency_limits = {}  # Map of model_id to asyncio.Semaphore
         self.active_sessions = {}
+        self.trajectory_tracker = TrajectoryTracker()
 
         init_db()
         self.load_configured_models()
@@ -2146,6 +2152,28 @@ class RouterCore:
             strategy = settings.default_strategy
 
         logger.info(f"Routing request with strategy: {strategy}")
+
+        # Detect interaction mode and track trajectory
+        interaction_mode, agent_confidence = detect_interaction_mode(request, settings)
+        logger.info(
+            f"Detected interaction mode: {interaction_mode} (confidence={agent_confidence:.2f})"
+        )
+
+        session_id = request.agent_id or "default"
+        if (
+            request.parameters
+            and "messages" in request.parameters
+            and request.parameters["messages"]
+        ):
+            # Classify incoming observation if messages contain tool feedback
+            messages = request.parameters.get("messages", [])
+            obs_state = classify_observation(messages)
+            if obs_state != "unknown":
+                self.trajectory_tracker.record_observation(obs_state, session_id)
+                logger.info(
+                    f"Classified observation for session {session_id}: {obs_state}"
+                )
+
         db = SessionLocal()
         try:
             # Language detection and keyword translation in background
@@ -3179,93 +3207,132 @@ class RouterCore:
 
                     # --- TIERED ASSESSMENT LOGIC ---
                     if strategy == "tiered_assessment" and response:
-                        # Extract full set of features including logprobs and confidence
-                        final_features = self.extract_coding_features(
-                            request, decision.model_id, response
+                        # Check tool-call short circuit
+                        has_valid_tool_call = bool(
+                            response.get("tool_calls")
+                            and not is_malformed
+                            and not is_truncated
+                            and not is_refusal
+                            and not is_empty
                         )
-                        try:
-                            # 0. Fast local confidence check
-                            local_confidence = final_features.get("confidence", 0.0)
-                            if local_confidence > 0.90:
-                                logger.info(
-                                    f"Model {decision.model_id} high confidence ({local_confidence:.4f}). Stopping tiered assessment early."
-                                )
-                                break
 
-                            # 1. Calculate p_actual via /decide endpoint (Expert Mode)
-                            # Match sequential curl behavior with fresh connection
-                            async with httpx.AsyncClient(
-                                http2=False, trust_env=False
-                            ) as client:
-                                # Post-hoc assessment for tiered rerouting always uses get_rerouting_url()
-                                auth_token = get_reality_check_token()
-                                headers = {
-                                    "Content-Type": "application/json",
-                                    "Accept": "application/json",
-                                    "Expect": "",
-                                    "User-Agent": "curl/7.68.0",
-                                    "Connection": "close",
-                                }
-                                if auth_token and auth_token != "local_unauthenticated":
-                                    # Ensure token has Bearer/Basic prefix as required by backend SSO
-                                    full_token = (
-                                        auth_token
-                                        if (
-                                            auth_token.startswith("Bearer ")
-                                            or auth_token.startswith("Basic ")
-                                        )
-                                        else f"Bearer {auth_token}"
-                                    )
-                                    # Always use bypass header as standard Authorization is stripped by Azure
-                                    headers["X-Reality-Check-Token"] = full_token
+                        # Check if session has repeated observation failures that require escalation
+                        has_repeated_failures = self.trajectory_tracker.should_escalate(
+                            session_id
+                        )
+
+                        # Tool-Call Short-Circuit:
+                        # If interaction_mode == "tool_agent" and response contains a valid,
+                        # well-formed tool call, accept immediately without calling further models.
+                        if (
+                            interaction_mode == "tool_agent"
+                            and has_valid_tool_call
+                            and not has_repeated_failures
+                        ):
+                            logger.info(
+                                f"Model {decision.model_id} produced valid tool call in tool_agent mode. Short-circuiting ladder escalation."
+                            )
+                            self.trajectory_tracker.record_tool_call(session_id)
+                        else:
+                            # Extract full set of features including logprobs and confidence
+                            final_features = self.extract_coding_features(
+                                request, decision.model_id, response
+                            )
+                            try:
+                                # 0. Fast local confidence check
+                                local_confidence = final_features.get("confidence", 0.0)
+                                if local_confidence > 0.90 and not has_repeated_failures:
                                     logger.info(
-                                        f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token is configured/attached securely)"
+                                        f"Model {decision.model_id} high confidence ({local_confidence:.4f}). Stopping tiered assessment early."
                                     )
                                 else:
-                                    logger.warning(
-                                        "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
-                                    )
+                                    p_actual = local_confidence
 
-                                rc_resp = await client.post(
-                                    f"{get_rerouting_url()}/decide",
-                                    json={"features": final_features},
-                                    headers=headers,
-                                    timeout=60.0,
-                                )
-                                if rc_resp.status_code == 200:
-                                    rc_data = rc_resp.json()
-                                    p_actual = rc_data.get("prob_true", 0.5)
-                                    # Update decision with the post-hoc assessment ID for accurate feedback loop
-                                    decision.reality_check_id = rc_data.get(
-                                        "decision_id"
-                                    )
+                                    # 1. Calculate p_actual via /decide endpoint (Expert Mode)
+                                    # Match sequential curl behavior with fresh connection
+                                    async with httpx.AsyncClient(
+                                        http2=False, trust_env=False
+                                    ) as client:
+                                        # Post-hoc assessment for tiered rerouting always uses get_rerouting_url()
+                                        auth_token = get_reality_check_token()
+                                        headers = {
+                                            "Content-Type": "application/json",
+                                            "Accept": "application/json",
+                                            "Expect": "",
+                                            "User-Agent": "curl/7.68.0",
+                                            "Connection": "close",
+                                        }
+                                        if auth_token and auth_token != "local_unauthenticated":
+                                            # Ensure token has Bearer/Basic prefix as required by backend SSO
+                                            full_token = (
+                                                auth_token
+                                                if (
+                                                    auth_token.startswith("Bearer ")
+                                                    or auth_token.startswith("Basic ")
+                                                )
+                                                else f"Bearer {auth_token}"
+                                            )
+                                            # Always use bypass header as standard Authorization is stripped by Azure
+                                            headers["X-Reality-Check-Token"] = full_token
+                                            logger.info(
+                                                f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token is configured/attached securely)"
+                                            )
+                                        else:
+                                            logger.warning(
+                                                "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
+                                            )
 
-                                    logger.info(
-                                        f"Post-hoc assessment for {decision.model_id}: p_actual={p_actual:.4f}, id={decision.reality_check_id}"
-                                    )
+                                        rc_resp = await client.post(
+                                            f"{get_rerouting_url()}/decide",
+                                            json={"features": final_features},
+                                            headers=headers,
+                                            timeout=60.0,
+                                        )
+                                        if rc_resp.status_code == 200:
+                                            rc_data = rc_resp.json()
+                                            p_actual = rc_data.get("prob_true", 0.5)
+                                            # Update decision with the post-hoc assessment ID for accurate feedback loop
+                                            decision.reality_check_id = rc_data.get(
+                                                "decision_id"
+                                            )
+
+                                            logger.info(
+                                                f"Post-hoc assessment for {decision.model_id}: p_actual={p_actual:.4f}, id={decision.reality_check_id}"
+                                            )
+                                        else:
+                                            error_body = rc_resp.text
+                                            logger.warning(
+                                                f"Post-hoc assessment ERROR {rc_resp.status_code} at {get_rerouting_url()}. Response: {error_body}"
+                                            )
+
                                     # 2. Check if we should stop vs escalate
                                     current_idx = ranked_decisions.index(decision)
                                     if current_idx < len(ranked_decisions) - 1:
                                         next_best = ranked_decisions[current_idx + 1]
 
-                                        # Use the formula: (p_next - p_actual) * R > c_next + t_next
-                                        # Assuming p_next = 1.0 for high-end escalation comparison
-                                        u_stop = (
-                                            p_actual * self.utility_calculator.reward
+                                        # Incremental Escalation Formula:
+                                        # EU_escalate = (p_next - p_actual) * reward - alpha * c_next * 1000.0 - beta * t_next
+                                        p_next = 1.0
+                                        reward = self.utility_calculator.reward
+                                        alpha = self.utility_calculator.cost_sensitivity
+                                        beta = self.utility_calculator.time_sensitivity
+                                        c_next = next_best.cost
+                                        t_next = next_best.time
+
+                                        eu_escalate = (
+                                            (p_next - p_actual) * reward
+                                            - alpha * c_next * 1000.0
+                                            - beta * t_next
                                         )
-                                        next_preference = getattr(
-                                            settings, "model_preferences", {}
-                                        ).get(next_best.model_id, 100.0)
-                                        eu_continue = self.utility_calculator.calculate_expected_utility(
-                                            next_best.cost,
-                                            next_best.time,
-                                            1.0,
-                                            next_preference,
+                                        threshold = getattr(
+                                            settings, "ladder_escalation_threshold", 10.0
                                         )
 
-                                        if u_stop < eu_continue:
+                                        should_escalate = eu_escalate > threshold
+
+                                        if should_escalate:
                                             logger.info(
-                                                f"Escalating from {decision.model_id}: u_stop({u_stop:.4f}) < eu_continue({eu_continue:.4f})"
+                                                f"Escalating from {decision.model_id}: eu_escalate({eu_escalate:.4f}) > threshold({threshold:.4f}) (repeated_failures={has_repeated_failures})"
                                             )
                                             # Log this attempt before moving to next model
                                             actual_cost = (
@@ -3291,22 +3358,13 @@ class RouterCore:
                                             continue
 
                                         logger.info(
-                                            f"Stopping at {decision.model_id}: u_stop({u_stop:.4f}) >= eu_continue({eu_continue:.4f})"
+                                            f"Stopping at {decision.model_id}: eu_escalate({eu_escalate:.4f}) <= threshold({threshold:.4f})"
                                         )
-                                else:
-                                    error_body = rc_resp.text
-                                    logger.warning(
-                                        f"Post-hoc assessment ERROR {rc_resp.status_code} at {get_rerouting_url()}. Response: {error_body}"
-                                    )
-                                    # Fallback to local confidence if RC fails
-                                    if local_confidence > 0:
-                                        p_actual = local_confidence
-                                        current_idx = ranked_decisions.index(decision)
 
-                        except Exception as e:
-                            logger.exception(
-                                f"Post-hoc tiered assessment failed for {decision.model_id} at {get_rerouting_url()}: {repr(e)}"
-                            )
+                            except Exception as e:
+                                logger.exception(
+                                    f"Post-hoc tiered assessment failed for {decision.model_id} at {get_rerouting_url()}: {repr(e)}"
+                                )
 
                         # If we reached here, this model is deemed sufficient, stop escalation.
                         pass

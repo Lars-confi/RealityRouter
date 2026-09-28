@@ -53,6 +53,20 @@ class Settings(BaseModel):
     zai_api_key: Optional[str] = Field(default=None)
     xai_api_key: Optional[str] = Field(default=None)
     dashscope_api_key: Optional[str] = Field(default=None)
+    openrouter_api_key: Optional[str] = Field(default=None)
+    # Comma-separated substrings, or "all". Empty means the gap-filler default:
+    # only vendors you have no direct key for. See core._discover_openrouter.
+    openrouter_models: Optional[str] = Field(default=None)
+    # Caps how many models each OpenRouter vendor may contribute under the
+    # gap-filler default. Ignored when OPENROUTER_MODELS is set.
+    openrouter_max_per_vendor: int = Field(default=2)
+    # $0 models are excluded by default because they win every routing decision
+    # on cost and are heavily rate limited. Naming one in OPENROUTER_MODELS
+    # already overrides that; this lifts it for the default and "all" modes.
+    openrouter_allow_free: Optional[str] = Field(default=None)
+    # LM Studio serves the OpenAI protocol locally; unset means "not in use".
+    lm_studio_base_url: Optional[str] = Field(default=None)
+    lm_studio_api_key: Optional[str] = Field(default=None)
     custom_llm_base_url: Optional[str] = Field(default=None)
     custom_llm_api_key: Optional[str] = Field(default=None)
     reality_check_token: Optional[str] = Field(default=None)

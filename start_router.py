@@ -98,6 +98,10 @@ PROVIDER_KEYS = {
     "zai": [("ZAI_API_KEY", "Z.ai API Key")],
     "xai": [("XAI_API_KEY", "xAI API Key")],
     "dashscope": [("DASHSCOPE_API_KEY", "Alibaba Qwen API Key")],
+    "openrouter": [("OPENROUTER_API_KEY", "OpenRouter API Key")],
+    "lmstudio": [
+        ("LM_STUDIO_BASE_URL", "LM Studio Base URL (e.g., http://localhost:1234/v1)"),
+    ],
     "custom/local": [
         ("CUSTOM_LLM_BASE_URL", "Base URL (e.g., http://localhost:11434/v1)"),
         ("CUSTOM_LLM_API_KEY", "API Key (or dummy)"),
@@ -374,6 +378,130 @@ def sync_discover_openai_compat(base_url, api_key, provider_name, env_vars=None)
     return discovered
 
 
+# OpenRouter vendor prefix -> the env var that reaches that vendor directly.
+# Mirrors OPENROUTER_VENDOR_TO_SETTING in src/router/core.py; keep them in step.
+OPENROUTER_VENDOR_ENV = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "google": "GEMINI_API_KEY",
+    "mistralai": "MISTRAL_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "moonshotai": "MOONSHOT_API_KEY",
+    "z-ai": "ZAI_API_KEY",
+    "x-ai": "XAI_API_KEY",
+    "qwen": "DASHSCOPE_API_KEY",
+}
+
+
+def sync_discover_openrouter(api_key, env_vars=None):
+    """List the OpenRouter models this install would actually register.
+
+    OpenRouter resells ~450 models. The default is a gap-filler: keep only the
+    vendors you cannot already reach with a direct key, drop the ``:free``
+    drop everything priced at $0 (the ":free" variants and the unlabelled
+    stealth models both qualify -- zero cost wins every routing decision, and
+    they are rate limited enough that winning is the problem), drop anything
+    that cannot call tools, and keep at most OPENROUTER_MAX_PER_VENDOR models
+    per vendor (default 2, newest first). ``OPENROUTER_MODELS`` overrides all
+    of it with a comma-separated substring list, or the single value ``all``.
+    """
+    env_vars = env_vars or {}
+    discovered = []
+    try:
+        req = urllib.request.Request("https://openrouter.ai/api/v1/models")
+        req.add_header("Authorization", f"Bearer {api_key}")
+        req.add_header("Accept", "application/json")
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status != 200:
+                return discovered
+            data = json.loads(response.read().decode())
+
+        allowlist = (env_vars.get("OPENROUTER_MODELS") or "").strip()
+        keep_all = allowlist.lower() == "all"
+        wanted = (
+            []
+            if keep_all
+            else [t.strip().lower() for t in allowlist.split(",") if t.strip()]
+        )
+
+        try:
+            cap = int(env_vars.get("OPENROUTER_MAX_PER_VENDOR") or 2)
+        except (TypeError, ValueError):
+            cap = 2
+        per_vendor = {}
+        allow_free = str(env_vars.get("OPENROUTER_ALLOW_FREE") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+
+        models_list = sorted(
+            data.get("data", []), key=lambda m: m.get("created") or 0, reverse=True
+        )
+        for model in models_list:
+            m_id = model.get("id")
+            if not m_id:
+                continue
+            low = m_id.lower()
+            vendor = m_id.split("/", 1)[0].lower()
+
+            price = model.get("pricing") or {}
+            try:
+                is_free = float(price.get("prompt") or 0) <= 0
+            except (TypeError, ValueError):
+                is_free = True
+            if is_free and not (wanted or allow_free):
+                continue
+
+            arch = model.get("architecture") or {}
+            if arch.get("output_modalities") and "text" not in arch["output_modalities"]:
+                continue
+
+            if wanted:
+                if not any(tok in low for tok in wanted):
+                    continue
+            elif not keep_all:
+                own = OPENROUTER_VENDOR_ENV.get(vendor)
+                if own and env_vars.get(own) and env_vars.get(own) != "dummy":
+                    continue
+                if "tools" not in (model.get("supported_parameters") or []):
+                    continue
+                if per_vendor.get(vendor, 0) >= cap:
+                    continue
+                per_vendor[vendor] = per_vendor.get(vendor, 0) + 1
+
+            discovered.append(
+                {
+                    "id": f"openrouter/{m_id}",
+                    "name": f"OpenRouter: {m_id}",
+                    "provider": "openrouter",
+                }
+            )
+    except Exception as e:
+        logger.debug(f"Failed to discover OpenRouter models: {e}")
+    return discovered
+
+
+def sync_discover_lm_studio(base_url, api_key="lm-studio", env_vars=None):
+    """List models served by a local LM Studio instance."""
+    discovered = []
+    base = (base_url or "").rstrip("/")
+    if not base:
+        return discovered
+    if not base.endswith("/v1"):
+        base = f"{base}/v1"
+    for m in sync_discover_openai_compat(base, api_key, "lmstudio", env_vars):
+        discovered.append(
+            {
+                "id": f"lmstudio/{m['id']}",
+                "name": f"LM Studio: {m['id']}",
+                "provider": "lmstudio",
+            }
+        )
+    return discovered
+
+
 def get_all_models(env_vars):
     models = []
     # Custom/Ollama
@@ -487,6 +615,22 @@ def get_all_models(env_vars):
             )
         )
 
+    # OpenRouter. The wizard shows what the router will actually register, so
+    # it applies the same gap-filler rule the core does: vendors you already
+    # have a direct key for are dropped rather than listed twice.
+    or_key = env_vars.get("OPENROUTER_API_KEY")
+    if or_key and or_key != "dummy":
+        models.extend(sync_discover_openrouter(or_key, env_vars))
+
+    # LM Studio (local, OpenAI protocol)
+    lms_url = env_vars.get("LM_STUDIO_BASE_URL")
+    if lms_url:
+        models.extend(
+            sync_discover_lm_studio(
+                lms_url, env_vars.get("LM_STUDIO_API_KEY", "lm-studio"), env_vars
+            )
+        )
+
     logger.debug(f"Found {len(models)} models.")
     return models
 
@@ -579,6 +723,8 @@ def wizard_providers(env_vars):
         ("zai", "Z.ai (GLM)"),
         ("xai", "xAI (Grok)"),
         ("dashscope", "Alibaba Qwen"),
+        ("openrouter", "OpenRouter"),
+        ("lmstudio", "LM Studio (local)"),
         ("custom/local", "Custom/Ollama"),
     ]
 
@@ -688,6 +834,27 @@ def wizard_providers(env_vars):
                     test_models = sync_discover_openai_compat(
                         "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", new_val, "dashscope", temp_env
                     )
+                elif choice == "openrouter":
+                    test_models = sync_discover_openrouter(new_val, temp_env)
+                    if test_models:
+                        print_status(
+                            f"{len(test_models)} models to register. Vendors you "
+                            "already hold a direct key for are skipped; set "
+                            "OPENROUTER_MODELS to widen or narrow this.",
+                            "info",
+                        )
+                elif choice == "lmstudio":
+                    test_models = sync_discover_lm_studio(
+                        new_val,
+                        temp_env.get("LM_STUDIO_API_KEY", "lm-studio"),
+                        temp_env,
+                    )
+                    if not test_models:
+                        print_status(
+                            "No models served. Start LM Studio and load a model "
+                            "under its Developer tab, then retry.",
+                            "warn",
+                        )
                 elif choice == "custom/local":
                     # We need both URL and Key to test. If we only have one, skip validation for now.
                     test_url = temp_env.get("CUSTOM_LLM_BASE_URL")

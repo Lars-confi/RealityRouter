@@ -8,7 +8,7 @@ This document explains what data is stored locally, what data is sent to your co
 
 ## Direct vs. Proxied Connections
 
-1. **No Hosted Model Proxy**: Raw prompt data and model completions **never** pass through RealityRouter-operated hosted cloud proxies. Your local RealityRouter server communicates **directly** with the API endpoints of your selected model providers (e.g., OpenAI, Anthropic, Gemini, DeepSeek, Ollama).
+1. **No Hosted Model Proxy**: Raw prompt data and model completions **never** pass through RealityRouter-operated hosted cloud proxies. Your local RealityRouter server communicates **directly** with the API endpoints of your selected model providers (e.g., OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, Ollama, LM Studio).
 2. **Metadata-Only Calibration**: RealityRouter only communicates with the remote Reality Signal calibration service to calculate routing coefficients (Snap) or sequential assessments (Ladder). This communication uses **anonymous, high-level task features (like token counts and language presence) rather than raw prompt text**.
 
 ---

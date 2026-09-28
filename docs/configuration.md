@@ -85,6 +85,24 @@ CLI Arguments > Process Environment Variables > Config File (.env) > Auto-detect
 - **Subsystem**: DeepSeek Adapter
 - **Restart Required**: Yes
 
+### `OPENROUTER_API_KEY`
+- **Purpose**: Access credential for OpenRouter, which resells models from many vendors behind one key.
+- **Type**: String (Secret)
+- **Default**: None
+- **Security Scope**: Secret (Redacted from logging)
+- **Subsystem**: OpenRouter Discovery
+- **Restart Required**: Yes
+- **Related**: `OPENROUTER_MODELS` (comma-separated substrings, or `all`), `OPENROUTER_MAX_PER_VENDOR` (default 2), `OPENROUTER_ALLOW_FREE` (default off). See `providers.md` for the selection rules.
+
+### `LM_STUDIO_BASE_URL`
+- **Purpose**: Base URL of a local LM Studio server, e.g. `http://localhost:1234/v1`. Unset means LM Studio is not in use.
+- **Type**: String (URL)
+- **Default**: None
+- **Security Scope**: Non-secret
+- **Subsystem**: LM Studio Discovery
+- **Restart Required**: Yes
+- **Related**: `LM_STUDIO_API_KEY` (optional; LM Studio ignores it)
+
 ### `HUGGINGFACE_API_KEY`
 - **Purpose**: Access credential for Hugging Face Inference Endpoints.
 - **Type**: String (Secret)

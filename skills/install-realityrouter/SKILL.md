@@ -113,7 +113,8 @@ it is.
 Tell the user which providers are supported and ask which they have keys for:
 
 > OpenAI, Anthropic, Google Gemini, Mistral, DeepSeek, Moonshot (Kimi),
-> Z.ai (GLM), xAI (Grok), Alibaba Qwen, or a local Ollama instance.
+> Z.ai (GLM), xAI (Grok), Alibaba Qwen, OpenRouter, or a local Ollama or
+> LM Studio instance.
 
 A router needs **two or more** models to have anything to choose between.
 Encourage at least two — ideally one cheap and one strong, because that price
@@ -132,7 +133,9 @@ Ask **one provider at a time**, naming the variable before you ask:
 | Z.ai (GLM) | `ZAI_API_KEY` |
 | xAI (Grok) | `XAI_API_KEY` |
 | Alibaba Qwen | `DASHSCOPE_API_KEY` |
+| OpenRouter | `OPENROUTER_API_KEY` — one key, many vendors |
 | Ollama (local) | `CUSTOM_LLM_BASE_URL` — no key needed |
+| LM Studio (local) | `LM_STUDIO_BASE_URL` — no key needed |
 
 Write each one with `--set` rather than editing the file by hand — it owns the
 `.env` format and knows which keys are legal:

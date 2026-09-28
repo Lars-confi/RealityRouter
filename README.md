@@ -98,7 +98,8 @@ compliance:
 - **Multi-provider auto-discovery** — bring your own keys; the router
   discovers and benchmarks models from OpenAI, Anthropic, Gemini, Mistral,
   DeepSeek, Moonshot (Kimi), Z.ai (GLM), xAI (Grok), Alibaba Qwen,
-  local Ollama, and any OpenAI-compatible endpoint.
+  OpenRouter, local Ollama, local LM Studio, and any OpenAI-compatible
+  endpoint.
 - **Live dashboard** — track unit economics, savings vs. always-flagship,
   per-model reliability, and per-agent activity in a built-in web UI.
 

@@ -86,6 +86,32 @@ DASHSCOPE_FALLBACK_MODELS: Dict[str, tuple] = {
     "qwen3.7-max": (0.00250, 0.00750),
 }
 
+# OpenRouter is an aggregator: one key, ~450 models resold from every vendor.
+# We therefore treat it as a *gap-filler* rather than a firehose -- see
+# RouterCore._discover_openrouter for the selection rule. This fallback list is
+# only used when the live /models endpoint is unreachable, which is rare since
+# it needs no authentication. Costs are USD per 1K tokens (prompt, completion).
+OPENROUTER_FALLBACK_MODELS: Dict[str, tuple] = {
+    "meta-llama/llama-4-maverick": (0.00020, 0.00060),
+    "nvidia/nemotron-nano-12b-v2": (0.00002, 0.00010),
+    "minimax/minimax-m2": (0.00030, 0.00120),
+}
+
+# OpenRouter vendor prefixes that map onto a provider we discover first-party.
+# When the matching first-party key is configured, those models are skipped so
+# the same model does not appear twice with two different prices.
+OPENROUTER_VENDOR_TO_SETTING: Dict[str, str] = {
+    "openai": "openai_api_key",
+    "anthropic": "anthropic_api_key",
+    "google": "gemini_api_key",
+    "mistralai": "mistral_api_key",
+    "deepseek": "deepseek_api_key",
+    "moonshotai": "moonshot_api_key",
+    "z-ai": "zai_api_key",
+    "x-ai": "xai_api_key",
+    "qwen": "dashscope_api_key",
+}
+
 
 def resolve_agent_id(
     request_body_agent_id: Optional[str],
@@ -341,6 +367,275 @@ class RouterCore:
                 cost,
                 0.6,
                 0.88,
+                None,
+                p_cost,
+                c_cost,
+                supports_function_calling,
+                max_input_tokens,
+                max_tokens,
+            )
+            self.load_balancer.add_model(name, name, 1.0)
+
+    def _discover_openrouter(self, *, settings, api_key: str):
+        """Register OpenRouter models, filling gaps rather than duplicating.
+
+        OpenRouter resells ~450 models from every major vendor behind one key.
+        Registering all of them would bury the models you actually chose, and
+        would price the same model twice when you also hold a direct key. So by
+        default we keep only what you cannot already reach first-party:
+
+        * vendors whose own key is configured are skipped (``openai/*`` is
+          dropped when ``OPENAI_API_KEY`` is set, and so on);
+        * anything priced at $0 is skipped -- the ``:free`` variants, and the
+          unlabelled stealth/preview models that are also $0. Zero cost wins
+          every routing decision outright, and these are rate limited hard
+          enough that winning is exactly what you do not want. This is a
+          default, not a ban: naming a model in ``OPENROUTER_MODELS`` is an
+          explicit choice and overrides it, and ``OPENROUTER_ALLOW_FREE=true``
+          lifts it for the default and ``all`` modes too;
+        * models that cannot emit text, or cannot call tools, are skipped;
+        * at most ``OPENROUTER_MAX_PER_VENDOR`` models per vendor (default 2),
+          newest first, so one prolific vendor cannot flood the pool. Without
+          this the default still lands around 250 models.
+
+        ``OPENROUTER_MODELS`` overrides all of that: a comma-separated list of
+        substrings keeps only matching ids, and the single value ``all`` keeps
+        everything except the $0 and non-text exclusions above.
+
+        Unlike the other providers, pricing is taken from OpenRouter's own
+        response rather than a curated table, so costs are exact and stay
+        current. ``pricing_manager`` is still consulted first.
+        """
+        raw: List[Dict[str, Any]] = []
+        try:
+            resp = httpx.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                raw = [m for m in resp.json().get("data", []) if m.get("id")]
+        except Exception as e:
+            logger.info(f"openrouter: live discovery unavailable ({e})")
+
+        allowlist = (getattr(settings, "openrouter_models", "") or "").strip()
+        keep_all = allowlist.lower() == "all"
+        wanted = (
+            []
+            if keep_all
+            else [t.strip().lower() for t in allowlist.split(",") if t.strip()]
+        )
+
+        # Newest first, so a per-vendor cap keeps the current generation.
+        raw.sort(key=lambda m: m.get("created") or 0, reverse=True)
+
+        try:
+            per_vendor_cap = int(
+                getattr(settings, "openrouter_max_per_vendor", 2) or 2
+            )
+        except (TypeError, ValueError):
+            per_vendor_cap = 2
+
+        allow_free = str(
+            getattr(settings, "openrouter_allow_free", "") or ""
+        ).strip().lower() in ("1", "true", "yes", "on")
+
+        selected: List[Dict[str, Any]] = []
+        per_vendor: Dict[str, int] = {}
+        for m in raw:
+            mid = m["id"]
+            low = mid.lower()
+            vendor = mid.split("/", 1)[0].lower()
+
+            # $0 covers both the ":free" variants and the unlabelled stealth
+            # models; see the docstring for why free is a hazard here. Naming a
+            # model in OPENROUTER_MODELS is an explicit choice, so it overrides
+            # this -- as does OPENROUTER_ALLOW_FREE for the broader modes.
+            price = m.get("pricing") or {}
+            try:
+                is_free = float(price.get("prompt") or 0) <= 0
+            except (TypeError, ValueError):
+                is_free = True
+            if is_free and not (wanted or allow_free):
+                continue
+
+            arch = m.get("architecture") or {}
+            if arch.get("output_modalities") and "text" not in arch["output_modalities"]:
+                continue
+
+            if wanted:
+                if not any(tok in low for tok in wanted):
+                    continue
+            elif not keep_all:
+                # Default: gap-filler. Skip vendors we already reach directly,
+                # and skip anything that cannot call tools -- an agent pool
+                # full of chat-only models is not useful.
+                setting_name = OPENROUTER_VENDOR_TO_SETTING.get(vendor)
+                if setting_name:
+                    own_key = getattr(settings, setting_name, None)
+                    if own_key and own_key != "dummy":
+                        continue
+                if "tools" not in (m.get("supported_parameters") or []):
+                    continue
+                if per_vendor.get(vendor, 0) >= per_vendor_cap:
+                    continue
+                per_vendor[vendor] = per_vendor.get(vendor, 0) + 1
+
+            selected.append(m)
+
+        if not raw:
+            selected = [
+                {"id": k, "_fallback": True} for k in OPENROUTER_FALLBACK_MODELS
+            ]
+            logger.info(
+                f"openrouter: using curated fallback list ({len(selected)} models)"
+            )
+
+        logger.info(
+            f"openrouter: registering {len(selected)} of {len(raw) or 'n/a'} models"
+            + (f" (allowlist: {allowlist})" if allowlist else " (gap-filler default)")
+        )
+
+        for m in selected:
+            raw_id = m["id"]
+            name = f"openrouter/{raw_id}"
+
+            if not any(d.get("id") == name for d in self.all_discovered_models):
+                self.all_discovered_models.append(
+                    {
+                        "id": name,
+                        "name": name,
+                        "provider": "openrouter",
+                        "enabled": name not in settings.disabled_models,
+                    }
+                )
+
+            if name in self.models or name in settings.disabled_models:
+                continue
+            if name not in self.adapters:
+                from src.adapters.litellm_adapter import LiteLLMAdapter
+
+                self.adapters[name] = LiteLLMAdapter(model_name=name, api_key=api_key)
+
+            (
+                p_cost,
+                c_cost,
+                supports_function_calling,
+                max_input_tokens,
+                max_tokens,
+            ) = pricing_manager.get_model_pricing(name)
+
+            if p_cost is None or c_cost is None:
+                # OpenRouter quotes USD per token; the rest of this module works
+                # in USD per 1K tokens.
+                live = m.get("pricing") or {}
+                try:
+                    fb_p = float(live.get("prompt")) * 1000
+                    fb_c = float(live.get("completion")) * 1000
+                except (TypeError, ValueError):
+                    fb_p, fb_c = OPENROUTER_FALLBACK_MODELS.get(
+                        raw_id, (0.00050, 0.00150)
+                    )
+                p_cost = p_cost if p_cost is not None else fb_p
+                c_cost = c_cost if c_cost is not None else fb_c
+
+            if max_input_tokens is None:
+                max_input_tokens = m.get("context_length")
+
+            supports_function_calling = "tools" in (
+                m.get("supported_parameters") or ["tools"]
+            )
+            cost = (p_cost + c_cost) / 2
+            self.add_model(
+                name,
+                name,
+                cost,
+                0.6,
+                0.88,
+                None,
+                p_cost,
+                c_cost,
+                supports_function_calling,
+                max_input_tokens,
+                max_tokens,
+            )
+            self.load_balancer.add_model(name, name, 1.0)
+
+    def _discover_lm_studio(self, *, settings, base_url: str, api_key: str):
+        """Register models served by a local LM Studio instance.
+
+        LM Studio speaks the OpenAI protocol on ``http://localhost:1234/v1`` by
+        default, so this mirrors the Ollama path: route through LiteLLM's
+        ``openai/`` prefix with an explicit ``base_url``, and treat the models
+        as free, because locally served tokens cost nothing per request.
+
+        Ids are registered as ``lmstudio/{raw}`` so that loading the same GGUF
+        in both LM Studio and Ollama does not collide in the model table.
+        """
+        base = base_url.rstrip("/")
+        if not base.endswith("/v1"):
+            base = f"{base}/v1"
+
+        raw_ids: List[str] = []
+        try:
+            resp = httpx.get(
+                f"{base}/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=3,
+            )
+            if resp.status_code == 200:
+                raw_ids = [
+                    m.get("id") for m in resp.json().get("data", []) if m.get("id")
+                ]
+        except Exception as e:
+            logger.info(f"lmstudio: no instance reachable at {base} ({e})")
+            return
+
+        logger.info(f"lmstudio: found {len(raw_ids)} models at {base}")
+
+        for raw in raw_ids:
+            name = f"lmstudio/{raw}"
+
+            if not any(d.get("id") == name for d in self.all_discovered_models):
+                self.all_discovered_models.append(
+                    {
+                        "id": name,
+                        "name": name,
+                        "provider": "lmstudio",
+                        "enabled": name not in settings.disabled_models,
+                    }
+                )
+
+            if name in self.models or name in settings.disabled_models:
+                continue
+            if name not in self.adapters:
+                from src.adapters.litellm_adapter import LiteLLMAdapter
+
+                self.adapters[name] = LiteLLMAdapter(
+                    model_name=f"openai/{raw}",
+                    api_key=api_key,
+                    base_url=base,
+                )
+
+            (
+                p_cost,
+                c_cost,
+                supports_function_calling,
+                max_input_tokens,
+                max_tokens,
+            ) = pricing_manager.get_model_pricing(name)
+            # Local inference is free at the margin, which is the same treatment
+            # Ollama gets above.
+            p_cost = p_cost if p_cost is not None else 0.0
+            c_cost = c_cost if c_cost is not None else 0.0
+            supports_function_calling = True
+            cost = (p_cost + c_cost) / 2
+            self.add_model(
+                name,
+                name,
+                cost,
+                1.0,
+                0.8,
                 None,
                 p_cost,
                 c_cost,
@@ -1093,6 +1388,30 @@ class RouterCore:
                     )
                 except Exception as e:
                     logger.warning(f"Auto-discovery failed for {_prov}: {e}")
+
+            # OpenRouter: one key, many vendors. Registered last so that the
+            # first-party discovery above has already claimed the models it
+            # can reach directly -- the gap-filler rule reads those keys.
+            openrouter_key = settings.openrouter_api_key
+            if openrouter_key and openrouter_key != "dummy":
+                try:
+                    self._discover_openrouter(
+                        settings=settings, api_key=openrouter_key
+                    )
+                except Exception as e:
+                    logger.warning(f"Auto-discovery failed for openrouter: {e}")
+
+            # LM Studio: local, optional, off unless a base URL is set.
+            lm_studio_url = settings.lm_studio_base_url
+            if lm_studio_url:
+                try:
+                    self._discover_lm_studio(
+                        settings=settings,
+                        base_url=lm_studio_url,
+                        api_key=settings.lm_studio_api_key or "lm-studio",
+                    )
+                except Exception as e:
+                    logger.warning(f"Auto-discovery failed for lmstudio: {e}")
 
             logger.info(f"Total configured and discovered models: {len(self.models)}")
 

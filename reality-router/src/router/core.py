@@ -2758,11 +2758,14 @@ class RouterCore:
                                             "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
                                         )
 
+                                    status = failure_reason or "validation_failure"
                                     await client.post(
                                         f"{url}/feedback",
                                         json={
                                             "decision_id": int(rc_id_str),
                                             "feedback": 0,
+                                            "reason": status,
+                                            "failure_type": status,
                                         },
                                         headers=headers,
                                         timeout=60.0,
@@ -3163,6 +3166,8 @@ class RouterCore:
                                         json={
                                             "decision_id": int(rc_id_str),
                                             "feedback": 0,
+                                            "reason": status,
+                                            "failure_type": status,
                                         },
                                         headers=headers,
                                         timeout=60.0,
@@ -3238,6 +3243,9 @@ class RouterCore:
                             final_features = self.extract_coding_features(
                                 request, decision.model_id, response
                             )
+                            logger.debug(
+                                f"Extracted post-hoc features for {decision.model_id}: {final_features}"
+                            )
                             try:
                                 # 0. Fast local confidence check
                                 local_confidence = final_features.get("confidence", 0.0)
@@ -3282,6 +3290,9 @@ class RouterCore:
                                                 "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
                                             )
 
+                                        logger.debug(
+                                            f"Sending post-hoc features to ladder API ({get_rerouting_url()}/decide): {final_features}"
+                                        )
                                         rc_resp = await client.post(
                                             f"{get_rerouting_url()}/decide",
                                             json={"features": final_features},
@@ -3295,6 +3306,25 @@ class RouterCore:
                                             decision.reality_check_id = rc_data.get(
                                                 "decision_id"
                                             )
+
+                                            # In tool_agent mode, treat strong structural validation (valid tool schema, parseable AST) as primary evidence over uninformative 0.5 cloud priors
+                                            has_strong_structural_validation = (
+                                                (has_valid_tool_call or final_features.get("struct_nodes", 0.0) > 0)
+                                                and not is_malformed
+                                                and not is_truncated
+                                                and not is_refusal
+                                                and not is_empty
+                                            )
+                                            if (
+                                                interaction_mode == "tool_agent"
+                                                and has_strong_structural_validation
+                                                and not has_repeated_failures
+                                                and abs(p_actual - 0.5) <= 0.05
+                                            ):
+                                                logger.info(
+                                                    f"Overriding uninformative cloud prior ({p_actual:.2f}) with strong structural validation for {decision.model_id}"
+                                                )
+                                                p_actual = 0.95
 
                                             logger.info(
                                                 f"Post-hoc assessment for {decision.model_id}: p_actual={p_actual:.4f}, id={decision.reality_check_id}"

@@ -74,7 +74,7 @@ def detect_interaction_mode(
         tool_choice = params.get("tool_choice") or getattr(request, "tool_choice", None)
         query = getattr(request, "query", "")
 
-    # 3. Inspect tools and function definitions
+    # 3. Inspect tools and function definitions (Turn 1 provisional agent mode)
     if tools or functions or (tool_choice and tool_choice != "none"):
         tool_names = []
         if isinstance(tools, list):
@@ -89,13 +89,17 @@ def detect_interaction_mode(
             for f in functions:
                 if isinstance(f, dict) and "name" in f:
                     tool_names.append(str(f["name"]).lower())
+                elif isinstance(f, dict) and "function" in f:
+                    fn = f["function"]
+                    if isinstance(fn, dict) and "name" in fn:
+                        tool_names.append(str(fn["name"]).lower())
 
         # Check if any tool matches coding/agent tool signatures
         for name in tool_names:
             if any(agent_tool in name for agent_tool in CODING_AGENT_TOOL_NAMES):
                 return "tool_agent", 1.0
 
-        return "tool_agent", 0.95
+        return "tool_agent", 1.0 if tool_names else 0.95
 
     # 4. Inspect message history for tool interactions
     if isinstance(messages, list) and messages:

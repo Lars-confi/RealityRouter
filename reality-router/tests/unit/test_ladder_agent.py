@@ -344,3 +344,195 @@ async def test_ladder_repeated_observation_failures_force_escalation(base_router
         # Even though rung 1 returns a tool call, repeated failures force ladder escalation to rung 2
         resp = await base_router.route_request(request, strategy="tiered_assessment")
         assert resp.model_id == "gemini-2.5-flash"
+
+
+@pytest.mark.asyncio
+async def test_ladder_agent_multi_turn_benchmark_lifecycle(base_router):
+    """
+    Multi-turn benchmark regression test verifying:
+    - Turn 1: Tools present, model emits valid tool call -> exactly 1 model invocation, no post-hoc ladder traversal, tool call returned immediately.
+    - Turn 2: Observation shows progress (exit code 0) -> model invoked once, no escalation.
+    - Turn 3: Malformed tool call or repeated failure -> escalation triggered, reason logged.
+    """
+    session_id = "benchmark_agent_lifecycle"
+    base_router.utility_calculator.reward = 100.0
+
+    mock_rung1 = AsyncMock()
+    mock_rung2 = AsyncMock()
+    mock_rung3 = AsyncMock()
+
+    base_router.adapters["gemini-3.1-flash-lite"] = mock_rung1
+    base_router.adapters["gemini-2.5-flash"] = mock_rung2
+    base_router.adapters["gemini-3.5-flash"] = mock_rung3
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "bash",
+                "description": "Execute bash command",
+                "parameters": {"type": "object", "properties": {"command": {"type": "string"}}},
+            },
+        }
+    ]
+
+    ladder_calls = []
+    feedback_calls = []
+
+    async def mock_rc_post(url, json=None, **kwargs):
+        if "ladder-api" in url and "decide" in url:
+            ladder_calls.append(json)
+            return MockHTTPXResponse({"prob_true": 0.5, "decision_id": 1001 + len(ladder_calls)})
+        if "feedback" in url:
+            feedback_calls.append(json)
+            return MockHTTPXResponse({"status": "ok"})
+        if "snap-api" in url:
+            return MockHTTPXResponse({"prob_true": 0.5, "decision_id": 999})
+        return MockHTTPXResponse({"status": "ok"})
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post), patch.object(
+        base_router, "assess_user_sentiment", return_value=None
+    ):
+        # -------------------------------------------------------------
+        # Turn 1: Tools present, model emits valid tool call
+        # -------------------------------------------------------------
+        mock_rung1.forward_request.return_value = {
+            "text": "",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "bash", "arguments": json.dumps({"command": "ls -la"})},
+                }
+            ],
+            "finish_reason": "tool_calls",
+        }
+
+        turn1_messages = [{"role": "user", "content": "List files in directory"}]
+        req1 = RoutingRequest(
+            query="List files in directory",
+            agent_id=session_id,
+            parameters={"messages": turn1_messages, "tools": tools},
+        )
+
+        resp1 = await base_router.route_request(req1, strategy="tiered_assessment")
+
+        # Turn 1 assertions:
+        assert resp1.model_id == "gemini-3.1-flash-lite"
+        assert resp1.response.get("tool_calls") is not None
+        assert mock_rung1.forward_request.call_count == 1
+        assert mock_rung2.forward_request.call_count == 0
+        assert len(ladder_calls) == 0  # No post-hoc ladder traversal
+
+        # -------------------------------------------------------------
+        # Turn 2: Observation shows progress (exit code 0) -> model invoked once, no escalation
+        # -------------------------------------------------------------
+        mock_rung1.forward_request.reset_mock()
+        mock_rung2.forward_request.reset_mock()
+
+        mock_rung1.forward_request.return_value = {
+            "text": "",
+            "tool_calls": [
+                {
+                    "id": "call_2",
+                    "type": "function",
+                    "function": {"name": "bash", "arguments": json.dumps({"command": "cat main.py"})},
+                }
+            ],
+            "finish_reason": "tool_calls",
+        }
+
+        turn2_messages = [
+            {"role": "user", "content": "List files in directory"},
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "bash", "arguments": json.dumps({"command": "ls -la"})},
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_1",
+                "content": "main.py\nrequirements.txt\n[exit code: 0]",
+            },
+        ]
+        req2 = RoutingRequest(
+            query="Inspect main.py",
+            agent_id=session_id,
+            parameters={"messages": turn2_messages, "tools": tools},
+        )
+
+        resp2 = await base_router.route_request(req2, strategy="tiered_assessment")
+
+        # Turn 2 assertions:
+        assert resp2.model_id == "gemini-3.1-flash-lite"
+        assert mock_rung1.forward_request.call_count == 1
+        assert mock_rung2.forward_request.call_count == 0
+        assert len(ladder_calls) == 0
+
+        # -------------------------------------------------------------
+        # Turn 3: Malformed tool call or repeated failure -> escalation triggered, reason logged
+        # -------------------------------------------------------------
+        mock_rung1.forward_request.reset_mock()
+        mock_rung2.forward_request.reset_mock()
+
+        # Rung 1 emits malformed tool call (invalid JSON arguments)
+        mock_rung1.forward_request.return_value = {
+            "text": "",
+            "tool_calls": [
+                {
+                    "id": "call_3",
+                    "type": "function",
+                    "function": {"name": "bash", "arguments": "{malformed_json: bad syntax"},
+                }
+            ],
+            "finish_reason": "tool_calls",
+        }
+
+        # Rung 2 emits valid response/tool call
+        mock_rung2.forward_request.return_value = {
+            "text": "",
+            "tool_calls": [
+                {
+                    "id": "call_3_fixed",
+                    "type": "function",
+                    "function": {"name": "bash", "arguments": json.dumps({"command": "pytest"})},
+                }
+            ],
+            "finish_reason": "tool_calls",
+        }
+
+        turn3_messages = list(turn2_messages) + [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_2",
+                        "type": "function",
+                        "function": {"name": "bash", "arguments": json.dumps({"command": "cat main.py"})},
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_2",
+                "content": "print('hello')\n[exit code: 0]",
+            },
+        ]
+        req3 = RoutingRequest(
+            query="Run tests",
+            agent_id=session_id,
+            parameters={"messages": turn3_messages, "tools": tools},
+        )
+
+        resp3 = await base_router.route_request(req3, strategy="tiered_assessment")
+
+        # Turn 3 assertions:
+        assert resp3.model_id == "gemini-2.5-flash"  # Escalated to Rung 2
+        assert mock_rung1.forward_request.call_count == 1
+        assert mock_rung2.forward_request.call_count == 1
+        assert resp3.response.get("tool_calls") is not None

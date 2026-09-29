@@ -445,7 +445,11 @@ class RouterCore:
         for m in raw:
             mid = m["id"]
             low = mid.lower()
-            vendor = mid.split("/", 1)[0].lower()
+            # OpenRouter also publishes a "~vendor" alias namespace whose ids
+            # point at that vendor's current model (~openai/gpt-sol-latest).
+            # Strip the tilde so the dedupe map and the per-vendor cap treat
+            # it as the vendor it is, rather than as a vendor of its own.
+            vendor = mid.split("/", 1)[0].lower().lstrip("~")
 
             # $0 covers both the ":free" variants and the unlabelled stealth
             # models; see the docstring for why free is a hazard here. Naming a

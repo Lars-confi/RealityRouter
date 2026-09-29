@@ -444,7 +444,9 @@ def sync_discover_openrouter(api_key, env_vars=None):
             if not m_id:
                 continue
             low = m_id.lower()
-            vendor = m_id.split("/", 1)[0].lower()
+            # See core._discover_openrouter: "~vendor" is an alias namespace
+            # for the same vendor, so strip the tilde before matching.
+            vendor = m_id.split("/", 1)[0].lower().lstrip("~")
 
             price = model.get("pricing") or {}
             try:

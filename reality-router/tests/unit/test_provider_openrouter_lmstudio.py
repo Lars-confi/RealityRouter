@@ -144,6 +144,26 @@ def test_vendors_with_a_direct_key_are_skipped():
     assert any("anthropic/claude" in n for n in names)
 
 
+def test_tilde_alias_vendors_are_deduped_too():
+    """OpenRouter's "~vendor" aliases are the same vendor.
+
+    ~openai/gpt-sol-latest is a floating pointer to OpenAI's current model. It
+    must be skipped when OPENAI_API_KEY is set, exactly as openai/* is --
+    otherwise the one thing the dedupe exists to prevent, the same model at two
+    prices, walks straight through the alias namespace.
+    """
+    names, _ = _run_openrouter(
+        _settings(openai_api_key="sk-live"),
+        catalogue=[
+            _model("~openai/gpt-sol-latest"),
+            _model("~anthropic/claude-haiku-latest"),
+        ],
+    )
+    assert not any("openai" in n for n in names)
+    # Anthropic has no direct key here, so its alias stays.
+    assert any("anthropic" in n for n in names)
+
+
 def test_per_vendor_cap_bounds_a_prolific_vendor():
     names, _ = _run_openrouter(_settings(openrouter_max_per_vendor=2))
     assert len([n for n in names if "meta-llama" in n]) == 2

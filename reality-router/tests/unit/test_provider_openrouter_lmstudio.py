@@ -164,6 +164,33 @@ def test_tilde_alias_vendors_are_deduped_too():
     assert any("anthropic" in n for n in names)
 
 
+def test_batch_variants_are_skipped():
+    """OpenRouter's ":batch" ids are async endpoints, priced below the real one.
+
+    EU ranks on cost, so leaving them in the pool means the batch queue
+    outranks the synchronous model of the same name and an interactive
+    request gets routed to something with a long turnaround. Naming one
+    explicitly is still allowed.
+    """
+    names, _ = _run_openrouter(
+        _settings(openrouter_models="kimi-k3"),
+        catalogue=[
+            _model("moonshotai/kimi-k3", prompt="0.000003"),
+            _model("moonshotai/kimi-k3:batch", prompt="0.000001"),
+        ],
+    )
+    assert any(n.endswith("kimi-k3") for n in names)
+    assert not any(n.endswith(":batch") for n in names)
+
+
+def test_batch_variant_can_be_named_explicitly():
+    names, _ = _run_openrouter(
+        _settings(openrouter_models="kimi-k3:batch"),
+        catalogue=[_model("moonshotai/kimi-k3:batch", prompt="0.000001")],
+    )
+    assert any(n.endswith(":batch") for n in names)
+
+
 def test_per_vendor_cap_bounds_a_prolific_vendor():
     names, _ = _run_openrouter(_settings(openrouter_max_per_vendor=2))
     assert len([n for n in names if "meta-llama" in n]) == 2

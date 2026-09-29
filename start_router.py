@@ -456,6 +456,11 @@ def sync_discover_openrouter(api_key, env_vars=None):
             if is_free and not (wanted or allow_free):
                 continue
 
+            # See core._discover_openrouter: ":batch" ids are async endpoints
+            # priced below the synchronous model, so they outrank it on cost.
+            if low.endswith(":batch") and not any("batch" in tok for tok in wanted):
+                continue
+
             arch = model.get("architecture") or {}
             if arch.get("output_modalities") and "text" not in arch["output_modalities"]:
                 continue

@@ -463,6 +463,14 @@ class RouterCore:
             if is_free and not (wanted or allow_free):
                 continue
 
+            # OpenRouter's ":batch" ids are asynchronous endpoints with a long
+            # turnaround, priced below the synchronous model of the same name.
+            # EU ranks on cost, so left in the pool they outrank the model you
+            # actually wanted and an interactive request lands in a batch queue.
+            # Same shape as the $0 rule: asking for one by name overrides it.
+            if low.endswith(":batch") and not any("batch" in tok for tok in wanted):
+                continue
+
             arch = m.get("architecture") or {}
             if arch.get("output_modalities") and "text" not in arch["output_modalities"]:
                 continue
@@ -3170,12 +3178,24 @@ class RouterCore:
                     resp_text = str(response.get("text", "")).strip()
                     finish_reason = response.get("finish_reason")
 
+                    # A client that sets max_tokens is asking for a capped
+                    # answer. Hitting that cap is the request being honoured,
+                    # so continuing past it both breaks the contract and, when
+                    # the continuations also cap out, escalates through the
+                    # whole pool -- four calls per model, then the next model,
+                    # for a response that was already correct. Only repair a
+                    # truncation we caused ourselves.
+                    client_capped = bool(
+                        (request.parameters or {}).get("max_tokens")
+                    )
+
                     # Attempt continuation if truncated
                     continuation_count = 0
                     max_continuations = 4
 
                     while (
                         finish_reason == "length"
+                        and not client_capped
                         and continuation_count < max_continuations
                     ):
                         logger.info(
@@ -3300,7 +3320,10 @@ class RouterCore:
                             pass
 
                     is_empty = not resp_text and not response.get("tool_calls")
-                    is_truncated = finish_reason == "length"
+                    # A client that set max_tokens asked for a capped answer, so
+                    # finish_reason == "length" is the contract being honoured,
+                    # not damage to repair. See the continuation loop above.
+                    is_truncated = finish_reason == "length" and not client_capped
 
                     # --- FORMATTING & SYNTAX VALIDATION ---
                     is_malformed = False

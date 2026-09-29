@@ -253,3 +253,47 @@ async def test_guardian_null_tools_parameter(base_router):
         response = await base_router.route_request(request, strategy="tiered_assessment")
         assert response is not None
         assert response.model_id != "gemini-3.1-flash-lite"
+
+
+@pytest.mark.asyncio
+async def test_client_max_tokens_is_not_treated_as_truncation(base_router):
+    """
+    A client that sets max_tokens asked for a capped answer.
+
+    finish_reason == "length" is then the request being honoured, not damage
+    to repair. Continuing past it breaks the client's contract, and when the
+    continuations cap out too the response is escalated through the whole
+    pool -- four calls per model, then the next model, for an answer that was
+    already correct.
+    """
+    request = RoutingRequest(
+        query="Reply briefly",
+        agent_id="test_agent",
+        parameters={
+            "messages": [{"role": "user", "content": "Reply briefly"}],
+            "max_tokens": 10,
+        },
+    )
+
+    capped = {"text": "A router directs each", "finish_reason": "length"}
+
+    first = AsyncMock()
+    first.forward_request.return_value = capped
+    second = AsyncMock()
+    second.forward_request.return_value = capped
+
+    base_router.adapters["gemini-3.1-flash-lite"] = first
+    base_router.adapters["gemini-2.5-flash"] = second
+
+    async def mock_rc_post(url, json=None, headers=None, **kwargs):
+        return MockHTTPXResponse({"prob_true": 0.9, "decision_id": 402})
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
+        response = await base_router.route_request(
+            request, strategy="tiered_assessment"
+        )
+
+    # Returned as-is, and the model was called exactly once -- no continuation
+    # attempts, no escalation to the second model.
+    assert response.response["text"] == "A router directs each"
+    assert first.forward_request.await_count == 1

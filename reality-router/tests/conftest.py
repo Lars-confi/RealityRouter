@@ -100,3 +100,9 @@ def base_router(mock_db):
     core.load_balancer.is_model_healthy = MagicMock(return_value=True)
     
     return core
+
+
+@pytest.fixture
+def router_core(base_router):
+    """Provide a standard configured RouterCore instance."""
+    return base_router

@@ -1780,17 +1780,18 @@ class RouterCore:
                     "fb_req": False,
                 }
 
-            results = []
             import time
 
-            for m in model_tasks:
+            async def timed_call_rc(m):
                 start_rc = time.time()
                 res = await call_rc(m)
                 duration = time.time() - start_rc
                 logger.info(
                     f"Reality Router total call time for {m['id']}: {duration:.4f}s"
                 )
-                results.append(res)
+                return res
+
+            results = await asyncio.gather(*[timed_call_rc(m) for m in model_tasks])
 
             decisions = []
             feedback_candidates = []

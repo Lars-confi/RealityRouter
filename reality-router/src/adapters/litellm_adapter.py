@@ -14,6 +14,48 @@ from .base_adapter import BaseAdapter
 
 
 
+def resolve_cost(response) -> tuple:
+    """Return (cost, source) for a completion, preferring what was really billed.
+
+    litellm.completion_cost() recomputes spend from litellm's own price table.
+    That ignores provider-side discounts -- prompt caching above all -- so on a
+    pool with warm caches the recorded cost drifts away from the invoice.
+    Measured over 734 calls against an OpenRouter pool it overstated real spend
+    by 1.67x overall, by 12x on deepseek-v4-pro (87% of whose prompt tokens were
+    cache hits), and *understated* deepseek-v4.1-flash by half.
+
+    Providers that report a cost give it to us exactly. OpenRouter puts it on
+    usage.cost; litellm also resolves a figure into
+    _hidden_params["response_cost"], using the provider's number when there is
+    one and its own calculation when there is not. So the preference order here
+    is never worse than the estimate, and the estimate remains the last resort
+    for providers that report nothing.
+
+    The source is returned alongside so callers can tell a measurement from an
+    estimate rather than having to assume.
+    """
+
+    def _usable(value):
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and value >= 0
+        )
+
+    reported = getattr(getattr(response, "usage", None), "cost", None)
+    if _usable(reported):
+        return float(reported), "provider"
+
+    hidden = getattr(response, "_hidden_params", None)
+    if isinstance(hidden, dict) and _usable(hidden.get("response_cost")):
+        return float(hidden["response_cost"]), "litellm_resolved"
+
+    try:
+        return float(litellm.completion_cost(completion_response=response)), "litellm_estimate"
+    except Exception:
+        return 0.0, "unavailable"
+
+
 def extract_message_text(content) -> str:
     if isinstance(content, str):
         return content.strip()
@@ -287,11 +329,8 @@ class LiteLLMAdapter(BaseAdapter):
             except Exception:
                 pass
 
-            # Estimate cost using LiteLLM's built-in cost tracker
-            try:
-                cost = litellm.completion_cost(completion_response=response)
-            except Exception:
-                cost = 0.0
+            # Cost: prefer what the provider actually billed (see resolve_cost).
+            cost, cost_source = resolve_cost(response)
 
             result = {
                 "text": text,
@@ -300,6 +339,7 @@ class LiteLLMAdapter(BaseAdapter):
                 "tool_calls": tool_calls if tool_calls else None,
                 "usage": usage_dict,
                 "cost": cost,
+                "cost_source": cost_source,
                 "raw_response": response.model_dump()
                 if hasattr(response, "model_dump")
                 else dict(response),

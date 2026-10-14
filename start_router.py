@@ -22,6 +22,13 @@ except ImportError:
     # slim container or CI image that has no reason to ship it.
     inquirer = None
 
+try:
+    import readchar
+    import readchar.key as rk
+except ImportError:
+    readchar = None
+    rk = None
+
 # Set up simple file logging
 APP_HOME = os.getenv("REALITY_ROUTER_HOME", os.path.expanduser("~/.reality_router"))
 os.makedirs(APP_HOME, exist_ok=True)
@@ -940,52 +947,188 @@ def wizard_providers(env_vars):
 
 
 
-def interactive_numbered_toggle(models, current_disabled):
-    """A rock-solid terminal-safe model toggle interface that never overflows cursor buffers."""
+def interactive_checkbox_scrollable(models, current_disabled, title="Select models to ENABLE"):
+    """Terminal-safe interactive scrollable checkbox selector.
+
+    Supports [Space] to toggle, [Up]/[Down] or [j]/[k] to navigate,
+    [PgUp]/[PgDn] to page, [Home]/[End] to jump, [a] to toggle all,
+    and [Enter] to confirm.
+    Uses a strictly bounded viewport and line-clamping so it NEVER overflows
+    terminal height, duplicates lines, or corrupts cursor positions.
+    """
     active_set = set(m["id"] for m in models if m["id"] not in current_disabled)
-    while True:
-        clear_screen()
-        print_header("Step 6: Model Visibility (Toggle Models)")
-        print_status(f"Toggle models by number. Total models: {len(models)}\n")
+    if not models or not sys.stdin.isatty():
+        return active_set
 
-        for idx, m in enumerate(models, 1):
-            is_on = m["id"] in active_set
-            check = f"{C_GREEN}[✓]{C_RESET}" if is_on else f"{C_RED}[ ]{C_RESET}"
-            print(f"  {idx:2d}. {check} {m['name']:45} ({m['provider']})")
-
-        print(f"\n  {C_CYAN}Instructions:{C_RESET}")
-        print("  - Type numbers separated by comma to toggle (e.g., '1, 4, 7')")
-        print("  - Type 'all' to enable all, 'none' to disable all")
-        print("  - Press [Enter] without typing a number to confirm your selection.\n")
-
+    def read_single_key():
+        if readchar is not None:
+            try:
+                return readchar.readkey()
+            except Exception:
+                pass
+        # Fallback to standard termios/tty on Unix
         try:
-            cmd = input("  Toggle selection (or press [Enter] to confirm): ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print(f"\n  {C_RED}Wizard aborted.{C_RESET}")
-            sys.exit(0)
+            import termios, tty
+            fd = sys.stdin.fileno()
+            old = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                ch = sys.stdin.read(1)
+                if ch == "\x1b":
+                    ch2 = sys.stdin.read(1)
+                    if ch2 in ("[", "O"):
+                        ch3 = sys.stdin.read(1)
+                        if ch3 in ("5", "6", "1", "4"):
+                            ch4 = sys.stdin.read(1)
+                            return f"\x1b{ch2}{ch3}{ch4}"
+                        return f"\x1b{ch2}{ch3}"
+                    return "\x1b"
+                return ch
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        except Exception:
+            return "\n"
 
-        if not cmd:
-            if not active_set:
-                print_status("You must have at least one active model enabled!", "error")
-                time.sleep(1.5)
-                continue
-            break
-        elif cmd == "all":
-            active_set = set(m["id"] for m in models)
-        elif cmd == "none":
-            active_set.clear()
-        else:
-            for token in cmd.split(","):
-                token = token.strip()
-                if token.isdigit():
-                    num = int(token)
-                    if 1 <= num <= len(models):
-                        m_id = models[num - 1]["id"]
-                        if m_id in active_set:
-                            active_set.remove(m_id)
-                        else:
-                            active_set.add(m_id)
-    return active_set
+    term_lines, term_cols = shutil.get_terminal_size((80, 24))
+    page_size = max(5, min(12, term_lines - 8))
+
+    cursor = 0
+    scroll_offset = 0
+    lines_rendered = 0
+    err_msg = ""
+
+    # Hide terminal cursor for smooth flicker-free rendering
+    sys.stdout.write("\033[?25l")
+    sys.stdout.flush()
+
+    try:
+        print(f"\n  {C_BOLD}{title}{C_RESET}")
+        print(f"  {C_CYAN}[Space]{C_RESET} Toggle  •  {C_CYAN}[↑/↓]{C_RESET} Move  •  {C_CYAN}[a]{C_RESET} Toggle All  •  {C_CYAN}[Enter]{C_RESET} Confirm\n")
+
+        while True:
+            term_lines, term_cols = shutil.get_terminal_size((80, 24))
+            page_size = max(5, min(12, term_lines - 8))
+
+            # Keep scroll_offset strictly framing the cursor
+            if cursor < scroll_offset:
+                scroll_offset = cursor
+            elif cursor >= scroll_offset + page_size:
+                scroll_offset = cursor - page_size + 1
+
+            frame_lines = []
+
+            # Status line
+            count_str = f"{len(active_set)}/{len(models)}"
+            window_str = f"{scroll_offset + 1}-{min(scroll_offset + page_size, len(models))} of {len(models)}"
+            status_text = f"  Enabled: {C_GREEN}{count_str}{C_RESET} models  (Showing {window_str})"
+            if err_msg:
+                status_text += f"  {C_RED}{err_msg}{C_RESET}"
+            frame_lines.append(status_text)
+
+            # Top scroll indicator
+            if scroll_offset > 0:
+                frame_lines.append(f"  {C_CYAN}▲ ... ({scroll_offset} more above){C_RESET}")
+            else:
+                frame_lines.append("   ")
+
+            # Visible items
+            for i in range(page_size):
+                idx = scroll_offset + i
+                if idx < len(models):
+                    m = models[idx]
+                    is_cursor = (idx == cursor)
+                    is_on = m["id"] in active_set
+                    ptr = f" {C_CYAN}>{C_RESET} " if is_cursor else "   "
+                    box = f"{C_GREEN}[✓]{C_RESET}" if is_on else f"{C_RED}[ ]{C_RESET}"
+
+                    # Clean model name and provider
+                    name = m.get("name", m["id"])
+                    provider = m.get("provider", "custom")
+                    # Calculate safe width to prevent line wrapping under any terminal size
+                    max_item_w = max(20, term_cols - 18)
+                    full_text = f"{name} ({provider})"
+                    if len(full_text) > max_item_w:
+                        full_text = full_text[:max_item_w - 3] + "..."
+
+                    if is_cursor:
+                        frame_lines.append(f"{ptr}{box} {C_BOLD}{full_text}{C_RESET}")
+                    else:
+                        frame_lines.append(f"{ptr}{box} {full_text}")
+                else:
+                    frame_lines.append("   ")
+
+            # Bottom scroll indicator
+            remaining = len(models) - (scroll_offset + page_size)
+            if remaining > 0:
+                frame_lines.append(f"  {C_CYAN}▼ ... ({remaining} more below){C_RESET}")
+            else:
+                frame_lines.append("   ")
+
+            # Render frame lines in-place
+            if lines_rendered > 0:
+                sys.stdout.write(f"\033[{lines_rendered}A\r")
+            for line in frame_lines:
+                sys.stdout.write(f"\033[2K{line}\n")
+            lines_rendered = len(frame_lines)
+            sys.stdout.flush()
+
+            err_msg = ""
+
+            # Read user keypress
+            k = read_single_key()
+
+            # Handle navigation keys
+            if k in ("\x1b[A", "\x1bOA", "k", "K") or (rk and k == rk.UP):
+                cursor = (cursor - 1) % len(models)
+            elif k in ("\x1b[B", "\x1bOB", "j", "J") or (rk and k == rk.DOWN):
+                cursor = (cursor + 1) % len(models)
+            elif k in ("\x1b[5~",) or (rk and k == getattr(rk, "PAGE_UP", None)):
+                cursor = max(0, cursor - page_size)
+            elif k in ("\x1b[6~",) or (rk and k == getattr(rk, "PAGE_DOWN", None)):
+                cursor = min(len(models) - 1, cursor + page_size)
+            elif k in ("\x1b[H", "\x1bOH", "\x1b[1~") or (rk and k == getattr(rk, "HOME", None)):
+                cursor = 0
+            elif k in ("\x1b[F", "\x1bOF", "\x1b[4~") or (rk and k == getattr(rk, "END", None)):
+                cursor = len(models) - 1
+            # Handle toggle key: Space
+            elif k in (" ",) or (rk and k == rk.SPACE):
+                m_id = models[cursor]["id"]
+                if m_id in active_set:
+                    active_set.remove(m_id)
+                else:
+                    active_set.add(m_id)
+            # Handle toggle all: 'a' or 'A'
+            elif k in ("a", "A"):
+                if len(active_set) == len(models):
+                    active_set.clear()
+                else:
+                    active_set = set(m["id"] for m in models)
+            # Handle confirm key: Enter
+            elif k in ("\r", "\n") or (rk and k in (rk.ENTER, getattr(rk, "CR", "\r"), getattr(rk, "LF", "\n"))):
+                if not active_set:
+                    err_msg = "⚠ At least one model must be enabled!"
+                    continue
+                break
+            # Handle abort / cancel: Ctrl+C or 'q'
+            elif k in ("\x03", "q", "Q") or (rk and k == rk.CTRL_C):
+                print(f"\n  {C_RED}Selection aborted.{C_RESET}")
+                sys.exit(0)
+
+        # Clear widget lines upon confirmation
+        if lines_rendered > 0:
+            sys.stdout.write(f"\033[{lines_rendered}A\r")
+            for _ in range(lines_rendered):
+                sys.stdout.write("\033[2K\n")
+            sys.stdout.write(f"\033[{lines_rendered}A\r")
+            sys.stdout.flush()
+
+        print_status(f"Configured {len(active_set)} of {len(models)} models enabled.", "success")
+        return active_set
+
+    finally:
+        # Always restore cursor
+        sys.stdout.write("\033[?25h")
+        sys.stdout.flush()
 
 def wizard_model_management(env_vars):
     disabled = load_disabled_models()
@@ -1017,8 +1160,8 @@ def wizard_model_management(env_vars):
         # Step 4.1: Toggle active models
         action_choices = [
             ("Enable All Discovered Models (Recommended)", "all"),
+            ("Customize Models (Toggle with [Space])", "all_interactive"),
             ("Customize Models by Provider", "provider"),
-            ("Interactive Numbered Toggle (All Models)", "numbered"),
         ]
         action_q = [
             inquirer.List(
@@ -1044,24 +1187,20 @@ def wizard_model_management(env_vars):
 
             active_ids = []
             for prov_name, p_models in by_prov.items():
-                p_choices = [(m["name"], m["id"]) for m in p_models]
-                p_default = [m["id"] for m in p_models if m["id"] not in disabled]
-                p_q = [
-                    inquirer.Checkbox(
-                        "p_active",
-                        message=f"[{prov_name.title()}] Select models to ENABLE",
-                        choices=p_choices,
-                        default=p_default,
-                        carousel=True,
-                    )
-                ]
-                p_ans = inquirer.prompt(p_q)
-                if p_ans and "p_active" in p_ans:
-                    active_ids.extend(p_ans["p_active"])
+                p_active = interactive_checkbox_scrollable(
+                    p_models,
+                    disabled,
+                    title=f"[{prov_name.title()}] Select models to ENABLE",
+                )
+                active_ids.extend(p_active)
             disabled = set(m["id"] for m in all_models if m["id"] not in active_ids)
         else:
-            # Bulletproof numbered selector that never overflows terminal buffers or duplicates lines
-            active_set = interactive_numbered_toggle(all_models, disabled)
+            # Terminal-safe scrollable interactive selector with [Space] toggle
+            active_set = interactive_checkbox_scrollable(
+                all_models,
+                disabled,
+                title="Select models to ENABLE ([Space] = toggle, [Enter] = confirm)",
+            )
             active_ids = list(active_set)
             disabled = set(m["id"] for m in all_models if m["id"] not in active_set)
 

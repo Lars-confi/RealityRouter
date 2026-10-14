@@ -143,6 +143,36 @@ def resolve_host_port(args, config):
     return host, port
 
 
+
+def scan_shell_profiles_for_keys():
+    """Scan ~/.bashrc, ~/.zshrc, ~/.profile for exported provider API keys if not in environment."""
+    home = os.path.expanduser("~")
+    profile_files = [".bashrc", ".zshrc", ".profile", ".bash_profile"]
+    found_keys = {}
+
+    target_keys = {k for _, pairs in PROVIDER_KEYS.items() for k, _ in pairs}
+    target_keys.update(["OPENROUTER_API_KEY", "OPENROUTER_BASE_URL", "LM_STUDIO_BASE_URL", "LM_STUDIO_API_KEY"])
+
+    for fname in profile_files:
+        fpath = os.path.join(home, fname)
+        if os.path.isfile(fpath):
+            try:
+                with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("export "):
+                            line = line[7:].strip()
+                        if "=" in line and not line.startswith("#"):
+                            k, v = line.split("=", 1)
+                            k = k.strip()
+                            v = v.strip().strip("'").strip('"')
+                            if k in target_keys and v:
+                                if k not in os.environ and k not in found_keys:
+                                    found_keys[k] = v
+            except Exception as e:
+                logger.debug(f"Could not read {fpath}: {e}")
+    return found_keys
+
 def load_env():
     env_vars = {}
     if os.path.exists(ENV_FILE):
@@ -638,6 +668,15 @@ def get_all_models(env_vars):
             )
         )
 
+    # Deduplicate models by ID to prevent duplicate listings in wizard and router
+    seen_ids = set()
+    unique_models = []
+    for m in models:
+        if m["id"] not in seen_ids:
+            seen_ids.add(m["id"])
+            unique_models.append(m)
+    models = unique_models
+
     logger.debug(f"Found {len(models)} models.")
     return models
 
@@ -928,25 +967,87 @@ def wizard_model_management(env_vars):
                 continue
 
         # Step 4.1: Toggle active models
-        model_choices = [(m["name"], m["id"]) for m in all_models]
-        default_checked = [m["id"] for m in all_models if m["id"] not in disabled]
+        if len(all_models) > 10:
+            action_choices = [
+                ("Enable All Discovered Models (Recommended)", "all"),
+                ("Customize Models by Provider", "provider"),
+                ("Customize All Models in One List", "all_list"),
+            ]
+            action_q = [
+                inquirer.List(
+                    "action",
+                    message="Configure Model Visibility",
+                    choices=action_choices,
+                    default="all",
+                )
+            ]
+            action_ans = inquirer.prompt(action_q)
+            if not action_ans:
+                print(f"\n  {C_RED}Wizard aborted.{C_RESET}")
+                sys.exit(0)
 
-        questions = [
-            inquirer.Checkbox(
-                "active_models",
-                message="Select models to ENABLE ([X] = enabled). Press [Space] to toggle, [Enter] to confirm.",
-                choices=model_choices,
-                default=default_checked,
-            )
-        ]
+            action = action_ans["action"]
+            if action == "all":
+                disabled.clear()
+                active_ids = [m["id"] for m in all_models]
+            elif action == "provider":
+                by_prov = {}
+                for m in all_models:
+                    by_prov.setdefault(m["provider"], []).append(m)
 
-        answers = inquirer.prompt(questions)
-        if not answers:
-            print(f"\n  {C_RED}Wizard aborted.{C_RESET}")
-            sys.exit(0)
-
-        active_ids = answers["active_models"]
-        disabled = set(m["id"] for m in all_models if m["id"] not in active_ids)
+                active_ids = []
+                for prov_name, p_models in by_prov.items():
+                    p_choices = [(m["name"], m["id"]) for m in p_models]
+                    p_default = [m["id"] for m in p_models if m["id"] not in disabled]
+                    p_q = [
+                        inquirer.Checkbox(
+                            "p_active",
+                            message=f"[{prov_name.title()}] Select models to ENABLE",
+                            choices=p_choices,
+                            default=p_default,
+                            carousel=True,
+                        )
+                    ]
+                    p_ans = inquirer.prompt(p_q)
+                    if p_ans and "p_active" in p_ans:
+                        active_ids.extend(p_ans["p_active"])
+                disabled = set(m["id"] for m in all_models if m["id"] not in active_ids)
+            else:
+                model_choices = [(m["name"], m["id"]) for m in all_models]
+                default_checked = [m["id"] for m in all_models if m["id"] not in disabled]
+                questions = [
+                    inquirer.Checkbox(
+                        "active_models",
+                        message="Select models to ENABLE ([X] = enabled)",
+                        choices=model_choices,
+                        default=default_checked,
+                        carousel=True,
+                    )
+                ]
+                answers = inquirer.prompt(questions)
+                if not answers:
+                    print(f"\n  {C_RED}Wizard aborted.{C_RESET}")
+                    sys.exit(0)
+                active_ids = answers["active_models"]
+                disabled = set(m["id"] for m in all_models if m["id"] not in active_ids)
+        else:
+            model_choices = [(m["name"], m["id"]) for m in all_models]
+            default_checked = [m["id"] for m in all_models if m["id"] not in disabled]
+            questions = [
+                inquirer.Checkbox(
+                    "active_models",
+                    message="Select models to ENABLE ([X] = enabled)",
+                    choices=model_choices,
+                    default=default_checked,
+                    carousel=True,
+                )
+            ]
+            answers = inquirer.prompt(questions)
+            if not answers:
+                print(f"\n  {C_RED}Wizard aborted.{C_RESET}")
+                sys.exit(0)
+            active_ids = answers["active_models"]
+            disabled = set(m["id"] for m in all_models if m["id"] not in active_ids)
 
         active_model_choices = [
             (m["name"], m["id"]) for m in all_models if m["id"] in active_ids
@@ -1828,6 +1929,12 @@ def parse_args(argv):
 
 
 def resolve_config(args):
+    # 0. Scan shell profiles for exported API keys if not present in environment
+    profile_keys = scan_shell_profiles_for_keys()
+    for k, v in profile_keys.items():
+        if k not in os.environ:
+            os.environ[k] = v
+
     # 1. Load from Config File (.env) first
     config = load_env()
 

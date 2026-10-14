@@ -939,6 +939,54 @@ def wizard_providers(env_vars):
         save_env(env_vars)
 
 
+
+def interactive_numbered_toggle(models, current_disabled):
+    """A rock-solid terminal-safe model toggle interface that never overflows cursor buffers."""
+    active_set = set(m["id"] for m in models if m["id"] not in current_disabled)
+    while True:
+        clear_screen()
+        print_header("Step 6: Model Visibility (Toggle Models)")
+        print_status(f"Toggle models by number. Total models: {len(models)}\n")
+
+        for idx, m in enumerate(models, 1):
+            is_on = m["id"] in active_set
+            check = f"{C_GREEN}[✓]{C_RESET}" if is_on else f"{C_RED}[ ]{C_RESET}"
+            print(f"  {idx:2d}. {check} {m['name']:45} ({m['provider']})")
+
+        print(f"\n  {C_CYAN}Instructions:{C_RESET}")
+        print("  - Type numbers separated by comma to toggle (e.g., '1, 4, 7')")
+        print("  - Type 'all' to enable all, 'none' to disable all")
+        print("  - Press [Enter] without typing a number to confirm your selection.\n")
+
+        try:
+            cmd = input("  Toggle selection (or press [Enter] to confirm): ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n  {C_RED}Wizard aborted.{C_RESET}")
+            sys.exit(0)
+
+        if not cmd:
+            if not active_set:
+                print_status("You must have at least one active model enabled!", "error")
+                time.sleep(1.5)
+                continue
+            break
+        elif cmd == "all":
+            active_set = set(m["id"] for m in models)
+        elif cmd == "none":
+            active_set.clear()
+        else:
+            for token in cmd.split(","):
+                token = token.strip()
+                if token.isdigit():
+                    num = int(token)
+                    if 1 <= num <= len(models):
+                        m_id = models[num - 1]["id"]
+                        if m_id in active_set:
+                            active_set.remove(m_id)
+                        else:
+                            active_set.add(m_id)
+    return active_set
+
 def wizard_model_management(env_vars):
     disabled = load_disabled_models()
     all_models = get_all_models(env_vars)
@@ -967,87 +1015,55 @@ def wizard_model_management(env_vars):
                 continue
 
         # Step 4.1: Toggle active models
-        if len(all_models) > 10:
-            action_choices = [
-                ("Enable All Discovered Models (Recommended)", "all"),
-                ("Customize Models by Provider", "provider"),
-                ("Customize All Models in One List", "all_list"),
-            ]
-            action_q = [
-                inquirer.List(
-                    "action",
-                    message="Configure Model Visibility",
-                    choices=action_choices,
-                    default="all",
-                )
-            ]
-            action_ans = inquirer.prompt(action_q)
-            if not action_ans:
-                print(f"\n  {C_RED}Wizard aborted.{C_RESET}")
-                sys.exit(0)
+        action_choices = [
+            ("Enable All Discovered Models (Recommended)", "all"),
+            ("Customize Models by Provider", "provider"),
+            ("Interactive Numbered Toggle (All Models)", "numbered"),
+        ]
+        action_q = [
+            inquirer.List(
+                "action",
+                message="Configure Model Visibility",
+                choices=action_choices,
+                default="all",
+            )
+        ]
+        action_ans = inquirer.prompt(action_q)
+        if not action_ans:
+            print(f"\n  {C_RED}Wizard aborted.{C_RESET}")
+            sys.exit(0)
 
-            action = action_ans["action"]
-            if action == "all":
-                disabled.clear()
-                active_ids = [m["id"] for m in all_models]
-            elif action == "provider":
-                by_prov = {}
-                for m in all_models:
-                    by_prov.setdefault(m["provider"], []).append(m)
+        action = action_ans["action"]
+        if action == "all":
+            disabled.clear()
+            active_ids = [m["id"] for m in all_models]
+        elif action == "provider":
+            by_prov = {}
+            for m in all_models:
+                by_prov.setdefault(m["provider"], []).append(m)
 
-                active_ids = []
-                for prov_name, p_models in by_prov.items():
-                    p_choices = [(m["name"], m["id"]) for m in p_models]
-                    p_default = [m["id"] for m in p_models if m["id"] not in disabled]
-                    p_q = [
-                        inquirer.Checkbox(
-                            "p_active",
-                            message=f"[{prov_name.title()}] Select models to ENABLE",
-                            choices=p_choices,
-                            default=p_default,
-                            carousel=True,
-                        )
-                    ]
-                    p_ans = inquirer.prompt(p_q)
-                    if p_ans and "p_active" in p_ans:
-                        active_ids.extend(p_ans["p_active"])
-                disabled = set(m["id"] for m in all_models if m["id"] not in active_ids)
-            else:
-                model_choices = [(m["name"], m["id"]) for m in all_models]
-                default_checked = [m["id"] for m in all_models if m["id"] not in disabled]
-                questions = [
+            active_ids = []
+            for prov_name, p_models in by_prov.items():
+                p_choices = [(m["name"], m["id"]) for m in p_models]
+                p_default = [m["id"] for m in p_models if m["id"] not in disabled]
+                p_q = [
                     inquirer.Checkbox(
-                        "active_models",
-                        message="Select models to ENABLE ([X] = enabled)",
-                        choices=model_choices,
-                        default=default_checked,
+                        "p_active",
+                        message=f"[{prov_name.title()}] Select models to ENABLE",
+                        choices=p_choices,
+                        default=p_default,
                         carousel=True,
                     )
                 ]
-                answers = inquirer.prompt(questions)
-                if not answers:
-                    print(f"\n  {C_RED}Wizard aborted.{C_RESET}")
-                    sys.exit(0)
-                active_ids = answers["active_models"]
-                disabled = set(m["id"] for m in all_models if m["id"] not in active_ids)
-        else:
-            model_choices = [(m["name"], m["id"]) for m in all_models]
-            default_checked = [m["id"] for m in all_models if m["id"] not in disabled]
-            questions = [
-                inquirer.Checkbox(
-                    "active_models",
-                    message="Select models to ENABLE ([X] = enabled)",
-                    choices=model_choices,
-                    default=default_checked,
-                    carousel=True,
-                )
-            ]
-            answers = inquirer.prompt(questions)
-            if not answers:
-                print(f"\n  {C_RED}Wizard aborted.{C_RESET}")
-                sys.exit(0)
-            active_ids = answers["active_models"]
+                p_ans = inquirer.prompt(p_q)
+                if p_ans and "p_active" in p_ans:
+                    active_ids.extend(p_ans["p_active"])
             disabled = set(m["id"] for m in all_models if m["id"] not in active_ids)
+        else:
+            # Bulletproof numbered selector that never overflows terminal buffers or duplicates lines
+            active_set = interactive_numbered_toggle(all_models, disabled)
+            active_ids = list(active_set)
+            disabled = set(m["id"] for m in all_models if m["id"] not in active_set)
 
         active_model_choices = [
             (m["name"], m["id"]) for m in all_models if m["id"] in active_ids

@@ -1106,7 +1106,7 @@ async def get_dashboard():
                         
                         data.api_key_alerts.forEach(alert => {
                             const li = document.createElement('li');
-                            li.innerHTML = `Model <b>\${alert.model_name}</b> failed at \${alert.timestamp}. Error: <code style="color: #ff8b8b; font-family: monospace;">\${alert.error_message}</code>`;
+                            li.innerHTML = `Model <b>${alert.model_name}</b> failed at ${alert.timestamp}. Error: <code style="color: #ff8b8b; font-family: monospace;">${alert.error_message}</code>`;
                             apiAlertList.appendChild(li);
                         });
                     } else {

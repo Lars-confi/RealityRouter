@@ -1041,19 +1041,21 @@ def interactive_checkbox_scrollable(models, current_disabled, title="Select mode
                     ptr = f" {C_CYAN}>{C_RESET} " if is_cursor else "   "
                     box = f"{C_GREEN}[✓]{C_RESET}" if is_on else f"{C_RED}[ ]{C_RESET}"
 
-                    # Clean model name and provider
-                    name = m.get("name", m["id"])
-                    provider = m.get("provider", "custom")
-                    # Calculate safe width to prevent line wrapping under any terminal size
-                    max_item_w = max(20, term_cols - 18)
-                    full_text = f"{name} ({provider})"
-                    if len(full_text) > max_item_w:
-                        full_text = full_text[:max_item_w - 3] + "..."
+                    # Clean model name and provider (do not duplicate provider suffix)
+                    m_name = m.get("name", m["id"])
+                    # Use full available width minus prefix: ptr(3) + box(4) + 2 = 9
+                    max_item_w = max(20, term_cols - 9)
+                    if len(m_name) > max_item_w:
+                        head = (max_item_w - 3) // 2
+                        tail = max_item_w - 3 - head
+                        display_name = m_name[:head] + "..." + m_name[-tail:]
+                    else:
+                        display_name = m_name
 
                     if is_cursor:
-                        frame_lines.append(f"{ptr}{box} {C_BOLD}{full_text}{C_RESET}")
+                        frame_lines.append(f"{ptr}{box} {C_BOLD}{display_name}{C_RESET}")
                     else:
-                        frame_lines.append(f"{ptr}{box} {full_text}")
+                        frame_lines.append(f"{ptr}{box} {display_name}")
                 else:
                     frame_lines.append("   ")
 
@@ -1063,6 +1065,19 @@ def interactive_checkbox_scrollable(models, current_disabled, title="Select mode
                 frame_lines.append(f"  {C_CYAN}▼ ... ({remaining} more below){C_RESET}")
             else:
                 frame_lines.append("   ")
+
+            # Focused model details bar
+            f_m = models[cursor]
+            f_id = f_m.get("id", f_m.get("name", ""))
+            f_prov = f_m.get("provider", "custom").title()
+            avail_f_w = max(20, term_cols - 18)
+            if len(f_id) > avail_f_w:
+                head = (avail_f_w - 3) // 2
+                tail = avail_f_w - 3 - head
+                f_display = f_id[:head] + "..." + f_id[-tail:]
+            else:
+                f_display = f_id
+            frame_lines.append(f"  {C_CYAN}Focused [{f_prov}]:{C_RESET} {C_BOLD}{f_display}{C_RESET}")
 
             # Render frame lines in-place
             if lines_rendered > 0:
@@ -1578,7 +1593,7 @@ def deploy_docker(env_vars):
     container_name: reality-router
     restart: always
     ports:
-      - "127.0.0.1:{port}:8000"
+      - "0.0.0.0:{port}:8000"
     volumes:
       - {abs_app_home}:/root/.reality_router
     environment:

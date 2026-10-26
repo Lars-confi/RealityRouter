@@ -200,36 +200,16 @@ def test_trajectory_tracker_state_transitions():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_observation_automatic_feedback_submission(base_router):
+async def test_observation_automatic_feedback_submission(base_router, mock_db):
     """
     Verify that incoming tool observations ('success' or 'failure') automatically
     submit ground-truth feedback (value 1 or 0) to RealitySignal for the previous turn's decision.
     """
-    from src.models.database import SessionLocal, RoutingLog, init_db
-
-    init_db()
-    db = SessionLocal()
-    try:
-        # Create a mock RoutingLog entry representing a previous decision
-        prev_log = RoutingLog(
-            timestamp=datetime.utcnow(),
-            model_id="gemini-3.1-flash-lite",
-            model_name="Gemini Flash",
-            agent_id="test_obs_feedback_agent",
-            reality_check_id="12345",
-            user_sentiment=None,
-            strategy="expected_utility",
-            expected_utility=5.0,
-            cost=0.001,
-            time=0.5,
-            probability=0.8,
-            success=True,
-            query="Previous query",
-        )
-        db.add(prev_log)
-        db.commit()
-    finally:
-        db.close()
+    mock_log = MagicMock()
+    mock_log.reality_check_id = 12345
+    mock_log.user_sentiment = None
+    mock_log.strategy = "expected_utility"
+    mock_db.query.return_value.filter.return_value.filter.return_value.filter.return_value.order_by.return_value.first.return_value = mock_log
 
     feedback_payloads = []
 
@@ -237,19 +217,26 @@ async def test_observation_automatic_feedback_submission(base_router):
         if "feedback" in url:
             feedback_payloads.append(json)
             return MockHTTPXResponse({"status": "ok"})
-        return MockHTTPXResponse({"prob_true": 0.8, "decision_id": 9999})
+        return MockHTTPXResponse({"prob_true": 0.8, "decision_id": 12345})
 
     mock_m1 = AsyncMock()
     mock_m1.forward_request.return_value = {"text": "Code output", "finish_reason": "stop"}
     base_router.adapters["gemini-3.1-flash-lite"] = mock_m1
 
-    # Incoming request containing tool execution success ([exit code: 0])
-    req = RoutingRequest(
+    # Turn 1: Initial user query
+    req1 = RoutingRequest(
+        query="Write tests",
+        agent_id="test_obs_feedback_agent",
+        parameters={"messages": [{"role": "user", "content": "Write tests"}]},
+    )
+
+    # Turn 2: Tool execution result returning success ([exit code: 0])
+    req2 = RoutingRequest(
         query="Run tests",
         agent_id="test_obs_feedback_agent",
         parameters={
             "messages": [
-                {"role": "user", "content": "Run tests"},
+                {"role": "user", "content": "Write tests"},
                 {"role": "assistant", "tool_calls": [{"id": "t1", "type": "function", "function": {"name": "bash"}}]},
                 {"role": "tool", "tool_call_id": "t1", "content": "All tests passed\n[exit code: 0]"},
             ]
@@ -257,9 +244,10 @@ async def test_observation_automatic_feedback_submission(base_router):
     )
 
     with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
-        await base_router.route_request(req, strategy="expected_utility")
+        await base_router.route_request(req1, strategy="expected_utility")
+        await base_router.route_request(req2, strategy="expected_utility")
 
-    # Assert that automatic feedback was submitted to RealitySignal
+    # Assert that automatic observation feedback was submitted to RealitySignal
     assert len(feedback_payloads) == 1
     assert feedback_payloads[0]["decision_id"] == 12345
     assert feedback_payloads[0]["feedback"] == 1

@@ -1947,6 +1947,15 @@ class RouterCore:
                         median_cost = statistics.median(costs)
                         candidate_models = {mid: info for mid, info in self.models.items() if info.get("cost", 0.0) > median_cost}
 
+            # If tools are requested, prefer models that support function calling.
+            # If no model in the pool natively supports function calling, allow all eligible models
+            # (line 2818 injects a system prompt nudge for local/text models).
+            has_tool_capable_model = any(
+                info.get("supports_function_calling", False)
+                for mid, info in candidate_models.items()
+                if mid not in settings.disabled_models
+            )
+
             model_tasks = []
             for mid, info in candidate_models.items():
                 if mid in settings.disabled_models:
@@ -1960,8 +1969,8 @@ class RouterCore:
                         logger.info(f"Skipping model {mid} for vision request (no vision support)")
                         continue
 
-                # If tools are requested, only include models that strictly support them
-                if tools_requested and not info.get("supports_function_calling", False):
+                # If tools are requested and tool-capable models exist, filter for tool support
+                if tools_requested and has_tool_capable_model and not info.get("supports_function_calling", False):
                     continue
 
                 if (

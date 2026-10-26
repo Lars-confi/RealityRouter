@@ -298,3 +298,29 @@ async def test_ladder_hysteresis_prevents_unnecessary_escalation(base_router):
         assert response.model_id == "gemini-3.1-flash-lite"
         mock_second_adapter.forward_request.assert_not_called()
         assert ladder_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_tool_agent_fallback_when_no_tool_capable_models(base_router):
+    """
+    Verifies that when tools are requested, if NO candidate model in the pool
+    has supports_function_calling=True (e.g. pure Ollama local setup), the router
+    falls back gracefully to ranking available models rather than filtering out 100% of the pool.
+    """
+    for mid in base_router.models:
+        base_router.models[mid]["supports_function_calling"] = False
+
+    request = RoutingRequest(
+        query="Execute bash command",
+        parameters={
+            "messages": [{"role": "user", "content": "Run tests"}],
+            "tools": [{"type": "function", "function": {"name": "bash"}}],
+        },
+    )
+
+    async def mock_rc_post(url, json=None, **kwargs):
+        return MockHTTPXResponse({"prob_true": 0.8, "decision_id": 9999})
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
+        ranked = await base_router.get_ranked_models(request, strategy="expected_utility")
+        assert len(ranked) > 0  # Does not filter out all models!

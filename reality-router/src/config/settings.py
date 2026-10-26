@@ -218,6 +218,18 @@ def update_model_preference(model_id: str, value: float) -> None:
     reload_settings()
 
 
+def update_default_strategy(strategy: str) -> None:
+    """Update default routing strategy in settings and save to .env"""
+    valid = "tiered_assessment" if strategy in ("ladder", "tiered_assessment") else "expected_utility"
+    settings.default_strategy = valid
+    env_vars = _load_env_file(_env_path)
+    env_vars["DEFAULT_STRATEGY"] = valid
+    with open(_env_path, "w") as f:
+        for k, v in env_vars.items():
+            f.write(f"{k}={v}\n")
+    reload_settings()
+
+
 def load_models_from_config() -> Dict[str, Dict[str, Any]]:
     """Load model configurations from settings"""
     models = {}

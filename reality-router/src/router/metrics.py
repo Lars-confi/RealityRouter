@@ -558,6 +558,31 @@ async def update_preferences(pref: PreferenceUpdate):
     return {"status": "success", "alpha": alpha, "beta": beta}
 
 
+class StrategyRequest(BaseModel):
+    strategy: str
+
+
+@router.get("/strategy")
+async def get_strategy_endpoint():
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+    current = getattr(settings, "default_strategy", "expected_utility")
+    mode = "ladder" if current == "tiered_assessment" else "snap"
+    return {"strategy": current, "mode": mode}
+
+
+@router.post("/strategy")
+async def update_strategy_endpoint(req: StrategyRequest):
+    from src.config.settings import update_default_strategy
+
+    update_default_strategy(req.strategy)
+    from src.router.core import router_core
+
+    router_core.reload()
+    return {"status": "success"}
+
+
 @router.post("/reset")
 async def reset_database(db: Session = Depends(get_db)):
     try:
@@ -803,6 +828,25 @@ async def get_dashboard():
         </div> <!-- End tab-performance -->
 
         <div id="tab-settings" class="tab-content">
+            <div id="strategy-card" class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Routing Strategy (Snap vs. Ladder)</h2>
+                    <div id="strategy-badge" style="font-family: monospace; color: #70b1ff; font-weight: bold; font-size: 1.1em; background: rgba(112, 177, 255, 0.1); padding: 4px 12px; border-radius: 20px; border: 1px solid rgba(112, 177, 255, 0.2);">Snap</div>
+                </div>
+                <div style="display: flex; gap: 15px; margin-top: 18px;">
+                    <button id="strategy-snap-btn" onclick="setStrategy('snap')" style="flex: 1; padding: 12px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; border: 1px solid rgba(112, 177, 255, 0.4); background: rgba(112, 177, 255, 0.2); color: #fff; transition: all 0.2s;">
+                        ⚡ Snap (Single-shot Utility)
+                    </button>
+                    <button id="strategy-ladder-btn" onclick="setStrategy('ladder')" style="flex: 1; padding: 12px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.05); color: #8b949e; transition: all 0.2s;">
+                        🪜 Ladder (Sequential Escalation)
+                    </button>
+                </div>
+                <div style="margin-top: 12px; font-size: 0.88em; color: #8b949e; text-align: center;" id="strategy-desc">
+                    Snap routes each request immediately to the model maximizing expected utility.
+                </div>
+                <div id="strategy-status" style="text-align: center; font-size: 0.85em; color: #70b1ff; margin-top: 8px; height: 1em;"></div>
+            </div>
+
             <div id="preferences" class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h2>Routing Preferences</h2>
@@ -924,6 +968,80 @@ async def get_dashboard():
                 });
             }
             initPreferences();
+
+            function updateStrategyUI(mode) {
+                const isLadder = (mode === 'ladder' || mode === 'tiered_assessment');
+                const badge = document.getElementById('strategy-badge');
+                const snapBtn = document.getElementById('strategy-snap-btn');
+                const ladderBtn = document.getElementById('strategy-ladder-btn');
+                const desc = document.getElementById('strategy-desc');
+
+                if (isLadder) {
+                    if (badge) badge.innerText = 'Ladder';
+                    if (snapBtn) {
+                        snapBtn.style.background = 'rgba(255, 255, 255, 0.05)';
+                        snapBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                        snapBtn.style.color = '#8b949e';
+                    }
+                    if (ladderBtn) {
+                        ladderBtn.style.background = 'rgba(112, 177, 255, 0.2)';
+                        ladderBtn.style.borderColor = 'rgba(112, 177, 255, 0.4)';
+                        ladderBtn.style.color = '#fff';
+                    }
+                    if (desc) desc.innerText = 'Ladder starts with a cheap rung and sequentially escalates if lower rungs underperform.';
+                } else {
+                    if (badge) badge.innerText = 'Snap';
+                    if (snapBtn) {
+                        snapBtn.style.background = 'rgba(112, 177, 255, 0.2)';
+                        snapBtn.style.borderColor = 'rgba(112, 177, 255, 0.4)';
+                        snapBtn.style.color = '#fff';
+                    }
+                    if (ladderBtn) {
+                        ladderBtn.style.background = 'rgba(255, 255, 255, 0.05)';
+                        ladderBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                        ladderBtn.style.color = '#8b949e';
+                    }
+                    if (desc) desc.innerText = 'Snap routes each request immediately to the model maximizing expected utility.';
+                }
+            }
+
+            async function initStrategy() {
+                try {
+                    const res = await fetch('/metrics/strategy');
+                    if (res.ok) {
+                        const data = await res.json();
+                        updateStrategyUI(data.mode);
+                    }
+                } catch (e) {
+                    console.error("Failed to load strategy", e);
+                }
+            }
+
+            async function setStrategy(mode) {
+                const statusEl = document.getElementById('strategy-status');
+                if (statusEl) statusEl.innerText = "Updating strategy...";
+                try {
+                    const res = await fetch('/metrics/strategy', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ strategy: mode })
+                    });
+                    if (res.ok) {
+                        updateStrategyUI(mode);
+                        if (statusEl) {
+                            statusEl.innerText = `Strategy updated to ${mode === 'ladder' ? 'Ladder' : 'Snap'}!`;
+                            setTimeout(() => statusEl.innerText = "", 2000);
+                        }
+                    } else {
+                        if (statusEl) statusEl.innerText = "Failed to update strategy.";
+                    }
+                } catch (e) {
+                    console.error("Failed to update strategy", e);
+                    if (statusEl) statusEl.innerText = "Error communicating with server.";
+                }
+            }
+
+            initStrategy();
 
             async function loadAllModels() {
                 try {

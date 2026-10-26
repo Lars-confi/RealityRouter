@@ -272,3 +272,37 @@ async def test_long_query_potential_cost_persistence(test_client):
     assert summary_data["potential_max_cost"] > summary_data["total_cost"]
     savings = summary_data["potential_max_cost"] - summary_data["total_cost"]
     assert savings > 0.0
+
+
+def test_dashboard_strategy_toggle_endpoint(test_client):
+    """
+    Verifies that GET /metrics/strategy and POST /metrics/strategy:
+    1. Reads current strategy ('expected_utility' -> snap, 'tiered_assessment' -> ladder).
+    2. Allows toggling strategy between snap and ladder via POST.
+    3. Persists updated default_strategy in settings.
+    """
+    get_res = test_client.get("/metrics/strategy")
+    assert get_res.status_code == 200
+    get_data = get_res.json()
+    assert "strategy" in get_data
+    assert "mode" in get_data
+
+    # Toggle to ladder
+    post_res = test_client.post("/metrics/strategy", json={"strategy": "ladder"})
+    assert post_res.status_code == 200
+    assert post_res.json()["status"] == "success"
+
+    get_res2 = test_client.get("/metrics/strategy")
+    assert get_res2.status_code == 200
+    assert get_res2.json()["mode"] == "ladder"
+    assert get_res2.json()["strategy"] == "tiered_assessment"
+
+    # Reset back to snap
+    post_res2 = test_client.post("/metrics/strategy", json={"strategy": "snap"})
+    assert post_res2.status_code == 200
+    assert post_res2.json()["status"] == "success"
+
+    get_res3 = test_client.get("/metrics/strategy")
+    assert get_res3.status_code == 200
+    assert get_res3.json()["mode"] == "snap"
+    assert get_res3.json()["strategy"] == "expected_utility"

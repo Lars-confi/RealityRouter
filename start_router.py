@@ -234,19 +234,36 @@ def save_env(env_vars):
         pass
 
 
-def load_disabled_models():
+def load_disabled_models(env_vars=None):
+    disabled = set()
     if os.path.exists(DISABLED_MODELS_FILE):
         try:
             with open(DISABLED_MODELS_FILE, "r") as f:
-                return set(json.load(f))
-        except:
-            return set()
-    return set()
+                data = json.load(f)
+                if isinstance(data, list):
+                    disabled.update(data)
+        except Exception:
+            pass
+    if env_vars and env_vars.get("DISABLED_MODELS"):
+        val = env_vars["DISABLED_MODELS"]
+        if isinstance(val, str) and val.strip():
+            disabled.update([x.strip() for x in val.split(",") if x.strip()])
+    elif os.path.exists(ENV_FILE):
+        env_data = load_env()
+        if env_data.get("DISABLED_MODELS"):
+            val = env_data["DISABLED_MODELS"]
+            if isinstance(val, str) and val.strip():
+                disabled.update([x.strip() for x in val.split(",") if x.strip()])
+    return disabled
 
 
-def save_disabled_models(disabled_set):
+def save_disabled_models(disabled_set, env_vars=None):
+    disabled_list = sorted(list(disabled_set))
     with open(DISABLED_MODELS_FILE, "w") as f:
-        json.dump(list(disabled_set), f)
+        json.dump(disabled_list, f)
+    if env_vars is not None:
+        env_vars["DISABLED_MODELS"] = ",".join(disabled_list)
+        save_env(env_vars)
 
 
 def clear_screen():
@@ -2514,6 +2531,11 @@ def run_sso_device_flow(args, config, provider_type):
 def cmd_setup(args, config):
     if args.agent:
         # Agent mode: auto-setup everything cleanly without any prompts
+        disabled = load_disabled_models(config)
+        if disabled:
+            config["DISABLED_MODELS"] = ",".join(sorted(list(disabled)))
+            save_disabled_models(disabled, config)
+
         models = get_all_models(config)
         sentiment, reason = resolve_sentiment_model(models, config.get("SENTIMENT_MODEL_ID"))
         if sentiment:

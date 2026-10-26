@@ -536,3 +536,41 @@ async def test_ladder_agent_multi_turn_benchmark_lifecycle(base_router):
         assert mock_rung1.forward_request.call_count == 1
         assert mock_rung2.forward_request.call_count == 1
         assert resp3.response.get("tool_calls") is not None
+
+
+@pytest.mark.asyncio
+async def test_disabled_models_excluded_from_ranking(base_router):
+    """
+    Verify that models present in settings.disabled_models are excluded
+    from candidate ranking and Ladder escalation, even if they remain in router.models.
+    """
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+    # Add an inactive model into base_router.models
+    base_router.models["inactive-model-x"] = {
+        "name": "inactive-model-x",
+        "cost": 0.0001,
+        "time": 0.5,
+        "probability": 0.99,
+        "supports_function_calling": True,
+    }
+
+    if "inactive-model-x" not in settings.disabled_models:
+        settings.disabled_models.append("inactive-model-x")
+
+    try:
+        request = RoutingRequest(
+            query="Test query",
+            parameters={"messages": [{"role": "user", "content": "Test"}]},
+        )
+
+        ranked = await base_router.get_ranked_models(request, strategy="tiered_assessment")
+        ranked_ids = [d.model_id for d in ranked]
+
+        assert "inactive-model-x" not in ranked_ids
+    finally:
+        if "inactive-model-x" in settings.disabled_models:
+            settings.disabled_models.remove("inactive-model-x")
+        if "inactive-model-x" in base_router.models:
+            del base_router.models["inactive-model-x"]

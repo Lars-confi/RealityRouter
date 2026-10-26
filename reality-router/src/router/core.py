@@ -1949,6 +1949,10 @@ class RouterCore:
 
             model_tasks = []
             for mid, info in candidate_models.items():
+                if mid in settings.disabled_models:
+                    logger.info(f"Skipping model {mid} (disabled in settings)")
+                    continue
+
                 # If vision is detected, only include models that strictly support it
                 if has_images:
                     caps = pricing_manager.get_model_capabilities(mid)

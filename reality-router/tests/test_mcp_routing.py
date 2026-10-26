@@ -267,7 +267,11 @@ async def test_assess_user_sentiment_standard_flow(mock_router):
 
 
 @pytest.mark.asyncio
-async def test_assess_user_sentiment_agent_led_flow(mock_router):
+async def test_assess_user_sentiment_non_user_turn_skipped(mock_router):
+    """
+    Verify that sentiment assessment is skipped (returns None) when the current message
+    is NOT a user follow-up to an assistant response (e.g. user -> assistant, or assistant -> tool).
+    """
     request = RoutingRequest(
         query="Test query",
         parameters={
@@ -278,14 +282,14 @@ async def test_assess_user_sentiment_agent_led_flow(mock_router):
         },
     )
     mock_adapter = AsyncMock()
-    mock_adapter.forward_request.return_value = {"text": "unhappy"}
     mock_router.adapters = {"sentiment-model": mock_adapter}
     mock_router.models["sentiment-model"] = {"cost": 0.001}
 
     with patch("src.router.core.get_settings") as mock_settings:
         mock_settings.return_value.sentiment_model_id = "sentiment-model"
         sentiment = await mock_router.assess_user_sentiment(request)
-        assert sentiment == "unhappy"
+        assert sentiment is None
+        mock_adapter.forward_request.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -294,8 +298,8 @@ async def test_assess_user_sentiment_fallback_indeterminate(mock_router):
         query="Test query",
         parameters={
             "messages": [
-                {"role": "user", "content": "Hello"},
                 {"role": "assistant", "content": "Hi there."},
+                {"role": "user", "content": "Hello"},
             ]
         },
     )

@@ -3,6 +3,7 @@ Unit tests for agent detection, trajectory tracking, and ladder escalation logic
 """
 
 import json
+from datetime import datetime
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -197,6 +198,73 @@ def test_trajectory_tracker_state_transitions():
 # ---------------------------------------------------------------------------
 # 4. Ladder Escalation & Core Routing Unit Tests
 # ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_observation_automatic_feedback_submission(base_router):
+    """
+    Verify that incoming tool observations ('success' or 'failure') automatically
+    submit ground-truth feedback (value 1 or 0) to RealitySignal for the previous turn's decision.
+    """
+    from src.models.database import SessionLocal, RoutingLog, init_db
+
+    init_db()
+    db = SessionLocal()
+    try:
+        # Create a mock RoutingLog entry representing a previous decision
+        prev_log = RoutingLog(
+            timestamp=datetime.utcnow(),
+            model_id="gemini-3.1-flash-lite",
+            model_name="Gemini Flash",
+            agent_id="test_obs_feedback_agent",
+            reality_check_id="12345",
+            user_sentiment=None,
+            strategy="expected_utility",
+            expected_utility=5.0,
+            cost=0.001,
+            time=0.5,
+            probability=0.8,
+            success=True,
+            query="Previous query",
+        )
+        db.add(prev_log)
+        db.commit()
+    finally:
+        db.close()
+
+    feedback_payloads = []
+
+    async def mock_rc_post(url, json=None, **kwargs):
+        if "feedback" in url:
+            feedback_payloads.append(json)
+            return MockHTTPXResponse({"status": "ok"})
+        return MockHTTPXResponse({"prob_true": 0.8, "decision_id": 9999})
+
+    mock_m1 = AsyncMock()
+    mock_m1.forward_request.return_value = {"text": "Code output", "finish_reason": "stop"}
+    base_router.adapters["gemini-3.1-flash-lite"] = mock_m1
+
+    # Incoming request containing tool execution success ([exit code: 0])
+    req = RoutingRequest(
+        query="Run tests",
+        agent_id="test_obs_feedback_agent",
+        parameters={
+            "messages": [
+                {"role": "user", "content": "Run tests"},
+                {"role": "assistant", "tool_calls": [{"id": "t1", "type": "function", "function": {"name": "bash"}}]},
+                {"role": "tool", "tool_call_id": "t1", "content": "All tests passed\n[exit code: 0]"},
+            ]
+        },
+    )
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
+        await base_router.route_request(req, strategy="expected_utility")
+
+    # Assert that automatic feedback was submitted to RealitySignal
+    assert len(feedback_payloads) == 1
+    assert feedback_payloads[0]["decision_id"] == 12345
+    assert feedback_payloads[0]["feedback"] == 1
+    assert "observation_success" in feedback_payloads[0]["reason"]
+
 
 @pytest.mark.asyncio
 async def test_ladder_valid_tool_call_short_circuit_unit(base_router):

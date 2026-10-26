@@ -2405,36 +2405,23 @@ class RouterCore:
             prev_role = prev_msg_data["role"]
             prev_content = prev_msg_data["content"]
 
-            # Check for the standard user follow-up pattern first (OLD STYLE)
-            # This allows backward compatibility with existing systems
-            if prev_role == "assistant" and curr_role == "user":
-                # Standard user follow-up to assistant response - OLD STYLE
-                prompt = (
-                    f"Analyze the following interaction to see if the user was satisfied with the assistant's last response.\n\n"
-                    f'Assistant\'s Response: "{prev_content}"\n'
-                    f'User\'s Follow-up: "{curr_content}"\n\n'
-                    f"Determine if the user's follow-up indicates they were 'happy' with the previous answer, "
-                    f"'unhappy' (e.g., they corrected it, complained, or asked for a redo), or if it's 'indeterminate'.\n"
-                    f"Respond with EXACTLY one word: happy, unhappy, or indeterminate."
-                )
+            # Sentiment assessment is only meaningful when a human user follows up on an assistant response.
+            # Running sentiment checks on agent/assistant/tool messages wastes model calls and overloads local providers.
+            if prev_role != "assistant" or curr_role != "user":
                 logger.info(
-                    "Analyzing user follow-up to assistant response (old style)"
+                    f"Skipping sentiment assessment: interaction ({prev_role} -> {curr_role}) is not a user follow-up to an assistant response"
                 )
-            else:
-                # NEW GENERAL STYLE: Any message response to previous message
-                # This includes scenarios like assistant responding to user's initial query,
-                # or user responding to an agent's query, to detect sentiment on the last interaction
-                prompt = (
-                    f"Analyze if a message indicates positive (happy), negative (unhappy), or indeterminate sentiment."
-                    f"Consider the following messages and evaluate the sentiment of the final message with respect to the previous one:\n\n"
-                    f'Previous Message (from {prev_role}): "{prev_content}"\n'
-                    f'Current Message (from {curr_role}): "{curr_content}"\n\n'
-                    f"Determine the overall sentiment of the final message with respect to the previous message.\n"
-                    f"Respond with EXACTLY one word: happy, unhappy, or indeterminate."
-                )
-                logger.info(
-                    "Analyzing sentiment of message with respect to previous one (new style)"
-                )
+                return None
+
+            prompt = (
+                f"Analyze the following interaction to see if the user was satisfied with the assistant's last response.\n\n"
+                f'Assistant\'s Response: "{prev_content}"\n'
+                f'User\'s Follow-up: "{curr_content}"\n\n'
+                f"Determine if the user's follow-up indicates they were 'happy' with the previous answer, "
+                f"'unhappy' (e.g., they corrected it, complained, or asked for a redo), or if it's 'indeterminate'.\n"
+                f"Respond with EXACTLY one word: happy, unhappy, or indeterminate."
+            )
+            logger.info("Analyzing user follow-up to assistant response")
 
             # Use the configured sentiment model, or fall back to the cheapest available model
             settings = get_settings()
@@ -2480,6 +2467,77 @@ class RouterCore:
             logger.error(f"Sentiment assessment failed: {e}")
             return "indeterminate"
 
+    async def _send_observation_feedback(
+        self, obs_state: str, session_id: str, db: Session, strategy: str
+    ):
+        """Automatically send ground-truth feedback to RealitySignal for tool observation outcomes."""
+        try:
+            settings = get_settings()
+            last_log = (
+                db.query(RoutingLog)
+                .filter(RoutingLog.agent_id == session_id)
+                .filter(RoutingLog.reality_check_id.isnot(None))
+                .filter(RoutingLog.user_sentiment.is_(None))
+                .order_by(RoutingLog.timestamp.desc())
+                .first()
+            )
+
+            if last_log:
+                sentiment_tag = f"observation_{obs_state}"
+                last_log.user_sentiment = sentiment_tag
+                db.commit()
+
+                rc_id_str = str(last_log.reality_check_id)
+                fb_strategy = last_log.strategy or strategy or "expected_utility"
+                url = (
+                    get_routing_url()
+                    if fb_strategy == "expected_utility"
+                    else get_rerouting_url()
+                )
+
+                feedback_val = 1 if obs_state in ["success", "progress"] else 0
+                fb_payload = {
+                    "decision_id": int(rc_id_str),
+                    "feedback": feedback_val,
+                    "reason": sentiment_tag,
+                }
+
+                logger.info(
+                    f"Sending automatic observation feedback ({obs_state}) to Reality Router ({fb_strategy}) for decision {rc_id_str}: {fb_payload}"
+                )
+
+                auth_token = get_reality_check_token()
+                headers = {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "Expect": "",
+                    "User-Agent": "curl/7.68.0",
+                    "Connection": "close",
+                }
+                if auth_token and auth_token != "local_unauthenticated":
+                    full_token = (
+                        auth_token
+                        if (
+                            auth_token.startswith("Bearer ")
+                            or auth_token.startswith("Basic ")
+                        )
+                        else f"Bearer {auth_token}"
+                    )
+                    headers["X-Reality-Check-Token"] = full_token
+
+                async with httpx.AsyncClient(http2=False, trust_env=False) as client:
+                    fb_resp = await client.post(
+                        f"{url}/feedback",
+                        json=fb_payload,
+                        headers=headers,
+                        timeout=60.0,
+                    )
+                    logger.info(
+                        f"Reality Router observation feedback response: {fb_resp.status_code}"
+                    )
+        except Exception as e:
+            logger.error(f"Failed to send observation feedback to Reality Router: {e}")
+
     async def route_request(
         self, request: RoutingRequest, strategy: Optional[str] = None
     ) -> RoutingResponse:
@@ -2496,6 +2554,7 @@ class RouterCore:
         )
 
         session_id = request.agent_id or "default"
+        obs_state = "unknown"
         if (
             request.parameters
             and "messages" in request.parameters
@@ -2512,6 +2571,8 @@ class RouterCore:
 
         db = SessionLocal()
         try:
+            if obs_state != "unknown":
+                await self._send_observation_feedback(obs_state, session_id, db, strategy)
             # Language detection and keyword translation in background
             async def check_language_and_translate():
                 try:

@@ -50,6 +50,7 @@ def base_router(mock_db):
     """Provide a standard configured RouterCore instance with three default models."""
     core = RouterCore()
     core.utility_calculator.reward = 1.0
+    get_settings().disabled_models = []
     
     # Clean populate of models
     core.models = {

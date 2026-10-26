@@ -33,7 +33,7 @@ def setup_sandbox():
         f.write("REALITY_CHECK_TOKEN=Bearer test_token_xyz_abc_123_456\n")
         f.write("REALITY_CHECK_PROVIDER=Google\n")
         f.write("DEFAULT_STRATEGY=expected_utility\n")
-        f.write("DISABLED_MODELS=gemini-3.1-flash-lite,gemini-3-pro-preview\n")
+        f.write("DISABLED_MODELS=\n")
         f.write("SENTIMENT_MODEL_ID=nemotron-3-nano:30b\n")
         
         # Safely forward any active API keys from the developer's system environment
@@ -65,15 +65,10 @@ def run_pytest():
     test_env["PYTHONPATH"] = f"{PROJECT_ROOT}:{test_env.get('PYTHONPATH', '')}"
 
     # Determine correct python/pytest executable (use venv if available)
-    venv_pytest = os.path.join(PROJECT_ROOT, "venv", "bin", "pytest")
-    if not os.path.exists(venv_pytest):
-        venv_pytest = os.path.join(PROJECT_ROOT, ".venv", "bin", "pytest")
-    if not os.path.exists(venv_pytest):
-        # Fallback to system pytest
-        venv_pytest = "pytest"
-
     cmd = [
-        venv_pytest,
+        sys.executable,
+        "-m",
+        "pytest",
         SCRIPT_DIR,
         "-v",
         "-s",

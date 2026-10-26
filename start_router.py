@@ -964,7 +964,7 @@ def wizard_providers(env_vars):
 
 
 
-def interactive_checkbox_scrollable(models, current_disabled, title="Select models to ENABLE"):
+def interactive_checkbox_scrollable(models, current_disabled, title="Select models to ENABLE", allow_empty=False):
     """Terminal-safe interactive scrollable checkbox selector.
 
     Supports [Space] to toggle, [Up]/[Down] or [j]/[k] to navigate,
@@ -1137,7 +1137,7 @@ def interactive_checkbox_scrollable(models, current_disabled, title="Select mode
                     active_set = set(m["id"] for m in models)
             # Handle confirm key: Enter
             elif k in ("\r", "\n") or (rk and k in (rk.ENTER, getattr(rk, "CR", "\r"), getattr(rk, "LF", "\n"))):
-                if not active_set:
+                if not allow_empty and not active_set:
                     err_msg = "⚠ At least one model must be enabled!"
                     continue
                 break
@@ -1223,6 +1223,7 @@ def wizard_model_management(env_vars):
                     p_models,
                     disabled,
                     title=f"[{prov_name.title()}] Select models to ENABLE",
+                    allow_empty=True,
                 )
                 active_ids.extend(p_active)
             disabled = set(m["id"] for m in all_models if m["id"] not in active_ids)

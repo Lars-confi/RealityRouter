@@ -234,3 +234,22 @@ def test_device_code_auth_json_stream(capsys):
         assert "secret_access_token_never_printed" not in captured.out
         assert "devcode123" not in captured.out
         assert mock_save.called
+
+
+def test_interactive_checkbox_scrollable_allow_empty():
+    """
+    Verify that interactive_checkbox_scrollable allows an empty active set
+    and confirms cleanly when allow_empty=True (e.g. unselecting all models for a provider).
+    """
+    models = [{"id": "model_1", "name": "Model 1", "provider": "ollama"}]
+    disabled = {"model_1"}
+
+    mock_readchar = MagicMock()
+    mock_readchar.readkey.return_value = "\n"
+
+    with patch("sys.stdin.isatty", return_value=True), \
+         patch("start_router.readchar", mock_readchar):
+
+        # When allow_empty=True, pressing Enter on empty selection succeeds and returns empty set
+        res = start_router.interactive_checkbox_scrollable(models, disabled, allow_empty=True)
+        assert res == set()

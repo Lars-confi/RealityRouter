@@ -12,7 +12,6 @@ sys.path.insert(0, PROJECT_ROOT)
 # Directory used for sandboxed test isolation (excluded from Git)
 SANDBOX_DIR = os.path.join(PROJECT_ROOT, "dist_test")
 
-
 def setup_sandbox():
     """Create a completely clean local directory for isolated test execution."""
     if os.path.exists(SANDBOX_DIR):
@@ -35,22 +34,22 @@ def setup_sandbox():
         f.write('DEFAULT_STRATEGY=expected_utility\n')
         f.write("DISABLED_MODELS=\n")
         f.write("SENTIMENT_MODEL_ID=nemotron-3-nano:30b\n")
-
-    # Only forward live provider keys if explicitly enabled via OS env var.
-    if os.environ.get("RR_ENABLE_LIVE_TESTS") == "1":
-        forwarded_keys = [
-            "GEMINI_API_KEY",
-            "OPENAI_API_KEY",
-            "ANTHROPIC_API_KEY",
-            "MISTRAL_API_KEY",
-            "DEEPSEEK_API_KEY",
-            "CUSTOM_LLM_BASE_URL",
-            "CUSTOM_LLM_API_KEY"
-        ]
-        for key in forwarded_keys:
-            val = os.environ.get(key)
-            if val:
-                f.write(f'{key}="{val}"\n')
+        
+        # Only forward live provider keys if explicitly enabled via OS env var.
+        if os.environ.get("RR_ENABLE_LIVE_TESTS") == "1":
+            forwarded_keys = [
+                "GEMINI_API_KEY",
+                "OPENAI_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "MISTRAL_API_KEY",
+                "DEEPSEEK_API_KEY",
+                "CUSTOM_LLM_BASE_URL",
+                "CUSTOM_LLM_API_KEY"
+            ]
+            for key in forwarded_keys:
+                val = os.environ.get(key)
+                if val:
+                    f.write(f'{key}="{val}"\n')
 
     print(f"📝 Created sandboxed config `.env` in: {env_path}")
 

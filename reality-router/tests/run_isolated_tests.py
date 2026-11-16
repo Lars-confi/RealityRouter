@@ -37,19 +37,19 @@ def setup_sandbox():
         
         # Only forward live provider keys if explicitly enabled via OS env var.
         if os.environ.get("RR_ENABLE_LIVE_TESTS") == "1":
-            forwarded_keys = [
-                "GEMINI_API_KEY",
-                "OPENAI_API_KEY",
-                "ANTHROPIC_API_KEY",
-                "MISTRAL_API_KEY",
-                "DEEPSEEK_API_KEY",
-                "CUSTOM_LLM_BASE_URL",
-                "CUSTOM_LLM_API_KEY"
-            ]
-            for key in forwarded_keys:
-                val = os.environ.get(key)
-                if val:
-                    f.write(f'{key}="{val}"\n')
+                forwarded_keys = [
+                    "GEMINI_API_KEY",
+                    "OPENAI_API_KEY",
+                    "ANTHROPIC_API_KEY",
+                    "MISTRAL_API_KEY",
+                    "DEEPSEEK_API_KEY",
+                    "CUSTOM_LLM_BASE_URL",
+                    "CUSTOM_LLM_API_KEY"
+                ]
+                for key in forwarded_keys:
+                    val = os.environ.get(key)
+                    if val:
+                        f.write(f'{key}="{val}"\n')
 
     print(f"📝 Created sandboxed config `.env` in: {env_path}")
 

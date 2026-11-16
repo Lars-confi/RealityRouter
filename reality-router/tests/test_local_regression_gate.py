@@ -165,3 +165,105 @@ def test_tool_calling_streaming_and_endpoint_contracts():
         assert card_resp.status_code == 200
         assert "capabilities" in card_resp.json()
         assert "endpoints" in card_resp.json()
+
+def test_reality_signal_fallback_and_provider_failover_contracts():
+    settings = get_settings()
+    settings.default_strategy = "expected_utility"
+
+    router_core.models = {
+        "model-primary": {
+            "name": "Primary",
+            "cost": 0.0005,
+            "time": 0.5,
+            "probability": 0.9,
+            "supports_function_calling": True,
+        },
+        "model-fallback": {
+            "name": "Fallback",
+            "cost": 0.001,
+            "time": 1.0,
+            "probability": 0.8,
+            "supports_function_calling": True,
+        },
+    }
+    primary_adapter = AsyncMock()
+    primary_adapter.forward_request.return_value = {
+        "text": "Primary OK",
+        "usage": {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10},
+    }
+    fallback_adapter = AsyncMock()
+    fallback_adapter.forward_request.return_value = {
+        "text": "Fallback OK",
+        "usage": {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10},
+    }
+    router_core.adapters = {
+        "model-primary": primary_adapter,
+        "model-fallback": fallback_adapter,
+    }
+    router_core.load_balancer.is_model_healthy = MagicMock(return_value=True)
+
+    async def mock_rc_400(*args, **kwargs):
+        return MockHTTPXResponse(
+            {"detail": "Schema mismatch. Locked: Score-Based."},
+            status_code=400,
+        )
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_400):
+        # 1. RealitySignal HTTP 400 schema-mismatch graceful fallback to prob=0.5
+        r1 = client.post(
+            "/v1/chat/completions",
+            json={"model": "auto", "messages": [{"role": "user", "content": "Hi"}]},
+        )
+        assert r1.status_code == 200
+        assert r1.headers.get("X-RR-Model") == "model-primary"
+
+        # 2. Primary provider adapter failure -> automatic failover to model-fallback
+        primary_adapter.forward_request.side_effect = RuntimeError("Provider 429 rate limit")
+        r2 = client.post(
+            "/v1/chat/completions",
+            json={"model": "auto", "messages": [{"role": "user", "content": "Hi"}]},
+        )
+        assert r2.status_code == 200
+        assert r2.headers.get("X-RR-Model") == "model-fallback"
+
+    # 3. Tool-capability filtering & fallback when no tool-capable model exists
+    router_core.models = {
+        "model-no-tools": {
+            "name": "No Tools",
+            "cost": 0.0001,
+            "time": 0.2,
+            "probability": 0.95,
+            "supports_function_calling": False,
+        },
+        "model-with-tools": {
+            "name": "With Tools",
+            "cost": 0.002,
+            "time": 1.0,
+            "probability": 0.8,
+            "supports_function_calling": True,
+        },
+    }
+    router_core.adapters = {
+        "model-no-tools": fallback_adapter,
+        "model-with-tools": fallback_adapter,
+    }
+    tools_payload = [{"type": "function", "function": {"name": "ping", "parameters": {"type": "object"}}}]
+
+    async def mock_rc_ok(*args, **kwargs):
+        return MockHTTPXResponse({"prob_true": 0.9, "decision_id": 200})
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_ok):
+        r3 = client.post(
+            "/v1/chat/completions",
+            json={"model": "auto", "messages": [{"role": "user", "content": "Hi"}], "tools": tools_payload},
+        )
+        assert r3.status_code == 200
+        assert r3.headers.get("X-RR-Model") == "model-with-tools"
+
+        del router_core.models["model-with-tools"]
+        r4 = client.post(
+            "/v1/chat/completions",
+            json={"model": "auto", "messages": [{"role": "user", "content": "Hi"}], "tools": tools_payload},
+        )
+        assert r4.status_code == 200
+        assert r4.headers.get("X-RR-Model") == "model-no-tools"

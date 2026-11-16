@@ -595,7 +595,8 @@ async def test_ladder_agent_multi_turn_benchmark_lifecycle(base_router):
 
 
 @pytest.mark.asyncio
-async def test_disabled_models_excluded_from_ranking(base_router):
+@patch("httpx.AsyncClient.post", return_value=MockHTTPXResponse({"prob_true": 0.8, "decision_id": 999}))
+async def test_disabled_models_excluded_from_ranking(base_router, mock_post):
     """
     Verify that models present in settings.disabled_models are excluded
     from candidate ranking and Ladder escalation, even if they remain in router.models.

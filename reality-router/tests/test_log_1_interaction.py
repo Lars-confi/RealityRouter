@@ -22,10 +22,17 @@ def live_router_core(mock_db_session):
     """
     Returns a RouterCore instance that dynamically loads models from the
     environment/config exactly as the live app does, testing auto-discovery.
+    This fixture only enables live execution when `RR_ENABLE_LIVE_TESTS=1`.
     """
-    import importlib
     import os
+
+    # Only allow live execution when explicitly enabled
+    if os.environ.get("RR_ENABLE_LIVE_TESTS") != "1":
+        pytest.skip("Set RR_ENABLE_LIVE_TESTS=1 to run live provider tests")
+
+    import importlib
     import re
+
 
     import src.config.settings
 
@@ -131,8 +138,8 @@ def live_router_core(mock_db_session):
     # If only the dummy model was added, auto-discovery failed
     if len(core.models) <= 1:
         pytest.skip("No live models discovered. Ensure API keys are set in .env.")
-
-    return core
+    
+    yield core
 
 
 # --- Reconstructing the Sequential Multi-Turn Conversation from log_1.txt ---

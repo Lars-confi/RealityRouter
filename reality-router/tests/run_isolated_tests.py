@@ -30,14 +30,16 @@ def setup_sandbox():
     with open(env_path, "w", encoding="utf-8") as f:
         f.write("# Isolated Test Environment Variables - Excluded from Git\n")
         f.write("DEBUG=True\n")
-        f.write("REALITY_CHECK_TOKEN=Bearer test_token_xyz_abc_123_456\n")
-        f.write("REALITY_CHECK_PROVIDER=Google\n")
-        f.write("DEFAULT_STRATEGY=expected_utility\n")
+        f.write("REALITY_ROUTING_URL=http://127.0.0.1:18081\n")
+        f.write("REALITY_REROUTING_URL=http://127.0.0.1:18082\n")
+        f.write("REALITY_CHECK_TOKEN=local_unauthenticated\n")
+        f.write("REALITY_CHECK_PROVIDER=Enterprise\n")
+        f.write("REALITY_STRATEGY=expected_utility\n")
         f.write("DISABLED_MODELS=\n")
         f.write("SENTIMENT_MODEL_ID=nemotron-3-nano:30b\n")
-        
-        # Safely forward any active API keys from the developer's system environment
-        # This allows live tests to run successfully without saving keys in version control
+
+    # Only forward live provider keys if explicitly enabled via OS env var.
+    if os.environ.get("RR_ENABLE_LIVE_TESTS") == "1":
         forwarded_keys = [
             "GEMINI_API_KEY",
             "OPENAI_API_KEY",

@@ -21,6 +21,8 @@ class MockHTTPXResponse:
 def clean_environment():
     """Ensure that the local environment points to the isolated test directory."""
     assert "REALITY_ROUTER_HOME" in os.environ, "Tests must run inside an isolated REALITY_ROUTER_HOME sandbox!"
+    assert os.path.realpath(os.environ["REALITY_ROUTER_HOME"]) != os.path.realpath(os.path.expanduser("~/.reality_router")), \
+        "Tests must not use the production REALITY_ROUTER_HOME directory!"
     reload_settings()
     yield
 

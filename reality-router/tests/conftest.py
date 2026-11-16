@@ -27,8 +27,18 @@ def clean_environment():
     assert "REALITY_ROUTER_HOME" in os.environ, "Tests must run inside an isolated REALITY_ROUTER_HOME sandbox!"
     assert os.path.realpath(os.environ["REALITY_ROUTER_HOME"]) != os.path.realpath(os.path.expanduser("~/.reality_router")), \
         "Tests must not use the production REALITY_ROUTER_HOME directory!"
+    env_path = os.path.join(os.environ["REALITY_ROUTER_HOME"], ".env")
+    orig_env = open(env_path, "r", encoding="utf-8").read() if os.path.exists(env_path) else None
     reload_settings()
-    yield
+    try:
+        yield
+    finally:
+        if orig_env is not None:
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.write(orig_env)
+        import src.router.sso as sso
+        sso._force_refresh = False
+        reload_settings()
 
 
 @pytest.fixture

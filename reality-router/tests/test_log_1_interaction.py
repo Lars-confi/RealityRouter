@@ -146,8 +146,9 @@ def live_router_core(mock_db_session):
     try:
         yield core
     finally:
-        with open(env_path, "w") as f:
-            f.write(orig_env)
+        if orig_env is not None:
+            with open(env_path, "w") as f:
+                f.write(orig_env)
         src.config.settings.reload_settings()
 
 

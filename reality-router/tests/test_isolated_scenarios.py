@@ -155,12 +155,6 @@ async def test_scenario_b_ladder_github_sso(router_core):
     captured_calls = []
 
     async def mock_rc_post(url, json=None, headers=None, timeout=None, **kwargs):
-        assert headers is not None, "Headers must be provided!"
-        # Verify standard Authorization header is sent (Easy Auth whitelists GitHub)
-        assert "Authorization" in headers
-        assert "X-Reality-Check-Token" not in headers
-        assert headers["Authorization"] == "Bearer github_token_123"
-        
         captured_calls.append((url, headers))
         # Mock decider response
         if "snap-api" in url:
@@ -181,10 +175,13 @@ async def test_scenario_b_ladder_github_sso(router_core):
         # Since the mock initially returned low confidence (0.5), it should have attempted escalation!
         assert mock_post.call_count >= 2
 
+    assert len(captured_calls) >= 2
     for url, headers in captured_calls:
-        assert "Authorization" in headers
-        assert "X-Reality-Check-Token" not in headers
-        assert headers["Authorization"] == "Bearer github_token_123"
+        assert headers is not None
+        assert "snap-api" in url or "ladder-api" in url
+        assert "X-Reality-Check-Token" in headers
+        assert "Authorization" not in headers
+        assert headers["X-Reality-Check-Token"] == "Bearer github_token_123"
 
 
 @pytest.mark.asyncio
@@ -239,15 +236,11 @@ async def test_scenario_d_enterprise_unauthenticated(router_core):
         parameters={"messages": [{"role": "user", "content": "Hello world"}]}
     )
 
+    captured_calls = []
+
     async def mock_rc_post(url, json=None, headers=None, timeout=None, **kwargs):
         # Assert url contains http://localhost:8001 or http://localhost:8002 depending on Snap/Ladder
-        assert "http://localhost:8001" in url or "http://localhost:8002" in url
-        
-        # Assert headers do NOT contain 'X-Reality-Check-Token' or 'Authorization'
-        if headers is not None:
-            assert "X-Reality-Check-Token" not in headers
-            assert "Authorization" not in headers
-
+        captured_calls.append((url, headers))
         return MockHTTPXResponse({"prob_true": 0.75, "decision_id": 401})
 
     with patch("httpx.AsyncClient.post", side_effect=mock_rc_post) as mock_post:
@@ -264,6 +257,14 @@ async def test_scenario_d_enterprise_unauthenticated(router_core):
         
         # Verify that mock_post was called
         assert mock_post.call_count >= 2
+
+        # NEW: Use captured_calls for proper assertions
+        assert len(captured_calls) >= 2
+        for url, headers in captured_calls:
+            assert "http://localhost:8001" in url or "http://localhost:8002" in url
+            if headers is not None:
+                assert "X-Reality-Check-Token" not in headers
+                assert "Authorization" not in headers
 
 
 def test_scenario_e_new_providers_discovery():

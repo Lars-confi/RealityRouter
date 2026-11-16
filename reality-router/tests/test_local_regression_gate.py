@@ -267,3 +267,51 @@ def test_reality_signal_fallback_and_provider_failover_contracts():
         )
         assert r4.status_code == 200
         assert r4.headers.get("X-RR-Model") == "model-no-tools"
+
+def test_metrics_and_control_plane_contracts():
+    router_core.models = {
+        "gemini-2.5-flash": {
+            "name": "Gemini 2.5 Flash",
+            "cost": 0.001,
+            "time": 1.0,
+            "probability": 0.8,
+            "supports_function_calling": True,
+        }
+    }
+    router_core.all_discovered_models = [
+        {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "provider": "gemini", "enabled": True}
+    ]
+
+    # 1. Strategy GET and POST round-trip
+    s_get = client.get("/metrics/strategy")
+    assert s_get.status_code == 200
+    assert "strategy" in s_get.json()
+
+    s_post = client.post("/metrics/strategy", json={"strategy": "tiered_assessment"})
+    assert s_post.status_code == 200
+    assert client.get("/metrics/strategy").json()["strategy"] == "tiered_assessment"
+
+    client.post("/metrics/strategy", json={"strategy": "expected_utility"})
+    assert client.get("/metrics/strategy").json()["strategy"] == "expected_utility"
+
+    # 2. Preferences GET and POST round-trip
+    p_get = client.get("/metrics/preferences")
+    assert p_get.status_code == 200
+    assert "value" in p_get.json()
+
+    p_post = client.post("/metrics/preferences", json={"value": 75})
+    assert p_post.status_code == 200
+    assert client.get("/metrics/preferences").json()["value"] == 75
+
+    # 3. Models and history endpoints
+    m_get = client.get("/metrics/models")
+    assert m_get.status_code == 200
+    assert isinstance(m_get.json(), list)
+
+    ma_get = client.get("/metrics/models/all")
+    assert ma_get.status_code == 200
+    assert "models" in ma_get.json()
+
+    h_get = client.get("/metrics/history")
+    assert h_get.status_code == 200
+    assert isinstance(h_get.json(), list)

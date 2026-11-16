@@ -56,6 +56,10 @@ def live_router_core(mock_db_session):
     env_dir = app_home
     os.makedirs(env_dir, exist_ok=True)
     env_path = os.path.join(env_dir, ".env")
+    orig_env = None
+    if os.path.exists(env_path):
+        with open(env_path, "r") as f:
+            orig_env = f.read()
 
     with open(env_path, "w") as f:
         f.write('SENTIMENT_MODEL_ID="nemotron-3-nano:30b"\n')
@@ -138,8 +142,13 @@ def live_router_core(mock_db_session):
     # If only the dummy model was added, auto-discovery failed
     if len(core.models) <= 1:
         pytest.skip("No live models discovered. Ensure API keys are set in .env.")
-    
-    yield core
+
+    try:
+        yield core
+    finally:
+        with open(env_path, "w") as f:
+            f.write(orig_env)
+        src.config.settings.reload_settings()
 
 
 # --- Reconstructing the Sequential Multi-Turn Conversation from log_1.txt ---

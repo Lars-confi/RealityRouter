@@ -108,15 +108,10 @@ async def test_scenario_a_snap_google_sso(router_core):
         parameters={"messages": [{"role": "user", "content": "Test query"}]}
     )
 
+    captured_calls = []
+
     async def mock_rc_post(url, json=None, headers=None, timeout=None, **kwargs):
-        assert headers is not None, "Headers must be provided!"
-        # Verify Snap URL is used
-        assert "snap-api" in url
-        # Verify X-Reality-Check-Token bypass header is sent (NOT Authorization)
-        assert "X-Reality-Check-Token" in headers
-        assert "Authorization" not in headers
-        # Verify token value is well-formed with Bearer prefix
-        assert headers["X-Reality-Check-Token"] == "Bearer google_token_123"
+        captured_calls.append((url, headers))
         return MockHTTPXResponse({"prob_true": 0.9, "decision_id": 100})
 
     with patch("httpx.AsyncClient.post", side_effect=mock_rc_post) as mock_post:
@@ -125,6 +120,14 @@ async def test_scenario_a_snap_google_sso(router_core):
         assert len(decisions) == 3
         assert decisions[0].probability == 0.9
         assert mock_post.call_count == 3
+
+    # Verify captured calls (assertions run AFTER the router calls complete)
+    for url, headers in captured_calls:
+        assert "snap-api" in url
+        assert headers is not None, "Headers must be provided!"
+        assert "X-Reality-Check-Token" in headers
+        assert "Authorization" not in headers
+        assert headers["X-Reality-Check-Token"] == "Bearer google_token_123"
 
 
 @pytest.mark.asyncio
@@ -149,6 +152,8 @@ async def test_scenario_b_ladder_github_sso(router_core):
         }
     )
 
+    captured_calls = []
+
     async def mock_rc_post(url, json=None, headers=None, timeout=None, **kwargs):
         assert headers is not None, "Headers must be provided!"
         # Verify standard Authorization header is sent (Easy Auth whitelists GitHub)
@@ -156,6 +161,7 @@ async def test_scenario_b_ladder_github_sso(router_core):
         assert "X-Reality-Check-Token" not in headers
         assert headers["Authorization"] == "Bearer github_token_123"
         
+        captured_calls.append((url, headers))
         # Mock decider response
         if "snap-api" in url:
             return MockHTTPXResponse({"prob_true": 0.5, "decision_id": 201}) # Low initial confidence
@@ -174,6 +180,11 @@ async def test_scenario_b_ladder_github_sso(router_core):
         # 3. gemini-3.5-flash (Cost: 0.002)
         # Since the mock initially returned low confidence (0.5), it should have attempted escalation!
         assert mock_post.call_count >= 2
+
+    for url, headers in captured_calls:
+        assert "Authorization" in headers
+        assert "X-Reality-Check-Token" not in headers
+        assert headers["Authorization"] == "Bearer github_token_123"
 
 
 @pytest.mark.asyncio

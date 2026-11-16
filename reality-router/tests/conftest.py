@@ -5,6 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from src.config.settings import get_settings, reload_settings
 from src.router.core import RouterCore
 
+import functools
+import ssl
+ssl.create_default_context = functools.lru_cache(maxsize=8)(ssl.create_default_context)
+
 
 class MockHTTPXResponse:
     """Helper class to mock httpx responses."""

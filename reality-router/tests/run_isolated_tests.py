@@ -68,6 +68,8 @@ def run_pytest():
         sys.executable,
         "-m",
         "pytest",
+        "--rootdir={}".format(PROJECT_ROOT),
+        "-p", "no:cacheprovider",
         SCRIPT_DIR,
         "-v",
         "-s",

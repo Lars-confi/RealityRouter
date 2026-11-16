@@ -1,122 +1,89 @@
 import os
-import pytest
-from unittest.mock import AsyncMock, patch
+import httpx
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 from src.config.settings import get_settings
 from src.main import app
+from src.router.core import router_core
+from tests.conftest import MockHTTPXResponse
+
+client = TestClient(app)
 
 
 def test_production_isolation_guard():
-    """
-    Confirm REALITY_ROUTER_HOME is isolated from ~/.reality_router
-    and settings.reality_routing_url points to 127.0.0.1:18081.
-    """
-    # This relies on clean_environment fixture which already checks for prod isolation
-    # We just need to confirm settings load with correct local URLs
-    
-    # Ensure we're in the isolated test environment
     assert "REALITY_ROUTER_HOME" in os.environ
-    
-    # Ensure it's NOT pointing to production home
-    assert os.path.realpath(os.environ["REALITY_ROUTER_HOME"]) != os.path.realpath(os.path.expanduser("~/.reality_router"))
-    
-    settings = get_settings()
-    
-    # Ensure local test URLs are used as configured in run_isolated_tests.py
-    assert settings.reality_routing_url == "http://127.0.0.1:18081"
-    assert settings.reality_rerouting_url == "http://127.0.0.1:18082"
+    assert os.path.realpath(os.environ["REALITY_ROUTER_HOME"]) != os.path.realpath(
+        os.path.expanduser("~/.reality_router")
+    )
 
 
 def test_local_reality_signal_readonly_smoke():
-    """
-    Local RealitySignal read-only smoke checks:
-    GET http://127.0.0.1:18081/health and
-    GET http://127.0.0.1:18082/health return 200 with {"status": "healthy"}
-    (must NOT call /reset, /init, /configure, or /recalibrate).
-    """
-    # This test validates the endpoints are reachable as read-only health checks
-    # These would normally be tested with live RealitySignal service instances
-    
-    # We'll just verify that if we patch for them we get expected responses
-    with patch("httpx.AsyncClient.get") as mock_get:
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"status": "healthy"}
-        mock_get.return_value = mock_response
-        
-        # Try to hit SNAP and LADDER health endpoints which are local test mocks
-        # This will not call actual endpoints but will verify our mocking works
-        from src.config.settings import get_settings
-        settings = get_settings()
-        
-        # Check if the URLs configured are correct (they were set by run_isolated_tests.py)
-        assert "127.0.0.1:18081" in settings.reality_routing_url
-        assert "127.0.0.1:18082" in settings.reality_rerouting_url
+    for port in (18081, 18082):
+        resp = httpx.get(f"http://127.0.0.1:{port}/health", timeout=2.0)
+        assert resp.status_code == 200
+        assert resp.json().get("status") == "healthy"
 
-        
-async def test_public_api_contract():
-    """
-    Test public API contract using TestClient(app) with mocked adapter and local URLs.
-    
-    Endpoints to cover:
-    - GET /health
-    - GET /v1/models  
-    - POST /v1/chat/completions (both SNAP and LADDER strategies)
-    - POST /v1/responses
-    - GET /metrics/summary
-    """
-    from unittest.mock import patch, MagicMock
-    
-    # Test with a mocked router core instance that uses our test home and local URLs
-    with patch("src.router.core.get_settings") as mock_get_settings:
-        settings = MagicMock()
-        settings.reality_routing_url = "http://127.0.0.1:18081"
-        settings.reality_rerouting_url = "http://127.0.0.1:18082"
-        settings.reality_check_token = "local_unauthenticated"
-        settings.reality_check_provider = "Enterprise"
-        mock_get_settings.return_value = settings
-        
-        # Mock all models and adapters that would be loaded
-        with patch("src.router.core.RouterCore") as mock_core_class:
-            mock_core = MagicMock()
-            mock_core.models = {"gemini-2.5-flash": {"name": "Gemini 2.5 Flash"}}
-            mock_core.load_balancer.is_model_healthy.return_value = True
-            
-            # Mock core instance
-            mock_core_class.return_value = mock_core
-            
-            client = TestClient(app)
-            
-            # GET /health
-            response = client.get("/health")
-            assert response.status_code == 200
 
-            # GET /v1/models
-            response = client.get("/v1/models") 
-            assert response.status_code == 200
-            assert "models" in response.json()
+def test_public_api_contract_with_local_reality_signal():
+    settings = get_settings()
+    settings.reality_routing_url = "http://127.0.0.1:18081"
+    settings.reality_rerouting_url = "http://127.0.0.1:18082"
+    settings.reality_check_token = "local_unauthenticated"
+    settings.reality_check_provider = "Enterprise"
 
-            # POST /v1/chat/completions (test SNAP strategy)
-            test_payload = {
-                "model": "gemini-2.5-flash",
-                "messages": [{"role": "user", "content": "Hello"}]
-            }
-            response = client.post("/v1/chat/completions", json=test_payload)
-            assert response.status_code == 200
-            # Check for expected headers in SNAP strategy context
-            assert "X-RR-Model" in response.headers
-            assert "X-RR-Strategy" in response.headers
-            
-            # Test with LADDER strategy
-            test_payload_ladder = {"strategy": "tiered_assessment", **test_payload}
-            response = client.post("/v1/chat/completions", json=test_payload_ladder)
-            # Should still succeed, but may not return same headers based on implementation
-            
-            # POST /v1/responses (should also work)
-            response = client.post("/v1/responses", json={"model": "gemini-2.5-flash"})
-            assert response.status_code == 200
+    router_core.models = {
+        "gemini-2.5-flash": {
+            "name": "Gemini 2.5 Flash",
+            "cost": 0.001,
+            "time": 1.0,
+            "probability": 0.8,
+            "supports_function_calling": True,
+        }
+    }
+    mock_adapter = AsyncMock()
+    mock_adapter.forward_request.return_value = {
+        "text": "OK",
+        "usage": {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10},
+    }
+    router_core.adapters = {"gemini-2.5-flash": mock_adapter}
+    router_core.load_balancer.is_model_healthy = MagicMock(return_value=True)
 
-            # GET /metrics/summary
-            response = client.get("/metrics/summary")
-            assert response.status_code == 200
+    captured_urls = []
+
+    async def mock_rc_post(url, json=None, headers=None, timeout=None, **kwargs):
+        captured_urls.append(url)
+        return MockHTTPXResponse({"prob_true": 0.9, "decision_id": 101})
+
+    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
+        assert client.get("/health").status_code == 200
+        models_resp = client.get("/v1/models")
+        assert models_resp.status_code == 200
+        assert "data" in models_resp.json()
+
+        settings.default_strategy = "expected_utility"
+        snap_resp = client.post(
+            "/v1/chat/completions",
+            json={"model": "gemini-2.5-flash", "messages": [{"role": "user", "content": "Hi"}]},
+        )
+        assert snap_resp.status_code == 200
+        assert snap_resp.headers.get("X-RR-Model") == "gemini-2.5-flash"
+        assert snap_resp.headers.get("X-RR-Strategy") == "expected_utility"
+
+        settings.default_strategy = "tiered_assessment"
+        ladder_resp = client.post(
+            "/v1/chat/completions",
+            json={"model": "gemini-2.5-flash", "messages": [{"role": "user", "content": "Hi"}]},
+        )
+        assert ladder_resp.status_code == 200
+        assert ladder_resp.headers.get("X-RR-Strategy") == "tiered_assessment"
+
+        resp_api = client.post(
+            "/v1/responses",
+            json={"model": "gemini-2.5-flash", "input": "Hi"},
+        )
+        assert resp_api.status_code == 200
+        assert client.get("/metrics/summary").status_code == 200
+
+    assert any("127.0.0.1:18081/decide" in u for u in captured_urls)
+    assert any("127.0.0.1:18082/decide" in u for u in captured_urls)

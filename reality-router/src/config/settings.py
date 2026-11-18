@@ -236,13 +236,20 @@ def update_model_preference(model_id: str, value: float) -> None:
     disabled_models = set(settings.disabled_models)
     enabled_models = set(settings.enabled_models)
     
+    # Load env_vars before updating
+    env_vars = _load_env_file(_env_path)
+    has_allowlist = bool(settings.enabled_models) or ("ENABLED_MODELS" in env_vars)
+    
     if value <= 0.0:
         # Add to disabled, remove from enabled
         disabled_models.add(model_id)
         enabled_models.discard(model_id)
     else:
-        # Add to enabled, remove from disabled if present
-        enabled_models.add(model_id)
+        # For enabling models, check if we have an allowlist
+        # If enabled_models was configured (not empty) or ENABLED_MODELS in .env,
+        # then add to enabled when re-enabling a model
+        if has_allowlist:
+            enabled_models.add(model_id)
         disabled_models.discard(model_id)
     
     # Update settings with new states
@@ -251,11 +258,10 @@ def update_model_preference(model_id: str, value: float) -> None:
     settings.enabled_models = list(enabled_models)
     
     # Save back to .env
-    env_vars = _load_env_file(_env_path)
     env_vars["DISABLED_MODELS"] = ",".join(settings.disabled_models)
     
-    if settings.enabled_models:
-        env_vars["ENABLED_MODELS"] = ",".join(settings.enabled_models)
+    if env_vars.get("ENABLED_MODELS") is not None:
+        env_vars["ENABLED_MODELS"] = ",".join(sorted(settings.enabled_models))
     else:
         # Only set if previously had enabled models to maintain consistency
         pass

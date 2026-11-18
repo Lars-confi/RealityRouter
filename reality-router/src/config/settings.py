@@ -173,7 +173,13 @@ def _parse_models_state(data_dict: Dict[str, Any]) -> None:
             enabled.discard(m)
     # Remove disabled from enabled
     enabled -= disabled
-
+    
+    # If enabled is non-empty, also add any m with model_prefs.get(m, 0.0) > 0.0 and not in disabled into enabled
+    if enabled:
+        for m, pref in model_prefs.items():
+            if pref > 0.0 and m not in disabled:
+                enabled.add(m)
+    
     # Write out cleaned sets before processing preferences further
     data_dict["enabled_models"] = list(enabled)
     data_dict["disabled_models"] = list(disabled)
@@ -260,7 +266,7 @@ def update_model_preference(model_id: str, value: float) -> None:
     # Save back to .env
     env_vars["DISABLED_MODELS"] = ",".join(settings.disabled_models)
     
-    if env_vars.get("ENABLED_MODELS") is not None:
+    if has_allowlist:
         env_vars["ENABLED_MODELS"] = ",".join(sorted(settings.enabled_models))
     else:
         # Only set if previously had enabled models to maintain consistency

@@ -235,35 +235,108 @@ def save_env(env_vars):
 
 
 def load_disabled_models(env_vars=None):
+    env_data = env_vars if env_vars is not None else load_env()
     disabled = set()
-    if os.path.exists(DISABLED_MODELS_FILE):
+    
+    # 1. MODEL_PREFERENCES (JSON)
+    prefs_str = env_data.get("MODEL_PREFERENCES")
+    if prefs_str:
         try:
-            with open(DISABLED_MODELS_FILE, "r") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    disabled.update(data)
+            prefs = json.loads(prefs_str) if isinstance(prefs_str, str) else prefs_str
+            if isinstance(prefs, dict):
+                disabled.update([m for m, v in prefs.items() if v <= 0.0])
         except Exception:
             pass
-    if env_vars and env_vars.get("DISABLED_MODELS"):
-        val = env_vars["DISABLED_MODELS"]
-        if isinstance(val, str) and val.strip():
-            disabled.update([x.strip() for x in val.split(",") if x.strip()])
-    elif os.path.exists(ENV_FILE):
-        env_data = load_env()
-        if env_data.get("DISABLED_MODELS"):
-            val = env_data["DISABLED_MODELS"]
-            if isinstance(val, str) and val.strip():
-                disabled.update([x.strip() for x in val.split(",") if x.strip()])
+            
+    # 2. DISABLED_MODELS (comma-sep)
+    disabled_str = env_data.get("DISABLED_MODELS")
+    if disabled_str and isinstance(disabled_str, str):
+        disabled.update([x.strip() for x in disabled_str.split(",") if x.strip()])
+        
+    # 3. ENABLED_MODELS (presence check)
+    enabled_str = env_data.get("ENABLED_MODELS")
+    
+    # Fallback to legacy file ONLY if none of the 3 keys exist in .env
+    if not (prefs_str or disabled_str or enabled_str):
+        if os.path.exists(DISABLED_MODELS_FILE):
+            try:
+                with open(DISABLED_MODELS_FILE, "r") as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        disabled.update(data)
+            except Exception:
+                pass
+    elif os.path.exists(DISABLED_MODELS_FILE):
+        # Clean up legacy file if .env is now the authority
+        try:
+            os.remove(DISABLED_MODELS_FILE)
+        except Exception:
+            pass
+            
     return disabled
 
 
-def save_disabled_models(disabled_set, env_vars=None):
+def is_model_enabled_in_config(model_id, env_vars):
+    # Mirror Settings.is_model_enabled logic
+    disabled = load_disabled_models(env_vars)
+    if model_id in disabled:
+        return False
+        
+    prefs_str = env_vars.get("MODEL_PREFERENCES")
+    if prefs_str:
+        try:
+            prefs = json.loads(prefs_str) if isinstance(prefs_str, str) else prefs_str
+            if isinstance(prefs, dict) and prefs.get(model_id, 100.0) <= 0.0:
+                return False
+        except Exception:
+            pass
+            
+    enabled_str = env_vars.get("ENABLED_MODELS")
+    if enabled_str and isinstance(enabled_str, str) and enabled_str.strip():
+        enabled_set = {x.strip() for x in enabled_str.split(",") if x.strip()}
+        return model_id in enabled_set
+        
+    return True
+
+
+def save_disabled_models(disabled_set, env_vars=None, enabled_set=None):
+    if env_vars is None:
+        env_vars = load_env()
+        
+    # Stop writing legacy file
+    if os.path.exists(DISABLED_MODELS_FILE):
+        try:
+            os.remove(DISABLED_MODELS_FILE)
+        except Exception:
+            pass
+            
+    # Update DISABLED_MODELS
     disabled_list = sorted(list(disabled_set))
-    with open(DISABLED_MODELS_FILE, "w") as f:
-        json.dump(disabled_list, f)
-    if env_vars is not None:
-        env_vars["DISABLED_MODELS"] = ",".join(disabled_list)
-        save_env(env_vars)
+    env_vars["DISABLED_MODELS"] = ",".join(disabled_list)
+    
+    # Update ENABLED_MODELS
+    if enabled_set is not None:
+        env_vars["ENABLED_MODELS"] = ",".join(sorted(list(enabled_set)))
+        
+    # Sync MODEL_PREFERENCES JSON
+    prefs_str = env_vars.get("MODEL_PREFERENCES")
+    try:
+        prefs = json.loads(prefs_str) if (prefs_str and isinstance(prefs_str, str)) else {}
+        if not isinstance(prefs, dict):
+            prefs = {}
+    except Exception:
+        prefs = {}
+        
+    # Set 0.0 for disabled
+    for m in disabled_set:
+        prefs[m] = 0.0
+    # Set 100.0 for explicitly enabled (if enabled_set provided)
+    if enabled_set is not None:
+        for m in enabled_set:
+            prefs[m] = 100.0
+            
+    env_vars["MODEL_PREFERENCES"] = json.dumps(prefs)
+    save_env(env_vars)
 
 
 def clear_screen():
@@ -417,6 +490,20 @@ def sync_discover_openai_compat(base_url, api_key, provider_name, env_vars=None)
                             ):
                                 continue
 
+                            # Align Discovery IDs with Router backend:
+                            # Prefix certain providers with their namespace
+                            # unless already prefixed.
+                            if provider_name == "deepseek":
+                                # Filter to avoid non-deepseek models returned from deepseek endpoint
+                                if "deepseek" not in m_id.lower():
+                                    continue
+                                if not m_id.startswith("deepseek/"):
+                                    m_id = f"deepseek/{m_id}"
+                            elif provider_name in ("moonshot", "zai", "xai", "dashscope"):
+                                # Skip prefixing if already prefixed (e.g. 'dashscope/qwen-turbo')
+                                if not m_id.startswith(f"{provider_name}/"):
+                                    m_id = f"{provider_name}/{m_id}"
+                            
                             discovered.append(
                                 {
                                     "id": m_id,
@@ -682,6 +769,54 @@ def get_all_models(env_vars):
     or_key = env_vars.get("OPENROUTER_API_KEY")
     if or_key and or_key != "dummy":
         models.extend(sync_discover_openrouter(or_key, env_vars))
+
+    # Moonshot AI (Kimi)
+    ms_key = env_vars.get("MOONSHOT_API_KEY")
+    if ms_key and ms_key != "dummy":
+        models.extend(
+            sync_discover_openai_compat(
+                "https://api.moonshot.ai/v1",
+                ms_key,
+                "moonshot",
+                env_vars
+            )
+        )
+
+    # Z.ai (GLM)
+    zai_key = env_vars.get("ZAI_API_KEY")
+    if zai_key and zai_key != "dummy":
+        models.extend(
+            sync_discover_openai_compat(
+                "https://api.z.ai/api/paas/v4",
+                zai_key,
+                "zai",
+                env_vars
+            )
+        )
+
+    # xAI (Grok)
+    xai_key = env_vars.get("XAI_API_KEY")
+    if xai_key and xai_key != "dummy":
+        models.extend(
+            sync_discover_openai_compat(
+                "https://api.x.ai/v1",
+                xai_key,
+                "xai",
+                env_vars
+            )
+        )
+
+    # DashScope (Alibaba Qwen)
+    ds_key = env_vars.get("DASHSCOPE_API_KEY")
+    if ds_key and ds_key != "dummy":
+        models.extend(
+            sync_discover_openai_compat(
+                "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                ds_key,
+                "dashscope",
+                env_vars
+            )
+        )
 
     # LM Studio (local, OpenAI protocol)
     lms_url = env_vars.get("LM_STUDIO_BASE_URL")
@@ -1163,8 +1298,10 @@ def interactive_checkbox_scrollable(models, current_disabled, title="Select mode
         sys.stdout.flush()
 
 def wizard_model_management(env_vars):
-    disabled = load_disabled_models()
     all_models = get_all_models(env_vars)
+
+    # Compute initial disabled set using SSOT so unactivated models start unchecked
+    disabled = set(m["id"] for m in all_models if not is_model_enabled_in_config(m["id"], env_vars))
 
     while True:
         print_header("Step 6: Model Visibility & Sentiment")
@@ -1221,7 +1358,7 @@ def wizard_model_management(env_vars):
             for prov_name, p_models in by_prov.items():
                 p_active = interactive_checkbox_scrollable(
                     p_models,
-                    disabled,
+                    list(disabled),
                     title=f"[{prov_name.title()}] Select models to ENABLE",
                     allow_empty=True,
                 )
@@ -1231,7 +1368,7 @@ def wizard_model_management(env_vars):
             # Terminal-safe scrollable interactive selector with [Space] toggle
             active_set = interactive_checkbox_scrollable(
                 all_models,
-                disabled,
+                list(disabled),
                 title="Select models to ENABLE ([Space] = toggle, [Enter] = confirm)",
             )
             active_ids = list(active_set)
@@ -1266,9 +1403,7 @@ def wizard_model_management(env_vars):
 
         env_vars["SENTIMENT_MODEL_ID"] = sentiment_a["sentiment_model"]
 
-        save_disabled_models(disabled)
-        env_vars["DISABLED_MODELS"] = ",".join(list(disabled))
-        save_env(env_vars)
+        save_disabled_models(disabled, env_vars, enabled_set=set(active_ids))
         break
 
 
@@ -3185,28 +3320,42 @@ def cmd_doctor(args, config):
 
 
 def cmd_models(args, config):
-    disabled = load_disabled_models()
+    all_models = get_all_models(config)
+    
+    enabled_str = config.get("ENABLED_MODELS")
+    has_allowlist = bool(enabled_str and isinstance(enabled_str, str) and enabled_str.strip())
+    
+    disabled = set(m["id"] for m in all_models if not is_model_enabled_in_config(m["id"], config))
+    
+    if has_allowlist:
+        enabled_set = {x.strip() for x in enabled_str.split(",") if x.strip()}
+    else:
+        enabled_set = None
+
     changed = False
 
     if getattr(args, "enable_all_models", False):
         disabled.clear()
+        if has_allowlist:
+            enabled_set = {m["id"] for m in all_models}
         changed = True
 
     if getattr(args, "disable_model", None):
-        disabled.add(args.disable_model)
+        m_id = args.disable_model
+        disabled.add(m_id)
+        if has_allowlist:
+            enabled_set.discard(m_id)
         changed = True
 
     if getattr(args, "enable_model", None):
-        if args.enable_model in disabled:
-            disabled.remove(args.enable_model)
-            changed = True
+        m_id = args.enable_model
+        disabled.discard(m_id)
+        if has_allowlist:
+            enabled_set.add(m_id)
+        changed = True
 
     if changed:
-        save_disabled_models(disabled)
-        config["DISABLED_MODELS"] = ",".join(list(disabled))
-        save_env(config)
-
-    all_models = get_all_models(config)
+        save_disabled_models(disabled, config, enabled_set=enabled_set if has_allowlist else None)
 
     if args.json:
         results = []
@@ -3215,7 +3364,7 @@ def cmd_models(args, config):
                 "id": m["id"],
                 "name": m["name"],
                 "provider": m["provider"],
-                "enabled": m["id"] not in disabled
+                "enabled": is_model_enabled_in_config(m["id"], config)
             })
         print(json.dumps(results, indent=2))
     else:
@@ -3225,7 +3374,7 @@ def cmd_models(args, config):
             return
 
         for m in all_models:
-            is_enabled = m["id"] not in disabled
+            is_enabled = is_model_enabled_in_config(m["id"], config)
             status_str = f"{C_GREEN}[✓] ENABLED {C_RESET}" if is_enabled else f"{C_RED}[✗] DISABLED{C_RESET}"
             print(f"  {status_str} {m['name']:40} ({m['provider']})")
 

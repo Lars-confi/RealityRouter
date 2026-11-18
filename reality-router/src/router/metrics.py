@@ -643,7 +643,7 @@ async def get_all_models():
             m_copy["reason"] = "Active in pool"
             # Default preference to 100 if not set but active
             m_copy["preference"] = pref if pref is not None else 100.0
-        elif m["enabled"] is False:
+        elif not settings.is_model_enabled(m_id):
             m_copy["status_category"] = "disabled"
             m_copy["reason"] = "Manually disabled in setup"
             m_copy["preference"] = pref if pref is not None else 0.0

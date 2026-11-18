@@ -39,6 +39,19 @@ def clean_environment():
         import src.router.sso as sso
         sso._force_refresh = False
         reload_settings()
+        # Clean up any leftover disabled_models.json
+        import os
+        disables_path = os.path.join(os.environ["REALITY_ROUTER_HOME"], "disabled_models.json")
+        if os.path.exists(disables_path):
+            try:
+                os.unlink(disables_path)
+            except Exception:
+                pass
+        # Reset enabled_models and model_preferences settings
+        from src.config.settings import get_settings
+        settings = get_settings()
+        settings.enabled_models = []
+        settings.model_preferences = {}
 
 
 @pytest.fixture
@@ -66,7 +79,13 @@ def base_router(mock_db):
     """Provide a standard configured RouterCore instance with three default models."""
     core = RouterCore()
     core.utility_calculator.reward = 1.0
-    get_settings().disabled_models = []
+    
+    # Reset settings to clean state
+    from src.config.settings import get_settings
+    settings = get_settings()
+    settings.enabled_models = []
+    settings.model_preferences = {}
+    settings.disabled_models = []
     
     # Clean populate of models
     core.models = {

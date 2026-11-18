@@ -337,11 +337,11 @@ class RouterCore:
                         "id": name,
                         "name": name,
                         "provider": provider,
-                        "enabled": name not in settings.disabled_models,
+                        "enabled": settings.is_model_enabled(name),
                     }
                 )
 
-            if name in self.models or name in settings.disabled_models:
+            if name in self.models or not settings.is_model_enabled(name):
                 continue
             if name not in self.adapters:
                 from src.adapters.litellm_adapter import LiteLLMAdapter
@@ -518,11 +518,11 @@ class RouterCore:
                         "id": name,
                         "name": name,
                         "provider": "openrouter",
-                        "enabled": name not in settings.disabled_models,
+                        "enabled": settings.is_model_enabled(name),
                     }
                 )
 
-            if name in self.models or name in settings.disabled_models:
+            if name in self.models or not settings.is_model_enabled(name):
                 continue
             if name not in self.adapters:
                 from src.adapters.litellm_adapter import LiteLLMAdapter
@@ -614,11 +614,11 @@ class RouterCore:
                         "id": name,
                         "name": name,
                         "provider": "lmstudio",
-                        "enabled": name not in settings.disabled_models,
+                        "enabled": settings.is_model_enabled(name),
                     }
                 )
 
-            if name in self.models or name in settings.disabled_models:
+            if name in self.models or not settings.is_model_enabled(name):
                 continue
             if name not in self.adapters:
                 from src.adapters.litellm_adapter import LiteLLMAdapter
@@ -673,10 +673,10 @@ class RouterCore:
                         "id": model_id,
                         "name": model_info.get("name", model_id),
                         "provider": "config",
-                        "enabled": model_id not in settings.disabled_models,
+                        "enabled": settings.is_model_enabled(model_id),
                     }
                 )
-                if model_id in settings.disabled_models:
+                if not settings.is_model_enabled(model_id):
                     continue
                 (
                     p_cost,
@@ -781,15 +781,14 @@ class RouterCore:
                                             "id": name,
                                             "name": name,
                                             "provider": "ollama",
-                                            "enabled": name
-                                            not in settings.disabled_models,
+                                            "enabled": settings.is_model_enabled(name),
                                         }
                                     )
                                 if (
                                     name
                                     and name not in self.models
                                     and (
-                                        name not in settings.disabled_models
+                                        settings.is_model_enabled(name)
                                         or name == sentiment_model_id
                                     )
                                 ):
@@ -807,7 +806,7 @@ class RouterCore:
                                         api_key=custom_key,
                                         base_url=base,
                                     )
-                                    if name in settings.disabled_models:
+                                    if not settings.is_model_enabled(name):
                                         continue
                                     (
                                         p_cost,
@@ -853,15 +852,14 @@ class RouterCore:
                                             "id": name,
                                             "name": name,
                                             "provider": "custom",
-                                            "enabled": name
-                                            not in settings.disabled_models,
+                                            "enabled": settings.is_model_enabled(name),
                                         }
                                     )
                                 if (
                                     name
                                     and name not in self.models
                                     and (
-                                        name not in settings.disabled_models
+                                        settings.is_model_enabled(name)
                                         or name == sentiment_model_id
                                     )
                                 ):
@@ -880,7 +878,7 @@ class RouterCore:
                                             api_key=custom_key,
                                             base_url=base,
                                         )
-                                    if name in settings.disabled_models:
+                                    if not settings.is_model_enabled(name):
                                         continue
                                     (
                                         p_cost,
@@ -939,12 +937,11 @@ class RouterCore:
                                             "id": name,
                                             "name": name,
                                             "provider": "openai",
-                                            "enabled": name
-                                            not in settings.disabled_models,
+                                            "enabled": settings.is_model_enabled(name),
                                         }
                                     )
                                 if name not in self.models and (
-                                    name not in settings.disabled_models
+                                    settings.is_model_enabled(name)
                                     or name == sentiment_model_id
                                 ):
                                     if name not in self.adapters:
@@ -955,7 +952,7 @@ class RouterCore:
                                         self.adapters[name] = LiteLLMAdapter(
                                             model_name=name, api_key=openai_key
                                         )
-                                    if name in settings.disabled_models:
+                                    if not settings.is_model_enabled(name):
                                         continue
                                     (
                                         p_cost,
@@ -1028,11 +1025,11 @@ class RouterCore:
                                         "id": name,
                                         "name": name,
                                         "provider": "anthropic",
-                                        "enabled": name not in settings.disabled_models,
+                                        "enabled": settings.is_model_enabled(name),
                                     }
                                 )
                             if name not in self.models and (
-                                name not in settings.disabled_models
+                                settings.is_model_enabled(name)
                                 or name == sentiment_model_id
                             ):
                                 if name not in self.adapters:
@@ -1044,7 +1041,7 @@ class RouterCore:
                                         model_name=f"anthropic/{name}",
                                         api_key=anthropic_key,
                                     )
-                                if name in settings.disabled_models:
+                                if not settings.is_model_enabled(name):
                                     continue
                                 (
                                     p_cost,
@@ -1106,11 +1103,11 @@ class RouterCore:
                                         "id": name,
                                         "name": name,
                                         "provider": "mistral",
-                                        "enabled": name not in settings.disabled_models,
+                                        "enabled": settings.is_model_enabled(name),
                                     }
                                 )
                             if name not in self.models and (
-                                name not in settings.disabled_models
+                                settings.is_model_enabled(name)
                                 or name == sentiment_model_id
                             ):
                                 if name not in self.adapters:
@@ -1122,7 +1119,7 @@ class RouterCore:
                                         model_name=f"mistral/{name}",
                                         api_key=mistral_key,
                                     )
-                                if name in settings.disabled_models:
+                                if not settings.is_model_enabled(name):
                                     continue
                                 (
                                     p_cost,
@@ -1214,11 +1211,11 @@ class RouterCore:
                                     "id": name,
                                     "name": name,
                                     "provider": "gemini",
-                                    "enabled": name not in settings.disabled_models,
+                                    "enabled": settings.is_model_enabled(name),
                                 }
                             )
                         if name not in self.models and (
-                            name not in settings.disabled_models
+                            settings.is_model_enabled(name)
                             or name == sentiment_model_id
                         ):
                             if name not in self.adapters:
@@ -1229,7 +1226,7 @@ class RouterCore:
                                     api_key=gemini_key,
                                     base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
                                 )
-                            if name in settings.disabled_models:
+                            if not settings.is_model_enabled(name):
                                 continue
                             (
                                 p_cost,
@@ -1292,11 +1289,11 @@ class RouterCore:
                                         "id": name,
                                         "name": name,
                                         "provider": "deepseek",
-                                        "enabled": name not in settings.disabled_models,
+                                        "enabled": settings.is_model_enabled(name),
                                     }
                                 )
 
-                            if name in self.models or name in settings.disabled_models:
+                            if name in self.models or not settings.is_model_enabled(name):
                                 continue
                             if name not in self.adapters:
                                 from src.adapters.litellm_adapter import LiteLLMAdapter
@@ -1953,12 +1950,12 @@ class RouterCore:
             has_tool_capable_model = any(
                 info.get("supports_function_calling", False)
                 for mid, info in candidate_models.items()
-                if mid not in settings.disabled_models
+                if settings.is_model_enabled(mid)
             )
 
             model_tasks = []
             for mid, info in candidate_models.items():
-                if mid in settings.disabled_models:
+                if not settings.is_model_enabled(mid):
                     logger.info(f"Skipping model {mid} (disabled in settings)")
                     continue
 

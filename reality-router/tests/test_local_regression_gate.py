@@ -286,28 +286,157 @@ def test_metrics_and_control_plane_contracts():
     s_get = client.get("/metrics/strategy")
     assert s_get.status_code == 200
     assert "strategy" in s_get.json()
-
-    s_post = client.post("/metrics/strategy", json={"strategy": "tiered_assessment"})
-    assert s_post.status_code == 200
-    assert client.get("/metrics/strategy").json()["strategy"] == "tiered_assessment"
-
-    client.post("/metrics/strategy", json={"strategy": "expected_utility"})
     assert client.get("/metrics/strategy").json()["strategy"] == "expected_utility"
+    client.post("/metrics/strategy", json={"strategy": "tiered_assessment"})
+    assert client.get("/metrics/strategy").json()["strategy"] == "tiered_assessment"
 
     # 2. Preferences GET and POST round-trip
     p_get = client.get("/metrics/preferences")
     assert p_get.status_code == 200
     assert "value" in p_get.json()
-
+    assert client.get("/metrics/preferences").json()["value"] == 75
     p_post = client.post("/metrics/preferences", json={"value": 75})
     assert p_post.status_code == 200
     assert client.get("/metrics/preferences").json()["value"] == 75
 
     # 3. Models and history endpoints
-    m_get = client.get("/metrics/models")
-    assert m_get.status_code == 200
-    assert isinstance(m_get.json(), list)
+    ma_get = client.get("/metrics/models/all")
+    assert ma_get.status_code == 200
+    assert "models" in ma_get.json()
 
+    h_get = client.get("/metrics/history")
+    assert h_get.status_code == 200
+    assert isinstance(h_get.json(), list)
+
+
+def test_model_activation_single_source_of_truth():
+    """Test that activated/deactivated models maintain correct state 
+    between router CLI and dashboard endpoints."""
+    from unittest.mock import patch
+    import json
+    
+    # Setup env vars dict
+    env_vars = {
+        "REALITY_ROUTER_HOME": os.environ["REALITY_ROUTER_HOME"],
+        "MODEL_PREFERENCES": '{"model-a": 100.0, "model-b": 0.0}',
+        "ENABLED_MODELS": "model-a",
+        "DISABLED_MODELS": "model-b"
+    }
+    
+    # Write stale disabled_models.json with ["model-a"] - this should NOT resurrect it
+    stale_disabled_file = os.path.join(
+        os.environ["REALITY_ROUTER_HOME"], "disabled_models.json"
+    )
+    with open(stale_disabled_file, "w") as f:
+        json.dump(["model-a"], f)
+    
+    # Configure activation state
+    save_disabled_models(
+        disabled_set={"model-b"}, 
+        env_vars=env_vars, 
+        enabled_set={"model-a"}
+    )
+    
+    # Reload settings and verify stale file wasn't resurrected
+    settings = load_settings()
+    assert settings.is_model_enabled("model-a") is True, "model-a should be enabled"
+    assert settings.is_model_enabled("model-b") is False, "model-b should be disabled"
+    
+    # Mock load_models_from_config to return expected model mapping
+    with patch.object(router_core, "load_models_from_config") as mock_load:
+        mock_load.return_value = {
+            "model-a": {"name": "Model A"},
+            "model-b": {"name": "Model B"}, 
+            "model-c-unactivated": {"name": "Model C"}
+        }
+        
+        # Reload router with mocked models
+        router_core.reload()
+        
+        # Verify dashboard endpoint reflects correct activation state
+        ma_response = client.get("/metrics/models/all")
+        assert ma_response.status_code == 200, "Dashboard endpoint should return 200"
+        
+        models_data = ma_response.json()["models"]
+        model_a_entry = next((m for m in models_data if m["id"] == "model-a"), None)
+        model_b_entry = next((m for m in models_data if m["id"] == "model-b"), None)
+        model_c_entry = next((m for m in models_data if m["id"] == "model-c-unactivated"), None)
+        
+        assert model_a_entry is not None, "model-a should exist in dashboard response"
+        assert model_b_entry is not None, "model-b should exist in dashboard response"  
+        assert model_c_entry is not None, "model-c-unactivated should exist in dashboard response"
+        assert model_a_entry["status_category"] == "active", "model-a should be active"
+        assert model_a_entry["preference"] == 100.0, "model-a should have 100.0 preference"
+        assert model_b_entry["status_category"] == "disabled", "model-b should be disabled"
+        assert model_b_entry["preference"] == 0.0, "model-b should have 0.0 preference"
+        assert model_c_entry["status_category"] == "disabled", "model-c-unactivated should be disabled"
+        assert model_c_entry["preference"] == 0.0, "model-c-unactivated should have 0.0 preference"
+        
+        # Verify isolated model enabled checks
+        assert settings.is_model_enabled("model-a") is True, "model-a should be enabled in settings"
+        assert settings.is_model_enabled("model-b") is False, "model-b should be disabled in settings"
+        assert settings.is_model_enabled("model-c-unactivated") is False, "model-c-unactivated should be disabled in settings"
+        
+        # Verify is_model_enabled_in_config reflects correct state
+        env_vars2 = load_env()
+        assert is_model_enabled_in_config("model-c-unactivated", env_vars2) is True
+        assert is_model_enabled_in_config("model-a", env_vars2) is True
+        assert is_model_enabled_in_config("model-b", env_vars2) is False
+        
+    # Toggle model-c-unactivated on and model-a off via dashboard
+    with patch.object(router_core, "load_models_from_config") as mock_load:
+        mock_load.return_value = {
+            "model-a": {"name": "Model A"},
+            "model-b": {"name": "Model B"}, 
+            "model-c-unactivated": {"name": "Model C"}
+        }
+        
+        router_core.reload()
+        
+        # Enable model-c-unactivated (value > 0) and disable model-a (value = 0)
+        client.post("/metrics/models/preference", json={"model_id": "model-c-unactivated", "value": 80.0})
+        client.post("/metrics/models/preference", json={"model_id": "model-a", "value": 0.0})
+        
+        # Verify updated states
+        env_vars3 = load_env()
+        assert settings.is_model_enabled("model-c-unactivated") is True, "model-c-unactivated should remain enabled"
+        assert settings.is_model_enabled("model-a") is False, "model-a should be disabled"
+        assert is_model_enabled_in_config("model-c-unactivated", env_vars3) is True
+        assert is_model_enabled_in_config("model-a", env_vars3) is False
+        
+        # Recheck dashboard endpoint
+        ma_response = client.get("/metrics/models/all")
+        assert ma_response.status_code == 200
+        
+        models_data = ma_response.json()["models"]
+        model_a_entry = next((m for m in models_data if m["id"] == "model-a"), None)
+        model_c_entry = next((m for m in models_data if m["id"] == "model-c-unactivated"), None)
+        
+        assert model_a_entry is not None, "model-a should exist in updated dashboard response"
+        assert model_c_entry is not None, "model-c-unactivated should exist in updated dashboard response"
+        assert model_a_entry["status_category"] == "disabled", "model-a should now be disabled in dashboard"
+        assert model_a_entry["preference"] == 0.0, "model-a should have 0.0 preference"
+        assert model_c_entry["status_category"] == "active", "model-c-unactivated should now be active in dashboard"
+        assert model_c_entry["preference"] == 80.0, "model-c-unactivated should have 80.0 preference"
+
+    # 1. Strategy GET and POST round-trip
+    s_get = client.get("/metrics/strategy")
+    assert s_get.status_code == 200
+    assert "strategy" in s_get.json()
+    assert client.get("/metrics/strategy").json()["strategy"] == "expected_utility"
+    client.post("/metrics/strategy", json={"strategy": "tiered_assessment"})
+    assert client.get("/metrics/strategy").json()["strategy"] == "tiered_assessment"
+
+    # 2. Preferences GET and POST round-trip
+    p_get = client.get("/metrics/preferences")
+    assert p_get.status_code == 200
+    assert "value" in p_get.json()
+    assert client.get("/metrics/preferences").json()["value"] == 75
+    p_post = client.post("/metrics/preferences", json={"value": 75})
+    assert p_post.status_code == 200
+    assert client.get("/metrics/preferences").json()["value"] == 75
+
+    # 3. Models and history endpoints
     ma_get = client.get("/metrics/models/all")
     assert ma_get.status_code == 200
     assert "models" in ma_get.json()

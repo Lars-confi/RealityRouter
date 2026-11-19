@@ -327,13 +327,18 @@ def save_disabled_models(disabled_set, env_vars=None, enabled_set=None):
     except Exception:
         prefs = {}
         
-    # Set 0.0 for disabled
+    # Set 0.0 for disabled models, preserve existing positive prefs
     for m in disabled_set:
         prefs[m] = 0.0
-    # Set 100.0 for explicitly enabled (if enabled_set provided)
+    # Preserve positive preferences and promote re-enabled models (not in disabled_set) to 100
+    for m, pref in list(prefs.items()):
+        if pref <= 0.0 and m not in disabled_set:
+            prefs[m] = 100.0
+    # For any explicitly enabled models, ensure they have a positive pref
     if enabled_set is not None:
         for m in enabled_set:
-            prefs[m] = 100.0
+            if prefs.get(m, 0.0) <= 0.0:
+                prefs[m] = 100.0
             
     env_vars["MODEL_PREFERENCES"] = json.dumps(prefs)
     save_env(env_vars)
@@ -490,6 +495,21 @@ def sync_discover_openai_compat(base_url, api_key, provider_name, env_vars=None)
                             ):
                                 continue
 
+                            # Token filtering per provider (mirrors RouterCore keep_tokens)
+                            if provider_name == "moonshot":
+                                if not any(t in m_id.lower() for t in ("kimi", "moonshot")):
+                                    continue
+                            elif provider_name == "zai":
+                                if "glm" not in m_id.lower():
+                                    continue
+                            elif provider_name == "xai":
+                                if "grok" not in m_id.lower():
+                                    continue
+                            elif provider_name == "dashscope":
+                                if "qwen" not in m_id.lower():
+                                    continue
+
+                            
                             # Align Discovery IDs with Router backend:
                             # Prefix certain providers with their namespace
                             # unless already prefixed.
@@ -516,6 +536,43 @@ def sync_discover_openai_compat(base_url, api_key, provider_name, env_vars=None)
         if hasattr(e, "read"):
             error_msg += f" - Body: {e.read().decode()}"
         logger.debug(error_msg)
+    
+    # If we still have nothing discovered and this provider should have fallback models,
+    # append them now (might be empty list but at least we tried)
+    if not discovered:
+        if provider_name == "moonshot":
+            fallback_models = ["kimi-k2.7-code", "kimi-k2.6", "kimi-k2.5", "kimi-k2-thinking", "kimi-k3", "kimi-latest"]
+            for raw in fallback_models:
+                discovered.append({  
+                    "id": f"{provider_name}/{raw}",
+                    "name": f"{provider_name.title()}: {raw}",
+                    "provider": provider_name,
+                })
+        elif provider_name == "zai":
+            fallback_models = ["glm-4.7-flash", "glm-4.7", "glm-4.6", "glm-5", "glm-5-code", "glm-5.3", "glm-5.3-flash"]
+            for raw in fallback_models:
+                discovered.append({  
+                    "id": f"{provider_name}/{raw}",
+                    "name": f"{provider_name.title()}: {raw}",
+                    "provider": provider_name,
+                })
+        elif provider_name == "xai":
+            fallback_models = ["grok-code-fast", "grok-4.3", "grok-4.5", "grok-4.6"]
+            for raw in fallback_models:
+                discovered.append({  
+                    "id": f"{provider_name}/{raw}",
+                    "name": f"{provider_name.title()}: {raw}",
+                    "provider": provider_name,
+                })
+        elif provider_name == "dashscope":
+            fallback_models = ["qwen-turbo", "qwen-coder", "qwen-plus", "qwen-max", "qwen3.7-max"]
+            for raw in fallback_models:
+                discovered.append({  
+                    "id": f"{provider_name}/{raw}",
+                    "name": f"{provider_name.title()}: {raw}",
+                    "provider": provider_name,
+                })
+                
     return discovered
 
 

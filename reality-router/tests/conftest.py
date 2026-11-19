@@ -40,7 +40,6 @@ def clean_environment():
         sso._force_refresh = False
         reload_settings()
         # Clean up any leftover disabled_models.json
-        import os
         disables_path = os.path.join(os.environ["REALITY_ROUTER_HOME"], "disabled_models.json")
         if os.path.exists(disables_path):
             try:

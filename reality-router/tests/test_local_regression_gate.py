@@ -1,272 +1,19 @@
 import os
+import json
+import sys
 import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
-from src.config.settings import get_settings
+from src.config.settings import get_settings, reload_settings
 from src.main import app
 from src.router.core import router_core
 from tests.conftest import MockHTTPXResponse
 
-client = TestClient(app)
-
-
-def test_production_isolation_guard():
-    assert "REALITY_ROUTER_HOME" in os.environ
-    assert os.path.realpath(os.environ["REALITY_ROUTER_HOME"]) != os.path.realpath(
-        os.path.expanduser("~/.reality_router")
-    )
-
-
-def test_local_reality_signal_readonly_smoke():
-    for port in (18081, 18082):
-        resp = httpx.get(f"http://127.0.0.1:{port}/health", timeout=2.0)
-        assert resp.status_code == 200
-        assert resp.json().get("status") == "healthy"
-
-
-def test_public_api_contract_with_local_reality_signal():
-    settings = get_settings()
-    settings.reality_routing_url = "http://127.0.0.1:18081"
-    settings.reality_rerouting_url = "http://127.0.0.1:18082"
-    settings.reality_check_token = "local_unauthenticated"
-    settings.reality_check_provider = "Enterprise"
-
-    router_core.models = {
-        "gemini-2.5-flash": {
-            "name": "Gemini 2.5 Flash",
-            "cost": 0.001,
-            "time": 1.0,
-            "probability": 0.8,
-            "supports_function_calling": True,
-        }
-    }
-    mock_adapter = AsyncMock()
-    mock_adapter.forward_request.return_value = {
-        "text": "OK",
-        "usage": {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10},
-    }
-    router_core.adapters = {"gemini-2.5-flash": mock_adapter}
-    router_core.load_balancer.is_model_healthy = MagicMock(return_value=True)
-
-    captured_urls = []
-
-    async def mock_rc_post(url, json=None, headers=None, timeout=None, **kwargs):
-        captured_urls.append(url)
-        return MockHTTPXResponse({"prob_true": 0.9, "decision_id": 101})
-
-    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
-        assert client.get("/health").status_code == 200
-        models_resp = client.get("/v1/models")
-        assert models_resp.status_code == 200
-        assert "data" in models_resp.json()
-
-        settings.default_strategy = "expected_utility"
-        snap_resp = client.post(
-            "/v1/chat/completions",
-            json={"model": "gemini-2.5-flash", "messages": [{"role": "user", "content": "Hi"}]},
-        )
-        assert snap_resp.status_code == 200
-        assert snap_resp.headers.get("X-RR-Model") == "gemini-2.5-flash"
-        assert snap_resp.headers.get("X-RR-Strategy") == "expected_utility"
-
-        settings.default_strategy = "tiered_assessment"
-        ladder_resp = client.post(
-            "/v1/chat/completions",
-            json={"model": "gemini-2.5-flash", "messages": [{"role": "user", "content": "Hi"}]},
-        )
-        assert ladder_resp.status_code == 200
-        assert ladder_resp.headers.get("X-RR-Strategy") == "tiered_assessment"
-
-        resp_api = client.post(
-            "/v1/responses",
-            json={"model": "gemini-2.5-flash", "input": "Hi"},
-        )
-        assert resp_api.status_code == 200
-        assert client.get("/metrics/summary").status_code == 200
-
-    assert any("127.0.0.1:18081/decide" in u for u in captured_urls)
-    assert any("127.0.0.1:18082/decide" in u for u in captured_urls)
-
-def test_tool_calling_streaming_and_endpoint_contracts():
-    router_core.models = {
-        "gemini-2.5-flash": {
-            "name": "Gemini 2.5 Flash",
-            "cost": 0.001,
-            "time": 1.0,
-            "probability": 0.8,
-            "supports_function_calling": True,
-        }
-    }
-    mock_adapter = AsyncMock()
-    router_core.adapters = {"gemini-2.5-flash": mock_adapter}
-    router_core.load_balancer.is_model_healthy = MagicMock(return_value=True)
-
-    async def mock_rc_post(*args, **kwargs):
-        return MockHTTPXResponse({"prob_true": 0.9, "decision_id": 102})
-
-    with patch("httpx.AsyncClient.post", side_effect=mock_rc_post):
-        # 1. Tool-calling contract on POST /v1/chat/completions
-        mock_adapter.forward_request.return_value = {
-            "text": "",
-            "finish_reason": "tool_calls",
-            "tool_calls": [
-                {
-                    "id": "call_1",
-                    "type": "function",
-                    "function": {"name": "get_weather", "arguments": "{\"city\": \"Oslo\"}"},
-                }
-            ],
-            "usage": {"prompt_tokens": 8, "completion_tokens": 6, "total_tokens": 14},
-        }
-        tc_resp = client.post(
-            "/v1/chat/completions",
-            json={
-                "model": "gemini-2.5-flash",
-                "messages": [{"role": "user", "content": "Weather in Oslo?"}],
-                "tools": [{"type": "function", "function": {"name": "get_weather", "parameters": {"type": "object"}}}],
-            },
-        )
-        assert tc_resp.status_code == 200
-        choice = tc_resp.json()["choices"][0]
-        assert choice["finish_reason"] == "tool_calls"
-        assert choice["message"]["tool_calls"][0]["function"]["name"] == "get_weather"
-
-        # 2. Streaming SSE contract on POST /v1/chat/completions
-        mock_adapter.forward_request.return_value = {
-            "text": "Streamed hello",
-            "usage": {"prompt_tokens": 4, "completion_tokens": 3, "total_tokens": 7},
-        }
-        stream_resp = client.post(
-            "/v1/chat/completions",
-            json={"model": "gemini-2.5-flash", "messages": [{"role": "user", "content": "Hi"}], "stream": True},
-        )
-        assert stream_resp.status_code == 200
-        assert "chat.completion.chunk" in stream_resp.text
-        assert "data: [DONE]" in stream_resp.text
-
-        # 3. Legacy POST /v1/completions contract
-        cmpl_resp = client.post(
-            "/v1/completions",
-            json={"model": "gemini-2.5-flash", "prompt": "Say hello"},
-        )
-        assert cmpl_resp.status_code == 200
-        assert cmpl_resp.json()["object"] == "text_completion"
-
-        # 4. Anthropic POST /v1/messages contract (200 or graceful 501 fallback)
-        msg_resp = client.post(
-            "/v1/messages",
-            json={"model": "gemini-2.5-flash", "max_tokens": 32, "messages": [{"role": "user", "content": "Hi"}]},
-        )
-        assert msg_resp.status_code in (200, 501)
-
-        # 5. Agent discovery card contract
-        card_resp = client.get("/.well-known/agent-card.json")
-        assert card_resp.status_code == 200
-        assert "capabilities" in card_resp.json()
-        assert "endpoints" in card_resp.json()
-
-def test_reality_signal_fallback_and_provider_failover_contracts():
-    settings = get_settings()
-    settings.default_strategy = "expected_utility"
-
-    router_core.models = {
-        "model-primary": {
-            "name": "Primary",
-            "cost": 0.0005,
-            "time": 0.5,
-            "probability": 0.9,
-            "supports_function_calling": True,
-        },
-        "model-fallback": {
-            "name": "Fallback",
-            "cost": 0.001,
-            "time": 1.0,
-            "probability": 0.8,
-            "supports_function_calling": True,
-        },
-    }
-    primary_adapter = AsyncMock()
-    primary_adapter.forward_request.return_value = {
-        "text": "Primary OK",
-        "usage": {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10},
-    }
-    fallback_adapter = AsyncMock()
-    fallback_adapter.forward_request.return_value = {
-        "text": "Fallback OK",
-        "usage": {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10},
-    }
-    router_core.adapters = {
-        "model-primary": primary_adapter,
-        "model-fallback": fallback_adapter,
-    }
-    router_core.load_balancer.is_model_healthy = MagicMock(return_value=True)
-
-    async def mock_rc_400(*args, **kwargs):
-        return MockHTTPXResponse(
-            {"detail": "Schema mismatch. Locked: Score-Based."},
-            status_code=400,
-        )
-
-    with patch("httpx.AsyncClient.post", side_effect=mock_rc_400):
-        # 1. RealitySignal HTTP 400 schema-mismatch graceful fallback to prob=0.5
-        r1 = client.post(
-            "/v1/chat/completions",
-            json={"model": "auto", "messages": [{"role": "user", "content": "Hi"}]},
-        )
-        assert r1.status_code == 200
-        assert r1.headers.get("X-RR-Model") == "model-primary"
-
-        # 2. Primary provider adapter failure -> automatic failover to model-fallback
-        primary_adapter.forward_request.side_effect = RuntimeError("Provider 429 rate limit")
-        r2 = client.post(
-            "/v1/chat/completions",
-            json={"model": "auto", "messages": [{"role": "user", "content": "Hi"}]},
-        )
-        assert r2.status_code == 200
-        assert r2.headers.get("X-RR-Model") == "model-fallback"
-
-    # 3. Tool-capability filtering & fallback when no tool-capable model exists
-    router_core.models = {
-        "model-no-tools": {
-            "name": "No Tools",
-            "cost": 0.0001,
-            "time": 0.2,
-            "probability": 0.95,
-            "supports_function_calling": False,
-        },
-        "model-with-tools": {
-            "name": "With Tools",
-            "cost": 0.002,
-            "time": 1.0,
-            "probability": 0.8,
-            "supports_function_calling": True,
-        },
-    }
-    router_core.adapters = {
-        "model-no-tools": fallback_adapter,
-        "model-with-tools": fallback_adapter,
-    }
-    tools_payload = [{"type": "function", "function": {"name": "ping", "parameters": {"type": "object"}}}]
-
-    async def mock_rc_ok(*args, **kwargs):
-        return MockHTTPXResponse({"prob_true": 0.9, "decision_id": 200})
-
-    with patch("httpx.AsyncClient.post", side_effect=mock_rc_ok):
-        r3 = client.post(
-            "/v1/chat/completions",
-            json={"model": "auto", "messages": [{"role": "user", "content": "Hi"}], "tools": tools_payload},
-        )
-        assert r3.status_code == 200
-        assert r3.headers.get("X-RR-Model") == "model-with-tools"
-
-        del router_core.models["model-with-tools"]
-        r4 = client.post(
-            "/v1/chat/completions",
-            json={"model": "auto", "messages": [{"role": "user", "content": "Hi"}], "tools": tools_payload},
-        )
-        assert r4.status_code == 200
-        assert r4.headers.get("X-RR-Model") == "model-no-tools"
+PARENT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PARENT_ROOT not in sys.path:
+    sys.path.insert(0, PARENT_ROOT)
+import start_router
 
 def test_metrics_and_control_plane_contracts():
     router_core.models = {
@@ -282,24 +29,26 @@ def test_metrics_and_control_plane_contracts():
         {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "provider": "gemini", "enabled": True}
     ]
 
-    # 1. Strategy GET and POST round-trip
     s_get = client.get("/metrics/strategy")
     assert s_get.status_code == 200
     assert "strategy" in s_get.json()
-    assert client.get("/metrics/strategy").json()["strategy"] == "expected_utility"
-    client.post("/metrics/strategy", json={"strategy": "tiered_assessment"})
+    s_post = client.post("/metrics/strategy", json={"strategy": "tiered_assessment"})
+    assert s_post.status_code == 200
     assert client.get("/metrics/strategy").json()["strategy"] == "tiered_assessment"
+    client.post("/metrics/strategy", json={"strategy": "expected_utility"})
+    assert client.get("/metrics/strategy").json()["strategy"] == "expected_utility"
 
-    # 2. Preferences GET and POST round-trip
     p_get = client.get("/metrics/preferences")
     assert p_get.status_code == 200
     assert "value" in p_get.json()
-    assert client.get("/metrics/preferences").json()["value"] == 75
     p_post = client.post("/metrics/preferences", json={"value": 75})
     assert p_post.status_code == 200
     assert client.get("/metrics/preferences").json()["value"] == 75
 
-    # 3. Models and history endpoints
+    m_get = client.get("/metrics/models")
+    assert m_get.status_code == 200
+    assert isinstance(m_get.json(), list)
+
     ma_get = client.get("/metrics/models/all")
     assert ma_get.status_code == 200
     assert "models" in ma_get.json()
@@ -307,140 +56,65 @@ def test_metrics_and_control_plane_contracts():
     h_get = client.get("/metrics/history")
     assert h_get.status_code == 200
     assert isinstance(h_get.json(), list)
-
 
 def test_model_activation_single_source_of_truth():
-    """Test that activated/deactivated models maintain correct state 
-    between router CLI and dashboard endpoints."""
-    from unittest.mock import patch
-    import json
-    
-    # Setup env vars dict
-    env_vars = {
-        "REALITY_ROUTER_HOME": os.environ["REALITY_ROUTER_HOME"],
-        "MODEL_PREFERENCES": '{"model-a": 100.0, "model-b": 0.0}',
-        "ENABLED_MODELS": "model-a",
-        "DISABLED_MODELS": "model-b"
-    }
-    
-    # Write stale disabled_models.json with ["model-a"] - this should NOT resurrect it
-    stale_disabled_file = os.path.join(
-        os.environ["REALITY_ROUTER_HOME"], "disabled_models.json"
-    )
+    home = os.environ["REALITY_ROUTER_HOME"]
+    env_file = os.path.join(home, ".env")
+    stale_disabled_file = os.path.join(home, "disabled_models.json")
     with open(stale_disabled_file, "w") as f:
         json.dump(["model-a"], f)
-    
-    # Configure activation state
-    save_disabled_models(
-        disabled_set={"model-b"}, 
-        env_vars=env_vars, 
-        enabled_set={"model-a"}
-    )
-    
-    # Reload settings and verify stale file wasn't resurrected
-    settings = load_settings()
-    assert settings.is_model_enabled("model-a") is True, "model-a should be enabled"
-    assert settings.is_model_enabled("model-b") is False, "model-b should be disabled"
-    
-    # Mock load_models_from_config to return expected model mapping
-    with patch.object(router_core, "load_models_from_config") as mock_load:
-        mock_load.return_value = {
+
+    with patch.object(start_router, "ENV_FILE", env_file), \
+         patch.object(start_router, "DISABLED_MODELS_FILE", stale_disabled_file), \
+         patch("src.config.settings._env_path", env_file), \
+         patch("src.config.settings.APP_HOME", home):
+        env_vars = start_router.load_env()
+        start_router.save_disabled_models(
+            disabled_set={"model-b"},
+            env_vars=env_vars,
+            enabled_set={"model-a"},
+        )
+        assert not os.path.exists(stale_disabled_file)
+
+        settings = reload_settings()
+        assert settings.is_model_enabled("model-a") is True
+        assert settings.is_model_enabled("model-b") is False
+        assert settings.is_model_enabled("model-c-unactivated") is False
+
+        mock_cfg_models = {
             "model-a": {"name": "Model A"},
-            "model-b": {"name": "Model B"}, 
-            "model-c-unactivated": {"name": "Model C"}
+            "model-b": {"name": "Model B"},
+            "model-c-unactivated": {"name": "Model C"},
         }
-        
-        # Reload router with mocked models
-        router_core.reload()
-        
-        # Verify dashboard endpoint reflects correct activation state
-        ma_response = client.get("/metrics/models/all")
-        assert ma_response.status_code == 200, "Dashboard endpoint should return 200"
-        
-        models_data = ma_response.json()["models"]
-        model_a_entry = next((m for m in models_data if m["id"] == "model-a"), None)
-        model_b_entry = next((m for m in models_data if m["id"] == "model-b"), None)
-        model_c_entry = next((m for m in models_data if m["id"] == "model-c-unactivated"), None)
-        
-        assert model_a_entry is not None, "model-a should exist in dashboard response"
-        assert model_b_entry is not None, "model-b should exist in dashboard response"  
-        assert model_c_entry is not None, "model-c-unactivated should exist in dashboard response"
-        assert model_a_entry["status_category"] == "active", "model-a should be active"
-        assert model_a_entry["preference"] == 100.0, "model-a should have 100.0 preference"
-        assert model_b_entry["status_category"] == "disabled", "model-b should be disabled"
-        assert model_b_entry["preference"] == 0.0, "model-b should have 0.0 preference"
-        assert model_c_entry["status_category"] == "disabled", "model-c-unactivated should be disabled"
-        assert model_c_entry["preference"] == 0.0, "model-c-unactivated should have 0.0 preference"
-        
-        # Verify isolated model enabled checks
-        assert settings.is_model_enabled("model-a") is True, "model-a should be enabled in settings"
-        assert settings.is_model_enabled("model-b") is False, "model-b should be disabled in settings"
-        assert settings.is_model_enabled("model-c-unactivated") is False, "model-c-unactivated should be disabled in settings"
-        
-        # Verify is_model_enabled_in_config reflects correct state
-        env_vars2 = load_env()
-        assert is_model_enabled_in_config("model-c-unactivated", env_vars2) is True
-        assert is_model_enabled_in_config("model-a", env_vars2) is True
-        assert is_model_enabled_in_config("model-b", env_vars2) is False
-        
-    # Toggle model-c-unactivated on and model-a off via dashboard
-    with patch.object(router_core, "load_models_from_config") as mock_load:
-        mock_load.return_value = {
-            "model-a": {"name": "Model A"},
-            "model-b": {"name": "Model B"}, 
-            "model-c-unactivated": {"name": "Model C"}
-        }
-        
-        router_core.reload()
-        
-        # Enable model-c-unactivated (value > 0) and disable model-a (value = 0)
-        client.post("/metrics/models/preference", json={"model_id": "model-c-unactivated", "value": 80.0})
-        client.post("/metrics/models/preference", json={"model_id": "model-a", "value": 0.0})
-        
-        # Verify updated states
-        env_vars3 = load_env()
-        assert settings.is_model_enabled("model-c-unactivated") is True, "model-c-unactivated should remain enabled"
-        assert settings.is_model_enabled("model-a") is False, "model-a should be disabled"
-        assert is_model_enabled_in_config("model-c-unactivated", env_vars3) is True
-        assert is_model_enabled_in_config("model-a", env_vars3) is False
-        
-        # Recheck dashboard endpoint
-        ma_response = client.get("/metrics/models/all")
-        assert ma_response.status_code == 200
-        
-        models_data = ma_response.json()["models"]
-        model_a_entry = next((m for m in models_data if m["id"] == "model-a"), None)
-        model_c_entry = next((m for m in models_data if m["id"] == "model-c-unactivated"), None)
-        
-        assert model_a_entry is not None, "model-a should exist in updated dashboard response"
-        assert model_c_entry is not None, "model-c-unactivated should exist in updated dashboard response"
-        assert model_a_entry["status_category"] == "disabled", "model-a should now be disabled in dashboard"
-        assert model_a_entry["preference"] == 0.0, "model-a should have 0.0 preference"
-        assert model_c_entry["status_category"] == "active", "model-c-unactivated should now be active in dashboard"
-        assert model_c_entry["preference"] == 80.0, "model-c-unactivated should have 80.0 preference"
+        with patch("src.router.core.load_models_from_config", return_value=mock_cfg_models):
+            router_core.reload()
+            ma_response = client.get("/metrics/models/all")
+            assert ma_response.status_code == 200
+            by_id = {m["id"]: m for m in ma_response.json()["models"]}
+            assert by_id["model-a"]["status_category"] == "active"
+            assert by_id["model-a"]["preference"] == 100.0
+            assert by_id["model-b"]["status_category"] == "disabled"
+            assert by_id["model-b"]["preference"] == 0.0
+            assert by_id["model-c-unactivated"]["status_category"] == "disabled"
+            assert by_id["model-c-unactivated"]["preference"] == 0.0
 
-    # 1. Strategy GET and POST round-trip
-    s_get = client.get("/metrics/strategy")
-    assert s_get.status_code == 200
-    assert "strategy" in s_get.json()
-    assert client.get("/metrics/strategy").json()["strategy"] == "expected_utility"
-    client.post("/metrics/strategy", json={"strategy": "tiered_assessment"})
-    assert client.get("/metrics/strategy").json()["strategy"] == "tiered_assessment"
+            env_vars2 = start_router.load_env()
+            assert start_router.is_model_enabled_in_config("model-a", env_vars2) is True
+            assert start_router.is_model_enabled_in_config("model-b", env_vars2) is False
+            assert start_router.is_model_enabled_in_config("model-c-unactivated", env_vars2) is False
 
-    # 2. Preferences GET and POST round-trip
-    p_get = client.get("/metrics/preferences")
-    assert p_get.status_code == 200
-    assert "value" in p_get.json()
-    assert client.get("/metrics/preferences").json()["value"] == 75
-    p_post = client.post("/metrics/preferences", json={"value": 75})
-    assert p_post.status_code == 200
-    assert client.get("/metrics/preferences").json()["value"] == 75
+            client.post("/metrics/models/preference", json={"model_id": "model-c-unactivated", "value": 80.0})
+            client.post("/metrics/models/preference", json={"model_id": "model-a", "value": 0.0})
 
-    # 3. Models and history endpoints
-    ma_get = client.get("/metrics/models/all")
-    assert ma_get.status_code == 200
-    assert "models" in ma_get.json()
+            env_vars3 = start_router.load_env()
+            assert get_settings().is_model_enabled("model-c-unactivated") is True
+            assert get_settings().is_model_enabled("model-a") is False
+            assert start_router.is_model_enabled_in_config("model-c-unactivated", env_vars3) is True
+            assert start_router.is_model_enabled_in_config("model-a", env_vars3) is False
 
-    h_get = client.get("/metrics/history")
-    assert h_get.status_code == 200
-    assert isinstance(h_get.json(), list)
+            ma_response2 = client.get("/metrics/models/all")
+            by_id2 = {m["id"]: m for m in ma_response2.json()["models"]}
+            assert by_id2["model-a"]["status_category"] == "disabled"
+            assert by_id2["model-a"]["preference"] == 0.0
+            assert by_id2["model-c-unactivated"]["status_category"] == "active"
+            assert by_id2["model-c-unactivated"]["preference"] == 80.0

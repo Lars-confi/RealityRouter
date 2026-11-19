@@ -51,6 +51,7 @@ def clean_environment():
         settings = get_settings()
         settings.enabled_models = []
         settings.model_preferences = {}
+        settings.has_enabled_models_allowlist = False
 
 
 @pytest.fixture
@@ -85,6 +86,7 @@ def base_router(mock_db):
     settings.enabled_models = []
     settings.model_preferences = {}
     settings.disabled_models = []
+    settings.has_enabled_models_allowlist = False
     
     # Clean populate of models
     core.models = {

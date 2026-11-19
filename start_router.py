@@ -292,9 +292,11 @@ def is_model_enabled_in_config(model_id, env_vars):
             pass
             
     enabled_str = env_vars.get("ENABLED_MODELS")
-    if enabled_str and isinstance(enabled_str, str) and enabled_str.strip():
-        enabled_set = {x.strip() for x in enabled_str.split(",") if x.strip()}
-        return model_id in enabled_set
+    if "ENABLED_MODELS" in env_vars:
+        if enabled_str and isinstance(enabled_str, str) and enabled_str.strip():
+            enabled_set = {x.strip() for x in enabled_str.split(",") if x.strip()}
+            return model_id in enabled_set
+        return False
         
     return True
 
@@ -400,6 +402,7 @@ def prompt(text, default="", color=C_YELLOW):
 
 def sync_discover_ollama(base_url="http://localhost:11434"):
     discovered = []
+    seen_names = set()
     try:
         base_url = base_url.rstrip("/")
         url = (
@@ -413,7 +416,8 @@ def sync_discover_ollama(base_url="http://localhost:11434"):
                 data = json.loads(response.read().decode())
                 for model in data.get("models", []):
                     name = model.get("name")
-                    if name:
+                    if name and name not in seen_names:
+                        seen_names.add(name)
                         discovered.append(
                             {
                                 "id": name,
@@ -3380,12 +3384,13 @@ def cmd_models(args, config):
     all_models = get_all_models(config)
     
     enabled_str = config.get("ENABLED_MODELS")
-    has_allowlist = bool(enabled_str and isinstance(enabled_str, str) and enabled_str.strip())
+    enabled_env_present = "ENABLED_MODELS" in config
+    has_allowlist = enabled_env_present or (enabled_str and isinstance(enabled_str, str) and enabled_str.strip())
     
     disabled = set(m["id"] for m in all_models if not is_model_enabled_in_config(m["id"], config))
     
     if has_allowlist:
-        enabled_set = {x.strip() for x in enabled_str.split(",") if x.strip()}
+        enabled_set = {x.strip() for x in (enabled_str or "").split(",") if x.strip()}
     else:
         enabled_set = None
 

@@ -104,6 +104,7 @@ class Settings(BaseModel):
     cost_sensitivity: float = Field(default=0.5)
     time_sensitivity: float = Field(default=0.5)
     agent_handling: str = Field(default="auto")
+    has_enabled_models_allowlist: bool = Field(default=False)
     ladder_escalation_threshold: float = Field(default=10.0)
 
     # Model settings
@@ -119,7 +120,7 @@ class Settings(BaseModel):
         pref = self.model_preferences.get(model_id)
         if pref is not None and pref <= 0.0:
             return False
-        if self.enabled_models:
+        if self.has_enabled_models_allowlist or self.enabled_models:
             return model_id in self.enabled_models
         return True
 
@@ -133,6 +134,8 @@ def _parse_router_api_keys(data: Dict[str, Any]) -> None:
 
 def _parse_models_state(data_dict: Dict[str, Any]) -> None:
     """Parse model activation state (.env JSON/DJ) with priority order"""
+    # Priority 0: capture whether ENABLED_MODELS was explicitly set in .env
+    data_dict["has_enabled_models_allowlist"] = ("enabled_models" in data_dict)
     # Priority 1: MODEL_PREFERENCES JSON dict (direct preferences)
     if "model_preferences" in data_dict and isinstance(data_dict["model_preferences"], str):
         import json
@@ -244,7 +247,7 @@ def update_model_preference(model_id: str, value: float) -> None:
     
     # Load env_vars before updating
     env_vars = _load_env_file(_env_path)
-    has_allowlist = bool(settings.enabled_models) or ("ENABLED_MODELS" in env_vars)
+    has_allowlist = settings.has_enabled_models_allowlist or bool(settings.enabled_models) or ("ENABLED_MODELS" in env_vars)
     
     if value <= 0.0:
         # Add to disabled, remove from enabled

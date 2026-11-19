@@ -258,6 +258,7 @@ class RouterCore:
     def __init__(self):
         self.models = {}
         self.all_discovered_models = []
+        self.all_discovered_models = []
         self.metrics = {}
         self.models_to_probe = []
         self.translated_languages = set(["english"])
@@ -337,11 +338,11 @@ class RouterCore:
                         "id": name,
                         "name": name,
                         "provider": provider,
-                        "enabled": settings.is_model_enabled(name),
+                        "enabled": (settings.is_model_enabled(name) if hasattr(settings, "is_model_enabled") else (name not in getattr(settings, "disabled_models", []))),
                     }
                 )
 
-            if name in self.models or not settings.is_model_enabled(name):
+            if name in self.models or not (settings.is_model_enabled(name) if hasattr(settings, "is_model_enabled") else (name not in getattr(settings, "disabled_models", []))):
                 continue
             if name not in self.adapters:
                 from src.adapters.litellm_adapter import LiteLLMAdapter
@@ -518,11 +519,11 @@ class RouterCore:
                         "id": name,
                         "name": name,
                         "provider": "openrouter",
-                        "enabled": settings.is_model_enabled(name),
+                        "enabled": (settings.is_model_enabled(name) if hasattr(settings, "is_model_enabled") else (name not in getattr(settings, "disabled_models", []))),
                     }
                 )
 
-            if name in self.models or not settings.is_model_enabled(name):
+            if name in self.models or not (settings.is_model_enabled(name) if hasattr(settings, "is_model_enabled") else (name not in getattr(settings, "disabled_models", []))):
                 continue
             if name not in self.adapters:
                 from src.adapters.litellm_adapter import LiteLLMAdapter
@@ -614,11 +615,11 @@ class RouterCore:
                         "id": name,
                         "name": name,
                         "provider": "lmstudio",
-                        "enabled": settings.is_model_enabled(name),
+                        "enabled": (settings.is_model_enabled(name) if hasattr(settings, "is_model_enabled") else (name not in getattr(settings, "disabled_models", []))),
                     }
                 )
 
-            if name in self.models or not settings.is_model_enabled(name):
+            if name in self.models or not (settings.is_model_enabled(name) if hasattr(settings, "is_model_enabled") else (name not in getattr(settings, "disabled_models", []))):
                 continue
             if name not in self.adapters:
                 from src.adapters.litellm_adapter import LiteLLMAdapter
@@ -1484,7 +1485,11 @@ class RouterCore:
         self.load_configured_models()
         import asyncio
 
-        asyncio.create_task(self.run_capability_probes())
+        try:
+            asyncio.get_running_loop()
+            asyncio.create_task(self.run_capability_probes())
+        except RuntimeError:
+            pass
 
     def add_model(
         self,

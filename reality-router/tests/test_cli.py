@@ -253,3 +253,65 @@ def test_interactive_checkbox_scrollable_allow_empty():
         # When allow_empty=True, pressing Enter on empty selection succeeds and returns empty set
         res = start_router.interactive_checkbox_scrollable(models, disabled, allow_empty=True)
         assert res == set()
+
+
+def test_cli_set_only_writes_explicit_keys_without_adopting_env_or_profile(tmp_path, monkeypatch, capsys):
+    """--set KEY=VALUE must only write explicitly requested keys to .env without adopting shell/env keys."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("DEFAULT_STRATEGY=expected_utility\n", encoding="utf-8")
+    monkeypatch.setattr(start_router, "ENV_FILE", str(env_file))
+    monkeypatch.setenv("GEMINI_API_KEY", "should_not_be_adopted")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "should_not_be_adopted")
+    monkeypatch.setattr(
+        start_router,
+        "scan_shell_profiles_for_keys",
+        MagicMock(return_value={"OPENAI_API_KEY": "profile_secret_should_not_be_adopted"}),
+    )
+    monkeypatch.setattr(sys, "argv", ["start_router.py", "--set", "REALITY_CHECK_PROVIDER=Enterprise"])
+
+    with pytest.raises(SystemExit) as exc:
+        start_router.main()
+    assert exc.value.code == start_router.EXIT_OK
+
+    written = start_router.load_env()
+    assert written == {
+        "DEFAULT_STRATEGY": "expected_utility",
+        "REALITY_CHECK_PROVIDER": "Enterprise",
+    }
+    assert "GEMINI_API_KEY" not in written
+    assert "OPENROUTER_API_KEY" not in written
+    assert "OPENAI_API_KEY" not in written
+    assert not start_router.scan_shell_profiles_for_keys.called
+
+
+def test_resolve_config_no_env_keys_skips_shell_profile_scan(tmp_path, monkeypatch):
+    """--no-env-keys must not scrape shell profiles into os.environ."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("CUSTOM_LLM_BASE_URL=http://127.0.0.1:11434\n", encoding="utf-8")
+    monkeypatch.setattr(start_router, "ENV_FILE", str(env_file))
+    monkeypatch.delenv("CUSTOM_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    mock_scan = MagicMock(return_value={"GEMINI_API_KEY": "from_profile", "CUSTOM_LLM_BASE_URL": "http://bad:11434/v1"})
+    monkeypatch.setattr(start_router, "scan_shell_profiles_for_keys", mock_scan)
+
+    args = start_router.parse_args(["setup", "--agent", "--no-env-keys"])
+    cfg = start_router.resolve_config(args)
+
+    assert not mock_scan.called
+    assert cfg["CUSTOM_LLM_BASE_URL"] == "http://127.0.0.1:11434"
+    assert cfg["CUSTOM_LLM_API_KEY"] == "dummy"
+    assert "GEMINI_API_KEY" not in cfg
+
+
+def test_resolve_config_explicit_ollama_url_sets_dummy_key(tmp_path, monkeypatch):
+    """Explicit --ollama-url automatically defaults CUSTOM_LLM_API_KEY to 'dummy'."""
+    env_file = tmp_path / ".env"
+    monkeypatch.setattr(start_router, "ENV_FILE", str(env_file))
+    monkeypatch.delenv("CUSTOM_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("CUSTOM_LLM_API_KEY", raising=False)
+
+    args = start_router.parse_args(["setup", "--agent", "--no-env-keys", "--ollama-url", "http://127.0.0.1:11434"])
+    cfg = start_router.resolve_config(args)
+
+    assert cfg["CUSTOM_LLM_BASE_URL"] == "http://127.0.0.1:11434"
+    assert cfg["CUSTOM_LLM_API_KEY"] == "dummy"

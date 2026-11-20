@@ -2313,11 +2313,12 @@ def parse_args(argv):
 
 
 def resolve_config(args):
-    # 0. Scan shell profiles for exported API keys if not present in environment
-    profile_keys = scan_shell_profiles_for_keys()
-    for k, v in profile_keys.items():
-        if k not in os.environ:
-            os.environ[k] = v
+    # 0. Scan shell profiles for exported API keys unless --no-env-keys is set
+    if not getattr(args, "no_env_keys", False):
+        profile_keys = scan_shell_profiles_for_keys()
+        for k, v in profile_keys.items():
+            if k not in os.environ:
+                os.environ[k] = v
 
     # 1. Load from Config File (.env) first
     config = load_env()
@@ -2389,6 +2390,8 @@ def resolve_config(args):
         if is_port_in_use(11434):
             config["CUSTOM_LLM_BASE_URL"] = "http://localhost:11434"
             config["CUSTOM_LLM_API_KEY"] = "dummy"
+    elif not config.get("CUSTOM_LLM_API_KEY"):
+        config["CUSTOM_LLM_API_KEY"] = "dummy"
 
     # 5. Fallbacks
     if "DEFAULT_STRATEGY" not in config:
@@ -3500,6 +3503,19 @@ def main():
     argv = sys.argv[1:]
     args = parse_args(argv)
 
+    # Handle --set directly against .env without adopting unrelated shell/env provider keys
+    if args.set:
+        env_vars = load_env()
+        for pair in args.set:
+            if "=" not in pair:
+                print(f"--set expects KEY=VALUE, got: {pair}", file=sys.stderr)
+                sys.exit(EXIT_USAGE)
+            k, v = pair.split("=", 1)
+            env_vars[k.strip().upper()] = v.strip()
+        save_env(env_vars)
+        print(json.dumps({"status": "config_written", "config_file": ENV_FILE}, indent=2))
+        sys.exit(EXIT_OK)
+
     # Resolve config using strict precedence
     config = resolve_config(args)
 
@@ -3510,16 +3526,6 @@ def main():
     if args.status:
         args.command = "status"
         args.json = True
-    if args.set:
-        for pair in args.set:
-            if "=" not in pair:
-                print(f"--set expects KEY=VALUE, got: {pair}", file=sys.stderr)
-                sys.exit(EXIT_USAGE)
-            k, v = pair.split("=", 1)
-            config[k.strip().upper()] = v.strip()
-        save_env(config)
-        print(json.dumps({"status": "config_written", "config_file": ENV_FILE}, indent=2))
-        sys.exit(EXIT_OK)
 
     # Default command
     if not args.command:

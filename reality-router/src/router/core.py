@@ -2313,7 +2313,7 @@ class RouterCore:
                 success=is_success,
                 query=request.query,
                 strategy=log_strategy,
-                agent_id=request.agent_id,
+                agent_id=request.agent_id or "default",
                 response_text=response.get("text", ""),
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
@@ -2353,6 +2353,47 @@ class RouterCore:
             logger.info(f"Logged routing decision for model {decision.model_id}")
         except Exception as e:
             logger.error(f"Error logging routing decision: {str(e)}")
+
+    @staticmethod
+    def _parse_sentiment_label(raw_text: str, reasoning_content: str = "") -> str:
+        """Parse happy/unhappy/indeterminate safely from normal or reasoning-model output."""
+        raw = (raw_text or "").strip()
+        reasoning = (reasoning_content or "").strip()
+        if not raw:
+            return "indeterminate"
+
+        is_reasoning_fallback = bool(reasoning and raw == reasoning)
+        cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.IGNORECASE | re.DOTALL)
+        cleaned = re.sub(r"<think>.*$", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+        cleaned = cleaned.replace("'", "").replace('"', "").replace("`", "").replace("*", "").strip().lower()
+        if not cleaned:
+            return "indeterminate"
+
+        verdict_re = re.compile(
+            r"^(?:(?:sentiment|answer|verdict|final|classification|result)\s*[:=-]\s*)?"
+            r"(happy|unhappy|indeterminate)[.!]?$"
+        )
+        lines = [ln.strip() for ln in cleaned.splitlines() if ln.strip()]
+        if lines:
+            m_last = verdict_re.match(lines[-1])
+            if m_last:
+                return m_last.group(1)
+
+        if is_reasoning_fallback:
+            return "indeterminate"
+
+        normalized = re.sub(r"\bnot\s+unhappy\b", "happy", cleaned)
+        matches = re.findall(r"\b(happy|unhappy|indeterminate)\b", normalized)
+        unique_matches = set(matches)
+        if unique_matches == {"happy"}:
+            return "happy"
+        if unique_matches == {"unhappy"}:
+            return "unhappy"
+        if unique_matches == {"indeterminate"}:
+            return "indeterminate"
+        if matches and len(normalized) <= 120:
+            return matches[-1]
+        return "indeterminate"
 
     async def assess_user_sentiment(self, request: RoutingRequest) -> Optional[str]:
         """Assess user sentiment based on conversation history for feedback"""
@@ -2440,6 +2481,8 @@ class RouterCore:
 
             # Allow using a model from adapters even if it is disabled for general routing
             if not sentiment_id or sentiment_id not in self.adapters:
+                if not self.models:
+                    return None
                 sentiment_id = min(
                     self.models.keys(), key=lambda m: self.models[m].get("cost", 0)
                 )
@@ -2454,23 +2497,15 @@ class RouterCore:
                     parameters={
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": 256,
-                        "temperature": 0,
                     },
                     authorization=request.authorization,
                 )
             )
 
-            raw_txt = str(resp.get("text", "")).lower().strip()
-            txt = raw_txt.replace("'", "").replace('"', "").replace("`", "").strip()
-
-            # Improved keyword matching to avoid false positives in reasoning
-            # Ensure we match the word correctly even if it's in a sentence
-            if re.search(r"\bunhappy\b", txt):
-                sentiment = "unhappy"
-            elif re.search(r"\bhappy\b", txt):
-                sentiment = "happy"
-            else:
-                sentiment = "indeterminate"
+            sentiment = self._parse_sentiment_label(
+                str(resp.get("text", "") or ""),
+                str(resp.get("reasoning_content", "") or ""),
+            )
 
             logger.info(f"Assessed user sentiment: {sentiment}")
             return sentiment
@@ -2487,7 +2522,7 @@ class RouterCore:
             last_log = (
                 db.query(RoutingLog)
                 .filter(RoutingLog.agent_id == session_id)
-                .filter(RoutingLog.reality_check_id.isnot(None))
+                .filter(RoutingLog.success.is_(True))
                 .filter(RoutingLog.user_sentiment.is_(None))
                 .order_by(RoutingLog.timestamp.desc())
                 .first()
@@ -2497,6 +2532,9 @@ class RouterCore:
                 sentiment_tag = f"observation_{obs_state}"
                 last_log.user_sentiment = sentiment_tag
                 db.commit()
+
+                if not last_log.reality_check_id:
+                    return
 
                 rc_id_str = str(last_log.reality_check_id)
                 fb_strategy = last_log.strategy or strategy or "expected_utility"
@@ -2708,8 +2746,8 @@ class RouterCore:
                 try:
                     last_log = (
                         db.query(RoutingLog)
-                        .filter(RoutingLog.agent_id == request.agent_id)
-                        .filter(RoutingLog.reality_check_id.isnot(None))
+                        .filter(RoutingLog.agent_id == (request.agent_id or "default"))
+                        .filter(RoutingLog.success.is_(True))
                         .filter(RoutingLog.user_sentiment.is_(None))
                         .order_by(RoutingLog.timestamp.desc())
                         .first()
@@ -2722,78 +2760,79 @@ class RouterCore:
                             f"Updated log entry {last_log.id} sentiment to {sentiment}"
                         )
 
-                        try:
-                            # Use string ID for feedback as expected by Reality Router API
-                            rc_id_str = str(last_log.reality_check_id)
+                        if last_log.reality_check_id is not None:
+                            try:
+                                # Use string ID for feedback as expected by Reality Router API
+                                rc_id_str = str(last_log.reality_check_id)
 
-                            # Determine correct URL based on the log's original strategy
-                            fb_strategy = (
-                                last_log.strategy or strategy or "expected_utility"
-                            )
-                            url = (
-                                get_routing_url()
-                                if fb_strategy == "expected_utility"
-                                else get_rerouting_url()
-                            )
+                                # Determine correct URL based on the log's original strategy
+                                fb_strategy = (
+                                    last_log.strategy or strategy or "expected_utility"
+                                )
+                                url = (
+                                    get_routing_url()
+                                    if fb_strategy == "expected_utility"
+                                    else get_rerouting_url()
+                                )
 
-                            feedback_val = 1 if sentiment == "happy" else 0
-                            fb_payload = {
-                                "decision_id": int(rc_id_str),
-                                "feedback": feedback_val,
-                            }
+                                feedback_val = 1 if sentiment == "happy" else 0
+                                fb_payload = {
+                                    "decision_id": int(rc_id_str),
+                                    "feedback": feedback_val,
+                                }
 
-                            logger.info(
-                                f"Sending feedback to Reality Router ({fb_strategy}) for decision {rc_id_str}: {sentiment} (Payload: {fb_payload})"
-                            )
-                            # Use stored token from settings or forwarded header
-                            auth_token = get_reality_check_token()
-                            headers = {
-                                "Content-Type": "application/json",
-                                "Accept": "application/json",
-                                "Expect": "",
-                                "User-Agent": "curl/7.68.0",
-                                "Connection": "close",
-                            }
-                            if auth_token and auth_token != "local_unauthenticated":
-                                # Ensure token has Bearer/Basic prefix as required by backend SSO
-                                full_token = (
-                                    auth_token
-                                    if (
-                                        auth_token.startswith("Bearer ")
-                                        or auth_token.startswith("Basic ")
+                                logger.info(
+                                    f"Sending feedback to Reality Router ({fb_strategy}) for decision {rc_id_str}: {sentiment} (Payload: {fb_payload})"
+                                )
+                                # Use stored token from settings or forwarded header
+                                auth_token = get_reality_check_token()
+                                headers = {
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                    "Expect": "",
+                                    "User-Agent": "curl/7.68.0",
+                                    "Connection": "close",
+                                }
+                                if auth_token and auth_token != "local_unauthenticated":
+                                    # Ensure token has Bearer/Basic prefix as required by backend SSO
+                                    full_token = (
+                                        auth_token
+                                        if (
+                                            auth_token.startswith("Bearer ")
+                                            or auth_token.startswith("Basic ")
+                                        )
+                                        else f"Bearer {auth_token}"
                                     )
-                                    else f"Bearer {auth_token}"
-                                )
-                                # Always use bypass header as standard Authorization is stripped by Azure
-                                headers["X-Reality-Check-Token"] = full_token
-                                logger.info(
-                                    f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token is configured/attached securely)"
-                                )
-                            else:
-                                logger.warning(
-                                    "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
-                                )
+                                    # Always use bypass header as standard Authorization is stripped by Azure
+                                    headers["X-Reality-Check-Token"] = full_token
+                                    logger.info(
+                                        f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token is configured/attached securely)"
+                                    )
+                                else:
+                                    logger.warning(
+                                        "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
+                                    )
 
-                            async with httpx.AsyncClient(
-                                http2=False, trust_env=False
-                            ) as client:
-                                fb_resp = await client.post(
-                                    f"{url}/feedback",
-                                    json=fb_payload,
-                                    headers=headers,
-                                    timeout=60.0,
+                                async with httpx.AsyncClient(
+                                    http2=False, trust_env=False
+                                ) as client:
+                                    fb_resp = await client.post(
+                                        f"{url}/feedback",
+                                        json=fb_payload,
+                                        headers=headers,
+                                        timeout=60.0,
+                                    )
+                                    fb_status = fb_resp.status_code
+                                    fb_text = fb_resp.text
+                                    logger.info(
+                                        f"Reality Router feedback response: {fb_status}"
+                                    )
+                                    if fb_status != 200:
+                                        logger.warning(f"Feedback error detail: {fb_text}")
+                            except ValueError:
+                                logger.error(
+                                    f"Invalid reality_check_id format: {last_log.reality_check_id}"
                                 )
-                                fb_status = fb_resp.status_code
-                                fb_text = fb_resp.text
-                                logger.info(
-                                    f"Reality Router feedback response: {fb_status}"
-                                )
-                                if fb_status != 200:
-                                    logger.warning(f"Feedback error detail: {fb_text}")
-                        except ValueError:
-                            logger.error(
-                                f"Invalid reality_check_id format: {last_log.reality_check_id}"
-                            )
                 except Exception as e:
                     logger.error(f"Error sending feedback to Reality Router: {e}")
 
@@ -3185,59 +3224,6 @@ class RouterCore:
 
                     # Record success in circuit breaker
                     self.load_balancer.record_success(decision.model_id)
-
-                    # Automatically give happy feedback to successful tool calls
-                    if response.get("tool_calls") and decision.reality_check_id:
-                        try:
-                            rc_id_str = str(decision.reality_check_id)
-                            # Match sequential curl behavior with fresh connection
-                            async with httpx.AsyncClient(
-                                http2=False, trust_env=False
-                            ) as client:
-                                url = (
-                                    get_routing_url()
-                                    if strategy == "expected_utility"
-                                    else get_rerouting_url()
-                                )
-                                auth_token = get_reality_check_token()
-                                headers = {
-                                    "Content-Type": "application/json",
-                                    "Accept": "application/json",
-                                    "Expect": "",
-                                    "User-Agent": "curl/7.68.0",
-                                    "Connection": "close",
-                                }
-                                if auth_token and auth_token != "local_unauthenticated":
-                                    # Ensure token has Bearer/Basic prefix as required by backend SSO
-                                    full_token = (
-                                        auth_token
-                                        if (
-                                            auth_token.startswith("Bearer ")
-                                            or auth_token.startswith("Basic ")
-                                        )
-                                        else f"Bearer {auth_token}"
-                                    )
-                                    # Always use bypass header as standard Authorization is stripped by Azure
-                                    headers["X-Reality-Check-Token"] = full_token
-                                    logger.info(
-                                        f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token is configured/attached securely)"
-                                    )
-                                else:
-                                    logger.warning(
-                                        "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
-                                    )
-
-                                await client.post(
-                                    f"{url}/feedback",
-                                    json={
-                                        "decision_id": int(rc_id_str),
-                                        "feedback": 1,
-                                    },
-                                    headers=headers,
-                                    timeout=60.0,
-                                )
-                        except Exception as fe:
-                            logger.error(f"Auto-positive feedback failed: {fe}")
 
                     # --- STRIP FRAGILE THOUGHT SIGNATURES ---
                     if response.get("tool_calls"):
@@ -3821,6 +3807,59 @@ class RouterCore:
 
                         # If we reached here, this model is deemed sufficient, stop escalation.
                         pass
+
+                    # Automatically give happy feedback to successful tool calls
+                    if response.get("tool_calls") and decision.reality_check_id:
+                        try:
+                            rc_id_str = str(decision.reality_check_id)
+                            # Match sequential curl behavior with fresh connection
+                            async with httpx.AsyncClient(
+                                http2=False, trust_env=False
+                            ) as client:
+                                url = (
+                                    get_routing_url()
+                                    if strategy == "expected_utility"
+                                    else get_rerouting_url()
+                                )
+                                auth_token = get_reality_check_token()
+                                headers = {
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                    "Expect": "",
+                                    "User-Agent": "curl/7.68.0",
+                                    "Connection": "close",
+                                }
+                                if auth_token and auth_token != "local_unauthenticated":
+                                    # Ensure token has Bearer/Basic prefix as required by backend SSO
+                                    full_token = (
+                                        auth_token
+                                        if (
+                                            auth_token.startswith("Bearer ")
+                                            or auth_token.startswith("Basic ")
+                                        )
+                                        else f"Bearer {auth_token}"
+                                    )
+                                    # Always use bypass header as standard Authorization is stripped by Azure
+                                    headers["X-Reality-Check-Token"] = full_token
+                                    logger.info(
+                                        f"Attaching headers: {list(headers.keys())} for provider: {settings.reality_check_provider} (Token is configured/attached securely)"
+                                    )
+                                else:
+                                    logger.warning(
+                                        "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
+                                    )
+
+                                await client.post(
+                                    f"{url}/feedback",
+                                    json={
+                                        "decision_id": int(rc_id_str),
+                                        "feedback": 1,
+                                    },
+                                    headers=headers,
+                                    timeout=60.0,
+                                )
+                        except Exception as fe:
+                            logger.error(f"Auto-positive feedback failed: {fe}")
 
                     # Log successful decision
                     actual_cost = (

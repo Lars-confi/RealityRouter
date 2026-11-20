@@ -170,6 +170,27 @@ def classify_observation(messages: List[Dict[str, Any]]) -> str:
     if not messages or not isinstance(messages, list):
         return "unknown"
 
+    # Guard: only classify as observation when the latest message is itself an observation
+    latest_message = messages[-1]
+    if not isinstance(latest_message, dict):
+        return "unknown"
+    latest_role = latest_message.get("role", "")
+    latest_content = str(latest_message.get("content", ""))
+    is_observation = (
+        latest_role in ("tool", "function")
+        or bool(latest_message.get("tool_call_id"))
+        or "function_call_output" in latest_message
+        or (
+            latest_role == "user"
+            and any(
+                prefix in latest_content
+                for prefix in ["[Action Result", "Command output:", "Observation:"]
+            )
+        )
+    )
+    if not is_observation:
+        return "unknown"
+
     observation_texts = _extract_observation_texts(messages)
     if not observation_texts:
         return "unknown"
@@ -218,12 +239,6 @@ def classify_observation(messages: List[Dict[str, Any]]) -> str:
     for pattern in failure_patterns:
         if re.search(pattern, latest, re.IGNORECASE):
             return "failure"
-
-    # If there is observation content without errors, consider it progress
-    if latest.strip():
-        return "progress"
-
-    return "unknown"
 
     # If there is observation content without errors, consider it progress
     if latest.strip():

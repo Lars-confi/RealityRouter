@@ -286,9 +286,13 @@ async def get_metrics_summary(window: Optional[str] = "all", db: Session = Depen
                 model_stats[model_id]["success_count"] += 1
 
             if log.user_sentiment:
-                model_stats[model_id]["feedback_count"] += 1
-                if log.user_sentiment == "happy":
-                    model_stats[model_id]["positive_feedback_count"] += 1
+                sentiment = (log.user_sentiment or "").strip().lower()
+                POSITIVE_FEEDBACK_SENTIMENTS = {"happy", "observation_success", "observation_progress"}
+                NEGATIVE_FEEDBACK_SENTIMENTS = {"unhappy", "observation_failure", "observation_stagnation"}
+                if sentiment in POSITIVE_FEEDBACK_SENTIMENTS or sentiment in NEGATIVE_FEEDBACK_SENTIMENTS:
+                    model_stats[model_id]["feedback_count"] += 1
+                    if sentiment in POSITIVE_FEEDBACK_SENTIMENTS:
+                        model_stats[model_id]["positive_feedback_count"] += 1
 
             # Agent grouping
             a_id = log.agent_id or "default"

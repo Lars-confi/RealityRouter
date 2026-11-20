@@ -15,8 +15,12 @@ command_exists() {
 # --- Configuration ---
 # IMPORTANT: Replace this with the actual raw content URL of your repository.
 # For GitHub, it would look like: https://raw.githubusercontent.com/user/repo/main
-REPO_URL="https://github.com/Lars-confi/RealityRouter"
-TARGET_DIR="$HOME/.reality_router"
+REPO_URL="${REALITY_ROUTER_REPO_URL:-https://github.com/Lars-confi/RealityRouter}"
+BRANCH="${REALITY_ROUTER_BRANCH:-main}"
+TARGET_DIR="${REALITY_ROUTER_HOME:-$HOME/.reality_router}"
+BIN_DIR="${REALITY_ROUTER_BIN_DIR:-$HOME/.local/bin}"
+BIN_NAME="${REALITY_ROUTER_BIN_NAME:-reality-router}"
+SKIP_SHELL_PROFILE="${REALITY_ROUTER_SKIP_SHELL_PROFILE:-0}"
 
 # Detect OS
 OS_TYPE="linux"
@@ -52,9 +56,9 @@ echo "All dependencies are satisfied."
 
 
 # --- Installation ---
-# Handle migration from old hyphenated directory if it exists
+# Handle migration from old hyphenated directory if installing to the default location
 OLD_DIR="$HOME/.reality-router"
-if [ -d "$OLD_DIR" ] && [ "$OLD_DIR" != "$TARGET_DIR" ]; then
+if [ "$TARGET_DIR" = "$HOME/.reality_router" ] && [ -d "$OLD_DIR" ] && [ "$OLD_DIR" != "$TARGET_DIR" ]; then
     echo "Migrating installation from $OLD_DIR to $TARGET_DIR..."
     if [ ! -d "$TARGET_DIR" ]; then
         mv "$OLD_DIR" "$TARGET_DIR"
@@ -67,22 +71,23 @@ fi
 
 if [ -d "$TARGET_DIR/.git" ]; then
     echo "Found an existing installation in $TARGET_DIR."
-    echo "Pulling latest changes from the repository..."
+    echo "Updating branch '$BRANCH' from $REPO_URL..."
     cd "$TARGET_DIR"
+    git remote set-url origin "$REPO_URL"
     git fetch --all
-    git reset --hard origin/main
-    git pull
+    git checkout -B "$BRANCH" "origin/$BRANCH"
+    git reset --hard "origin/$BRANCH"
 else
-    echo "Cloning repository to $TARGET_DIR..."
+    echo "Cloning repository ($BRANCH) to $TARGET_DIR..."
     if [ -d "$TARGET_DIR" ] && [ "$(ls -A "$TARGET_DIR")" ]; then
         # Directory exists and is not empty (likely data), so we init and fetch
         git init "$TARGET_DIR"
         cd "$TARGET_DIR"
         git remote add origin "$REPO_URL"
-        git fetch
-        git checkout -f main
+        git fetch origin "$BRANCH"
+        git checkout -f -B "$BRANCH" "origin/$BRANCH"
     else
-        git clone "$REPO_URL" "$TARGET_DIR"
+        git clone --branch "$BRANCH" "$REPO_URL" "$TARGET_DIR"
         cd "$TARGET_DIR"
     fi
 fi
@@ -109,8 +114,10 @@ fi
 
 echo "Installing project dependencies from requirements.txt..."
 # Upgrade pip to prevent issues with older versions
-pip install --no-cache-dir --upgrade pip --quiet
-pip install --no-cache-dir -r "reality-router/requirements.txt"
+if [ "${REALITY_ROUTER_SKIP_PIP:-0}" != "1" ]; then
+    pip install --no-cache-dir --upgrade pip --quiet
+    pip install --no-cache-dir -r "reality-router/requirements.txt"
+fi
 
 echo "Installation of dependencies complete."
 
@@ -118,14 +125,15 @@ echo "Installation of dependencies complete."
 deactivate
 
 # --- Executable Wrapper Setup ---
-echo "Creating real executable wrapper at ~/.local/bin/reality-router..."
-mkdir -p "$HOME/.local/bin"
-WRAPPER_PATH="$HOME/.local/bin/reality-router"
+echo "Creating real executable wrapper at $BIN_DIR/$BIN_NAME..."
+mkdir -p "$BIN_DIR"
+WRAPPER_PATH="$BIN_DIR/$BIN_NAME"
 
-cat << 'EOF' > "$WRAPPER_PATH"
+cat << EOF > "$WRAPPER_PATH"
 #!/bin/bash
-TARGET_DIR="$HOME/.reality_router"
-exec "$TARGET_DIR/venv/bin/python" "$TARGET_DIR/start_router.py" "$@"
+TARGET_DIR="\${REALITY_ROUTER_HOME:-$TARGET_DIR}"
+export REALITY_ROUTER_HOME="\$TARGET_DIR"
+exec "\$TARGET_DIR/venv/bin/python" "\$TARGET_DIR/start_router.py" "\$@"
 EOF
 
 chmod +x "$WRAPPER_PATH"
@@ -148,7 +156,7 @@ else
     echo "  cd $TARGET_DIR && source venv/bin/activate && python start_router.py"
 fi
 
-if [ -n "$SHELL_PROFILE" ]; then
+if [ "$SKIP_SHELL_PROFILE" != "1" ] && [ -n "$SHELL_PROFILE" ]; then
     # Ensure ~/.local/bin is in PATH
     if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
         echo "Adding ~/.local/bin to PATH in $SHELL_PROFILE..."

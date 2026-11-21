@@ -1988,7 +1988,7 @@ class RouterCore:
                 # ):
                 #     continue
                 recent = (
-                    db.query(RoutingLog)
+                    db.query(RoutingLog.time, RoutingLog.completion_tokens)
                     .filter(RoutingLog.model_id == mid, RoutingLog.time != None)
                     .order_by(RoutingLog.timestamp.desc())
                     .limit(20)

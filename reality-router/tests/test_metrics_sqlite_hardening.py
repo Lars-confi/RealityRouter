@@ -44,6 +44,8 @@ def test_sqlite_wal_busy_timeout_and_indexes_initialized(tmp_path):
         assert int(synchronous) == 1
         assert "ix_routing_logs_timestamp" in indexes
         assert "ix_routing_logs_success_timestamp" in indexes
+        assert "ix_routing_logs_model_timestamp" in indexes
+        assert "ix_routing_logs_agent_timestamp" in indexes
 
         # Second init_db call must remain idempotent
         init_db(eng)
@@ -208,5 +210,153 @@ def test_sqlite_concurrent_writes_and_summary_reads(tmp_path):
             assert final_summary.total_requests == num_writers * writes_per_worker
         finally:
             db.close()
+    finally:
+        eng.dispose()
+
+
+def test_load_balancer_performance_selection_projects_scalar_columns(tmp_path):
+    """LoadBalancer.get_next_model_performance_based selects only (success, time) without blobs."""
+    from src.router.load_balancer import LoadBalancer
+
+    eng, session_factory = _make_temp_db(tmp_path, "lb_proj.db")
+    huge_blob = "Y" * 10000
+    try:
+        db = session_factory()
+        try:
+            db.add_all(
+                [
+                    RoutingLog(
+                        query=huge_blob,
+                        model_id="m-fast",
+                        model_name="Fast",
+                        expected_utility=80.0,
+                        cost=0.001,
+                        time=0.2,
+                        probability=0.9,
+                        success=True,
+                        request_payload=huge_blob,
+                        response_payload=huge_blob,
+                        features_json=huge_blob,
+                    ),
+                    RoutingLog(
+                        query=huge_blob,
+                        model_id="m-slow",
+                        model_name="Slow",
+                        expected_utility=80.0,
+                        cost=0.001,
+                        time=4.0,
+                        probability=0.9,
+                        success=True,
+                        request_payload=huge_blob,
+                        response_payload=huge_blob,
+                        features_json=huge_blob,
+                    ),
+                ]
+            )
+            db.commit()
+
+            lb = LoadBalancer()
+            lb.add_model("m-fast", "Fast", weight=1.0)
+            lb.add_model("m-slow", "Slow", weight=1.0)
+
+            executed_sql = []
+
+            @event.listens_for(eng, "before_cursor_execute")
+            def _capture(_conn, _cursor, statement, _params, _context, _executemany):
+                executed_sql.append(statement)
+
+            chosen = lb.get_next_model_performance_based(db)
+        finally:
+            db.close()
+
+        assert chosen == "m-fast"
+        assert len(executed_sql) >= 2
+        for stmt in executed_sql:
+            low = stmt.lower()
+            for col in ("request_payload", "response_payload", "response_text", "features_json", "routing_context"):
+                assert col not in low, f"LoadBalancer SQL unexpectedly selected {col}: {stmt}"
+    finally:
+        eng.dispose()
+
+
+def test_router_core_recent_stats_query_projects_scalar_columns(tmp_path, monkeypatch):
+    """RouterCore.get_ranked_models projects only (time, completion_tokens) when reading model history."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    import src.router.core as core_mod
+    from src.models.routing import RoutingRequest
+
+    eng, session_factory = _make_temp_db(tmp_path, "core_proj.db")
+    huge_blob = "Z" * 10000
+    try:
+        db = session_factory()
+        try:
+            db.add(
+                RoutingLog(
+                    query=huge_blob,
+                    model_id="m-local",
+                    model_name="Local Model",
+                    expected_utility=70.0,
+                    cost=0.0,
+                    time=1.25,
+                    probability=0.9,
+                    success=True,
+                    completion_tokens=200,
+                    request_payload=huge_blob,
+                    response_payload=huge_blob,
+                    response_text=huge_blob,
+                    features_json=huge_blob,
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        monkeypatch.setattr(core_mod, "SessionLocal", session_factory)
+        router = core_mod.RouterCore.__new__(core_mod.RouterCore)
+        router.models = {
+            "m-local": {
+                "name": "Local Model",
+                "cost": 0.0,
+                "prompt_cost": 0.0,
+                "completion_cost": 0.0,
+                "time": 10.0,
+                "probability": 0.8,
+                "provider": "ollama",
+                "supports_function_calling": True,
+                "is_local": True,
+            }
+        }
+        router.load_balancer = MagicMock()
+        router.load_balancer.is_model_healthy.return_value = True
+        router.utility_calculator = core_mod.ExpectedUtilityCalculator(cost_sensitivity=0.5, time_sensitivity=0.5)
+        router.extract_coding_features = MagicMock(return_value={"model_id": "m-local"})
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"prob_true": 0.9, "uncertainty": 0.05, "decision_id": "dec-1"}
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        monkeypatch.setattr(core_mod.httpx, "AsyncClient", lambda **kwargs: mock_client)
+
+        executed_sql = []
+
+        @event.listens_for(eng, "before_cursor_execute")
+        def _capture(_conn, _cursor, statement, _params, _context, _executemany):
+            executed_sql.append(statement)
+
+        req = RoutingRequest(query="hello", strategy="expected_utility", parameters={"messages": [{"role": "user", "content": "hello"}]})
+        ranked = asyncio.run(router.get_ranked_models(req, strategy="expected_utility"))
+
+        assert len(ranked) == 1
+        assert ranked[0].model_id == "m-local"
+        assert abs(ranked[0].time - 1.25) < 1e-6
+        assert len(executed_sql) >= 1
+        for stmt in executed_sql:
+            low = stmt.lower()
+            for col in ("request_payload", "response_payload", "response_text", "features_json", "routing_context"):
+                assert col not in low, f"RouterCore SQL unexpectedly selected {col}: {stmt}"
     finally:
         eng.dispose()

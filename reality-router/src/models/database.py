@@ -152,5 +152,17 @@ def init_db(target_engine=None):
                     "ON routing_logs (success, timestamp)"
                 )
             )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_routing_logs_model_timestamp "
+                    "ON routing_logs (model_id, timestamp)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_routing_logs_agent_timestamp "
+                    "ON routing_logs (agent_id, timestamp)"
+                )
+            )
     except Exception:
         pass

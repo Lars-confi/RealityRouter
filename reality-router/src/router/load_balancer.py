@@ -131,7 +131,7 @@ class LoadBalancer:
                 # Query recent performance metrics from database
                 # Get the last 100 requests for this model to compute recent stats
                 recent_logs = (
-                    db.query(RoutingLog)
+                    db.query(RoutingLog.success, RoutingLog.time)
                     .filter(RoutingLog.model_id == model_id)
                     .order_by(RoutingLog.timestamp.desc())
                     .limit(100)

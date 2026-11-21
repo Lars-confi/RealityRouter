@@ -204,8 +204,23 @@ async def get_metrics_summary(window: Optional[str] = "all", db: Session = Depen
     Get summary of routing metrics from database
     """
     try:
-        # Get query for routing logs
-        query = db.query(RoutingLog)
+        # Project only scalar columns needed for summary aggregation to avoid
+        # loading large payload/text/features blobs across the entire table.
+        query = db.query(
+            RoutingLog.model_id,
+            RoutingLog.model_name,
+            RoutingLog.agent_id,
+            RoutingLog.cost,
+            RoutingLog.potential_cost,
+            RoutingLog.time,
+            RoutingLog.expected_utility,
+            RoutingLog.probability,
+            RoutingLog.success,
+            RoutingLog.prompt_tokens,
+            RoutingLog.completion_tokens,
+            RoutingLog.total_tokens,
+            RoutingLog.user_sentiment,
+        )
         
         if window == "24h":
             since = datetime.utcnow() - timedelta(hours=24)
@@ -354,9 +369,25 @@ async def get_metrics_summary(window: Optional[str] = "all", db: Session = Depen
             for log in logs
         )
 
-        # Get recent events (last 5)
+        # Get recent events (last 5) without loading large request/response/feature blobs
         recent_logs = (
-            db.query(RoutingLog).order_by(RoutingLog.timestamp.desc()).limit(5).all()
+            db.query(
+                RoutingLog.timestamp,
+                RoutingLog.success,
+                RoutingLog.agent_id,
+                RoutingLog.model_name,
+                RoutingLog.model_id,
+                RoutingLog.time,
+                RoutingLog.cost,
+                RoutingLog.expected_utility,
+                RoutingLog.prompt_tokens,
+                RoutingLog.completion_tokens,
+                RoutingLog.total_tokens,
+                RoutingLog.routing_context,
+            )
+            .order_by(RoutingLog.timestamp.desc())
+            .limit(5)
+            .all()
         )
         recent_events = []
         for log in recent_logs:
@@ -384,7 +415,12 @@ async def get_metrics_summary(window: Optional[str] = "all", db: Session = Depen
         api_key_alerts = []
         try:
             failed_logs = (
-                db.query(RoutingLog)
+                db.query(
+                    RoutingLog.model_id,
+                    RoutingLog.model_name,
+                    RoutingLog.timestamp,
+                    RoutingLog.response_payload,
+                )
                 .filter(RoutingLog.success == False)
                 .order_by(RoutingLog.timestamp.desc())
                 .limit(20)

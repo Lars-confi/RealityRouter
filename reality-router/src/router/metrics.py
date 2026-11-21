@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.models.database import ModelPerformance, RoutingLog, get_db
+from src.models.database import ModelPerformance, RoutingLog, get_db, utcnow
 from src.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -109,7 +109,7 @@ class MetricsCollector:
         try:
             # Create a new routing log entry
             log_entry = RoutingLog(
-                timestamp=datetime.utcnow(),
+                timestamp=utcnow(),
                 model_id=model_id,
                 model_name=model_name,
                 expected_utility=expected_utility,
@@ -175,7 +175,7 @@ class MetricsCollector:
                 success_rate=1.0 if success else 0.0,
                 average_time=time,
                 total_cost=cost,
-                last_updated=datetime.utcnow(),
+                last_updated=utcnow(),
             )
             db.add(perf)
         else:
@@ -192,7 +192,7 @@ class MetricsCollector:
 
             # Update total cost
             perf.total_cost += cost
-            perf.last_updated = datetime.utcnow()
+            perf.last_updated = utcnow()
 
 
 metrics_collector = MetricsCollector()
@@ -223,13 +223,13 @@ async def get_metrics_summary(window: Optional[str] = "all", db: Session = Depen
         )
         
         if window == "24h":
-            since = datetime.utcnow() - timedelta(hours=24)
+            since = utcnow() - timedelta(hours=24)
             query = query.filter(RoutingLog.timestamp >= since)
         elif window == "7d":
-            since = datetime.utcnow() - timedelta(days=7)
+            since = utcnow() - timedelta(days=7)
             query = query.filter(RoutingLog.timestamp >= since)
         elif window == "30d":
-            since = datetime.utcnow() - timedelta(days=30)
+            since = utcnow() - timedelta(days=30)
             query = query.filter(RoutingLog.timestamp >= since)
             
         logs = query.all()
@@ -249,7 +249,7 @@ async def get_metrics_summary(window: Optional[str] = "all", db: Session = Depen
                 models={},
                 agents={},
                 recent_events=[],
-                timestamp=datetime.utcnow().isoformat(),
+                timestamp=utcnow().isoformat(),
                 api_key_alerts=None,
             )
 
@@ -473,7 +473,7 @@ async def get_metrics_summary(window: Optional[str] = "all", db: Session = Depen
             models=model_stats,
             agents=agent_stats,
             recent_events=recent_events,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=utcnow().isoformat(),
             api_key_alerts=api_key_alerts or None,
         )
     except Exception as e:

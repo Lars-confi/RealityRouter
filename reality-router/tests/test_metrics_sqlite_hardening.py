@@ -3,12 +3,12 @@
 import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 
-from src.models.database import RoutingLog, configure_sqlite_engine, init_db
+from src.models.database import RoutingLog, configure_sqlite_engine, init_db, utcnow
 from src.router.metrics import get_metrics_history, get_metrics_summary
 
 
@@ -57,7 +57,7 @@ def test_metrics_summary_projects_scalar_columns_without_loading_payload_blobs(t
     """get_metrics_summary aggregates accurately without selecting large payload/text/features blobs."""
     eng, session_factory = _make_temp_db(tmp_path, "projection.db")
     huge_blob = "X" * 10000
-    now = datetime.utcnow()
+    now = utcnow()
     try:
         db = session_factory()
         try:
@@ -367,7 +367,7 @@ def test_metrics_history_returns_bounded_scalar_rows_from_db(tmp_path):
     """GET /metrics/history returns newest-first scalar rows from routing_logs without payload blobs."""
     eng, session_factory = _make_temp_db(tmp_path, "history.db")
     huge_blob = "H" * 10000
-    base_ts = datetime.utcnow() - timedelta(minutes=10)
+    base_ts = utcnow() - timedelta(minutes=10)
     try:
         db = session_factory()
         try:

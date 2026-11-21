@@ -5,7 +5,7 @@ Data models for routing requests and responses
 import datetime
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class RoutingRequest(BaseModel):
@@ -17,13 +17,14 @@ class RoutingRequest(BaseModel):
     authorization: Optional[str] = None
     timestamp: Optional[datetime.datetime] = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "query": "Explain quantum computing in simple terms",
                 "parameters": {"max_tokens": 100, "temperature": 0.7},
             }
         }
+    )
 
 
 class RoutingResponse(BaseModel):
@@ -39,8 +40,8 @@ class RoutingResponse(BaseModel):
     response: Dict[str, Any]
     timestamp: Optional[datetime.datetime] = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_id": "openai_gpt-3.5-turbo",
                 "model_name": "GPT-3.5 Turbo",
@@ -58,3 +59,4 @@ class RoutingResponse(BaseModel):
                 },
             }
         }
+    )

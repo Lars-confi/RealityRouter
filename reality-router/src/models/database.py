@@ -3,7 +3,7 @@ Database models for LLM routing system
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -17,9 +17,12 @@ from sqlalchemy import (
     event,
     text,
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
+
+def utcnow() -> datetime:
+    """Return naive UTC datetime without deprecated datetime.utcnow()."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 # Create the base class for database models
 Base = declarative_base()
 
@@ -30,7 +33,7 @@ class RoutingLog(Base):
     __tablename__ = "routing_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=utcnow)
     query = Column(Text, nullable=False)
     agent_id = Column(String(100))
     model_id = Column(String(100), nullable=False)
@@ -77,7 +80,7 @@ class ModelPerformance(Base):
     total_cost = Column(Float, default=0.0)
     average_time = Column(Float, default=0.0)
     success_rate = Column(Float, default=0.0)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=utcnow)
 
     def __repr__(self):
         return f"<ModelPerformance(id={self.id}, model={self.model_name})>"

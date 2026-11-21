@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Union
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from src.config.settings import get_settings, load_models_from_config
@@ -1696,7 +1696,7 @@ class RouterCore:
             features["struct_dep_count"] = float(
                 len(re.findall(r"^(import|from)\s", query, re.M))
             )
-        except:
+        except Exception:
             pass
 
         # Trace analysis from messages
@@ -3094,7 +3094,7 @@ class RouterCore:
                                                 },
                                             }
                                         )
-                            except:
+                            except Exception:
                                 continue
 
                         if rescued_calls:
@@ -3280,7 +3280,7 @@ class RouterCore:
                                 tc = response["tool_calls"][0]
                                 args = tc.get("function", {}).get("arguments", "")
                                 partial_content = f"```json\n{args}"
-                            except:
+                            except Exception:
                                 pass
 
                         cont_messages.append(
@@ -4856,8 +4856,7 @@ class ResponsesRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
     agent_id: Optional[str] = "default"
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 def _responses_transformer():

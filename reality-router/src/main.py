@@ -4,6 +4,8 @@ Main entry point for the Reality Router application
 
 import logging
 import time
+import asyncio
+from contextlib import asynccontextmanager
 
 STARTUP_TIME = time.time()
 
@@ -12,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.models.database import init_db
 from src.router.auth import log_auth_status, require_api_key
-from src.router.core import get_agent_card
+from src.router.core import get_agent_card, router_core
 from src.router.core import router as router_router
 from src.router.metrics import router as metrics_router
 
@@ -28,11 +30,19 @@ litellm.suppress_debug_info = True
 # Initialize database
 init_db()
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    log_auth_status()
+    asyncio.create_task(router_core.run_capability_probes())
+    yield
+
+
 # Create the FastAPI application
 app = FastAPI(
     title="Reality Router",
     description="Intelligent routing system for Language Model requests",
     version="0.0.9",
+    lifespan=lifespan,
 )
 
 # Inbound API-key auth; a no-op unless ROUTER_API_KEYS is set. Registered
@@ -55,17 +65,6 @@ app.include_router(metrics_router, prefix="/metrics", tags=["metrics"])
 
 # Discovery endpoints
 app.get("/.well-known/agent-card.json", tags=["discovery"])(get_agent_card)
-
-
-import asyncio
-
-from src.router.core import router_core
-
-
-@app.on_event("startup")
-async def startup_event():
-    log_auth_status()
-    asyncio.create_task(router_core.run_capability_probes())
 
 
 @app.get("/")

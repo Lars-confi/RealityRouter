@@ -260,6 +260,7 @@ async def get_metrics_summary(window: Optional[str] = "all", db: Session = Depen
         total_completion_tokens = sum(log.completion_tokens or 0 for log in logs)
         total_tokens = sum(log.total_tokens or 0 for log in logs)
         total_time = sum(log.time for log in logs)
+        total_utility = sum(log.expected_utility or 0.0 for log in logs)
         success_count = sum(1 for log in logs if log.success)
 
         # Group by model and agent
@@ -357,6 +358,7 @@ async def get_metrics_summary(window: Optional[str] = "all", db: Session = Depen
         # Calculate averages
         avg_cost = total_cost / total_requests if total_requests > 0 else 0.0
         avg_time = total_time / total_requests if total_requests > 0 else 0.0
+        avg_utility = total_utility / total_requests if total_requests > 0 else 0.0
         success_rate = success_count / total_requests if total_requests > 0 else 0.0
 
         # Calculate potential max cost
@@ -465,7 +467,7 @@ async def get_metrics_summary(window: Optional[str] = "all", db: Session = Depen
             total_tokens=total_tokens,
             average_cost=avg_cost,
             average_time=avg_time,
-            average_utility=0.0,
+            average_utility=avg_utility,
             potential_max_cost=potential_max_cost,
             success_rate=success_rate,
             models=model_stats,
@@ -514,11 +516,61 @@ async def get_model_metrics(db: Session = Depends(get_db)):
 
 
 @router.get("/history")
-async def get_metrics_history():
+async def get_metrics_history(limit: int = 100, db: Session = Depends(get_db)):
     """
-    Get complete history of routing metrics
+    Get recent routing metrics history from database (scalar-projected, bounded).
     """
-    return metrics_collector.metrics_storage
+    try:
+        capped_limit = max(1, min(int(limit), 1000))
+        rows = (
+            db.query(
+                RoutingLog.id,
+                RoutingLog.timestamp,
+                RoutingLog.model_id,
+                RoutingLog.model_name,
+                RoutingLog.agent_id,
+                RoutingLog.expected_utility,
+                RoutingLog.cost,
+                RoutingLog.potential_cost,
+                RoutingLog.time,
+                RoutingLog.probability,
+                RoutingLog.success,
+                RoutingLog.prompt_tokens,
+                RoutingLog.completion_tokens,
+                RoutingLog.total_tokens,
+                RoutingLog.strategy,
+                RoutingLog.user_sentiment,
+            )
+            .order_by(RoutingLog.timestamp.desc(), RoutingLog.id.desc())
+            .limit(capped_limit)
+            .all()
+        )
+        return [
+            {
+                "id": r.id,
+                "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+                "model_id": r.model_id,
+                "model_name": r.model_name,
+                "agent_id": r.agent_id or "default",
+                "expected_utility": r.expected_utility or 0.0,
+                "cost": r.cost,
+                "potential_cost": r.potential_cost,
+                "time": r.time,
+                "probability": r.probability,
+                "success": r.success,
+                "prompt_tokens": r.prompt_tokens or 0,
+                "completion_tokens": r.completion_tokens or 0,
+                "total_tokens": r.total_tokens or 0,
+                "strategy": r.strategy,
+                "user_sentiment": r.user_sentiment,
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        logger.error(f"Error getting metrics history: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error retrieving metrics history: {str(e)}"
+        )
 
 
 @router.post("/log")

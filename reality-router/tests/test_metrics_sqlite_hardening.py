@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 
 from src.models.database import RoutingLog, configure_sqlite_engine, init_db
-from src.router.metrics import get_metrics_summary
+from src.router.metrics import get_metrics_history, get_metrics_summary
 
 
 def _make_temp_db(tmp_path, name="hardening.db"):
@@ -136,6 +136,7 @@ def test_metrics_summary_projects_scalar_columns_without_loading_payload_blobs(t
             assert forbidden_col not in agg_sql, f"Aggregation SQL unexpectedly selected {forbidden_col}: {agg_sql}"
 
         assert summary.total_requests == 2
+        assert abs(summary.average_utility - 62.5) < 1e-9
         assert abs(summary.total_cost - 0.03) < 1e-9
         assert abs(summary.potential_max_cost - 0.07) < 1e-9
         assert summary.total_tokens == 170
@@ -358,5 +359,70 @@ def test_router_core_recent_stats_query_projects_scalar_columns(tmp_path, monkey
             low = stmt.lower()
             for col in ("request_payload", "response_payload", "response_text", "features_json", "routing_context"):
                 assert col not in low, f"RouterCore SQL unexpectedly selected {col}: {stmt}"
+    finally:
+        eng.dispose()
+
+
+def test_metrics_history_returns_bounded_scalar_rows_from_db(tmp_path):
+    """GET /metrics/history returns newest-first scalar rows from routing_logs without payload blobs."""
+    eng, session_factory = _make_temp_db(tmp_path, "history.db")
+    huge_blob = "H" * 10000
+    base_ts = datetime.utcnow() - timedelta(minutes=10)
+    try:
+        db = session_factory()
+        try:
+            assert asyncio.run(get_metrics_history(limit=10, db=db)) == []
+
+            for i in range(5):
+                db.add(
+                    RoutingLog(
+                        timestamp=base_ts + timedelta(minutes=i),
+                        query=huge_blob,
+                        agent_id="agent-hist",
+                        model_id=f"m-{i}",
+                        model_name=f"Model {i}",
+                        expected_utility=50.0 + i * 10.0,
+                        cost=0.01 * (i + 1),
+                        potential_cost=0.05,
+                        time=0.5 + i * 0.1,
+                        probability=0.85,
+                        success=True,
+                        response_text=huge_blob,
+                        prompt_tokens=10,
+                        completion_tokens=20,
+                        total_tokens=30,
+                        request_payload=huge_blob,
+                        response_payload=huge_blob,
+                        routing_context=huge_blob,
+                        features_json=huge_blob,
+                        strategy="expected_utility",
+                        user_sentiment="happy" if i % 2 == 0 else None,
+                    )
+                )
+            db.commit()
+
+            executed_sql = []
+
+            @event.listens_for(eng, "before_cursor_execute")
+            def _capture(_conn, _cursor, statement, _params, _context, _executemany):
+                executed_sql.append(statement)
+
+            rows = asyncio.run(get_metrics_history(limit=3, db=db))
+            clamped_min = asyncio.run(get_metrics_history(limit=0, db=db))
+        finally:
+            db.close()
+
+        assert len(rows) == 3
+        assert [r["model_id"] for r in rows] == ["m-4", "m-3", "m-2"]
+        assert rows[0]["expected_utility"] == 90.0
+        assert rows[0]["agent_id"] == "agent-hist"
+        assert rows[0]["user_sentiment"] == "happy"
+        assert len(clamped_min) == 1
+        assert clamped_min[0]["model_id"] == "m-4"
+
+        assert len(executed_sql) >= 1
+        low_sql = executed_sql[0].lower()
+        for forbidden_col in ("request_payload", "response_payload", "response_text", "features_json", "routing_context"):
+            assert forbidden_col not in low_sql, f"History SQL unexpectedly selected {forbidden_col}: {executed_sql[0]}"
     finally:
         eng.dispose()

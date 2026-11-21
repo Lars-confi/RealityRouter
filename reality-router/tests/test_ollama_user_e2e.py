@@ -144,9 +144,26 @@ def _port_in_use(host: str, port: int) -> bool:
         return s.connect_ex((host, port)) == 0
 
 
-def _start_dev_server(home_dir: Path) -> subprocess.Popen:
-    assert not _port_in_use(DEV_ROUTER_HOST, DEV_ROUTER_PORT), (
-        f"Dev port {DEV_ROUTER_PORT} already in use before test start"
+def _allocate_e2e_port(host: str = DEV_ROUTER_HOST) -> int:
+    """Select a free localhost port for E2E tests (honors RR_E2E_PORT; never touches 8000)."""
+    env_port = os.environ.get("RR_E2E_PORT")
+    if env_port:
+        port = int(env_port)
+        assert port != 8000, "Refusing to use production port 8000 for E2E tests"
+        return port
+    if not _port_in_use(host, DEV_ROUTER_PORT):
+        return DEV_ROUTER_PORT
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((host, 0))
+        port = s.getsockname()[1]
+    assert port != 8000, "Refusing to use production port 8000 for E2E tests"
+    return port
+
+
+def _start_dev_server(home_dir: Path, port: int = DEV_ROUTER_PORT) -> subprocess.Popen:
+    router_url = f"http://{DEV_ROUTER_HOST}:{port}"
+    assert not _port_in_use(DEV_ROUTER_HOST, port), (
+        f"Dev port {port} already in use before test start"
     )
     proc = subprocess.Popen(
         [
@@ -157,7 +174,7 @@ def _start_dev_server(home_dir: Path) -> subprocess.Popen:
             "--host",
             DEV_ROUTER_HOST,
             "--port",
-            str(DEV_ROUTER_PORT),
+            str(port),
             "--no-access-log",
         ],
         cwd=str(REALITY_ROUTER_DIR),
@@ -172,7 +189,7 @@ def _start_dev_server(home_dir: Path) -> subprocess.Popen:
             out = proc.stdout.read() if proc.stdout else ""
             raise AssertionError(f"Dev server exited early ({proc.returncode}):\n{out}")
         try:
-            r = httpx.get(f"{DEV_ROUTER_URL}/health", timeout=1.5)
+            r = httpx.get(f"{router_url}/health", timeout=1.5)
             if r.status_code == 200:
                 return proc
         except Exception:
@@ -180,7 +197,7 @@ def _start_dev_server(home_dir: Path) -> subprocess.Popen:
         time.sleep(0.5)
     proc.terminate()
     out = proc.stdout.read() if proc.stdout else ""
-    raise AssertionError(f"Timed out waiting for dev server on {DEV_ROUTER_URL}:\n{out}")
+    raise AssertionError(f"Timed out waiting for dev server on {router_url}:\n{out}")
 
 
 def _stop_dev_server(proc: subprocess.Popen | None) -> None:
@@ -231,10 +248,12 @@ def test_ollama_live_ui_activation_routing_reset_and_restart(tmp_path):
     model_a, model_b = models[0], models[1]
     _write_ollama_env(tmp_path, enabled_models=[model_a])
 
+    port = _allocate_e2e_port()
+    router_url = f"http://{DEV_ROUTER_HOST}:{port}"
     proc = None
     try:
-        proc = _start_dev_server(tmp_path)
-        with httpx.Client(base_url=DEV_ROUTER_URL, timeout=120.0) as http:
+        proc = _start_dev_server(tmp_path, port=port)
+        with httpx.Client(base_url=router_url, timeout=120.0) as http:
             # 1. Dashboard HTML & control-center elements
             dash = http.get("/metrics/dashboard")
             assert dash.status_code == 200
@@ -396,11 +415,11 @@ def test_ollama_live_ui_activation_routing_reset_and_restart(tmp_path):
             assert after_reset_by_id[model_a]["status_category"] == "disabled"
             assert http.get("/metrics/strategy").json()["strategy"] == "tiered_assessment"
 
-        # 10. Server restart persistence on 127.0.0.1:18080
+        # 10. Server restart persistence on the same isolated localhost port
         _stop_dev_server(proc)
         proc = None
-        proc = _start_dev_server(tmp_path)
-        with httpx.Client(base_url=DEV_ROUTER_URL, timeout=30.0) as http:
+        proc = _start_dev_server(tmp_path, port=port)
+        with httpx.Client(base_url=router_url, timeout=30.0) as http:
             restarted_by_id = {
                 m["id"]: m for m in http.get("/metrics/models/all").json()["models"]
             }
@@ -415,7 +434,7 @@ def test_ollama_live_ui_activation_routing_reset_and_restart(tmp_path):
             assert model_b in v1_restarted and model_a not in v1_restarted
     finally:
         _stop_dev_server(proc)
-        assert not _port_in_use(DEV_ROUTER_HOST, DEV_ROUTER_PORT)
+        assert not _port_in_use(DEV_ROUTER_HOST, port)
 
 
 def test_ollama_responses_api_and_strategy_switching_live(tmp_path):
@@ -426,8 +445,10 @@ def test_ollama_responses_api_and_strategy_switching_live(tmp_path):
 
     proc = None
     try:
-        proc = _start_dev_server(tmp_path)
-        with httpx.Client(base_url=DEV_ROUTER_URL, timeout=120.0) as http:
+        port = _allocate_e2e_port()
+        router_url = f"http://{DEV_ROUTER_HOST}:{port}"
+        proc = _start_dev_server(tmp_path, port=port)
+        with httpx.Client(base_url=router_url, timeout=120.0) as http:
             # 1. SNAP strategy (expected_utility) live chat completion
             assert http.get("/metrics/strategy").json() == {
                 "strategy": "expected_utility",
@@ -491,4 +512,21 @@ def test_ollama_responses_api_and_strategy_switching_live(tmp_path):
             assert http.get("/metrics/summary").json()["total_requests"] == 0
     finally:
         _stop_dev_server(proc)
-        assert not _port_in_use(DEV_ROUTER_HOST, DEV_ROUTER_PORT)
+        assert not _port_in_use(DEV_ROUTER_HOST, port)
+
+
+def test_allocate_e2e_port_falls_back_when_default_busy(monkeypatch):
+    """Verify E2E port allocation avoids busy 18080, honors RR_E2E_PORT, and refuses prod port 8000."""
+    monkeypatch.delenv("RR_E2E_PORT", raising=False)
+    monkeypatch.setattr(sys.modules[__name__], "_port_in_use", lambda host, port: True)
+    port = _allocate_e2e_port()
+    assert isinstance(port, int) and port > 0
+    assert port != DEV_ROUTER_PORT
+    assert port != 8000
+
+    monkeypatch.setenv("RR_E2E_PORT", "18123")
+    assert _allocate_e2e_port() == 18123
+
+    monkeypatch.setenv("RR_E2E_PORT", "8000")
+    with pytest.raises(AssertionError):
+        _allocate_e2e_port()

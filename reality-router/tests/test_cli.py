@@ -315,3 +315,31 @@ def test_resolve_config_explicit_ollama_url_sets_dummy_key(tmp_path, monkeypatch
 
     assert cfg["CUSTOM_LLM_BASE_URL"] == "http://127.0.0.1:11434"
     assert cfg["CUSTOM_LLM_API_KEY"] == "dummy"
+
+def test_build_status_counts_ollama_and_custom_models_under_custom_local():
+    """build_status() must count both 'ollama' and 'custom' models under 'custom/local'."""
+    env_vars = {
+        "CUSTOM_LLM_BASE_URL": "http://127.0.0.1:11434",
+        "CUSTOM_LLM_API_KEY": "dummy",
+    }
+    models = [
+        {"id": "gemma4:31b", "provider": "ollama"},
+        {"id": "nemotron-3-nano:30b", "provider": "ollama"},
+        {"id": "local-vllm", "provider": "custom"},
+    ]
+    status = start_router.build_status(env_vars, models=models)
+    custom_entry = status["providers"]["custom/local"]
+    assert custom_entry["configured"] is True
+    assert custom_entry["models"] == 3
+    assert "reason" not in custom_entry
+    assert status["models_total"] == 3
+
+
+def test_build_status_reports_zero_reason_only_when_no_local_models():
+    """build_status() keeps the empty-models reason when configured local provider returns 0 models."""
+    env_vars = {"CUSTOM_LLM_BASE_URL": "http://127.0.0.1:11434"}
+    status = start_router.build_status(env_vars, models=[])
+    custom_entry = status["providers"]["custom/local"]
+    assert custom_entry["configured"] is True
+    assert custom_entry["models"] == 0
+    assert custom_entry["reason"] == "credential present but no models returned"

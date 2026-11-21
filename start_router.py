@@ -2049,13 +2049,16 @@ def build_status(env_vars, port=None, pid=None, models=None):
         configured = any(
             env_vars.get(k) and env_vars.get(k) != "dummy" for k in keys
         )
-        # get_all_models tags local models "custom"; the wizard calls the
-        # provider "custom/local".
-        lookup = "custom" if name == "custom/local" else name
-        entry = {"configured": configured, "models": by_provider.get(lookup, 0)}
+        # get_all_models tags local models "custom" or "ollama"; the wizard
+        # calls the provider "custom/local".
+        if name == "custom/local":
+            model_count = by_provider.get("custom", 0) + by_provider.get("ollama", 0)
+        else:
+            model_count = by_provider.get(name, 0)
+        entry = {"configured": configured, "models": model_count}
         if configured and entry["models"] == 0:
             entry["reason"] = "credential present but no models returned"
-        elif not configured:
+        elif not configured and entry["models"] == 0:
             entry["reason"] = "not configured"
         providers[name] = entry
 

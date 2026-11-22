@@ -17,6 +17,7 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.config.settings import get_settings, load_models_from_config
@@ -1546,13 +1547,66 @@ class RouterCore:
                 return None
         return self.concurrency_limits.get(model_id)
 
-    def extract_coding_features(
-        self,
-        request: RoutingRequest,
-        model_id: str,
-        response: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """Extract agent features for Reality Router™ calibration"""
+    def extract_coding_features(self, request: RoutingRequest, model_id: str, response: Optional[Dict[str, Any]] = None, *, base_features: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        features = dict(base_features) if base_features is not None else self._extract_request_features(request, response=response)
+        features["model_id"] = model_id
+        # Model Capabilities
+        m_info = self.models.get(model_id, {})
+        features["model_supports_tools"] = (
+            1.0 if m_info.get("supports_function_calling") else 0.0
+        )
+        features["model_context_window"] = float(m_info.get("max_input_tokens") or 8192)
+        features["model_max_output"] = float(m_info.get("max_tokens") or 4096)
+
+        # Pricing/Tier Indicators (Cost correlates with reasoning power)
+        features["model_prompt_cost"] = float(
+            m_info.get("prompt_cost", m_info.get("cost", 0.0))
+        )
+        features["model_completion_cost"] = float(
+            m_info.get("completion_cost", m_info.get("cost", 0.0))
+        )
+
+        # Additional probed capabilities
+        features["model_supports_logprobs"] = (
+            1.0 if m_info.get("supports_logprobs") else 0.0
+        )
+
+        # Provider and Locality
+        is_local = 0.0
+        provider = "unknown"
+        adapter = self.adapters.get(model_id)
+        if adapter:
+            adapter_name = type(adapter).__name__
+            if adapter_name == "LiteLLMAdapter":
+                provider_str = getattr(adapter, "model_name", "")
+                base_url = getattr(adapter, "base_url", "") or ""
+                if (
+                    "11434" in base_url
+                    or "localhost" in base_url
+                    or "127.0.0.1" in base_url
+                ):
+                    is_local = 1.0
+                    provider = "ollama"
+                elif provider_str.startswith("openai/"):
+                    provider = "openai"
+                elif provider_str.startswith("anthropic/"):
+                    provider = "anthropic"
+                elif provider_str.startswith("gemini/"):
+                    provider = "gemini"
+                elif provider_str.startswith("mistral/"):
+                    provider = "mistral"
+                elif provider_str.startswith("ollama/"):
+                    provider = "ollama"
+                    is_local = 1.0
+                else:
+                    provider = "custom_litellm"
+
+        features["model_is_local"] = is_local
+        features["model_provider"] = provider
+
+        return features
+
+    def _extract_request_features(self, request: RoutingRequest, response: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         query = request.query or ""
         agent_id = request.agent_id or "default"
         settings = get_settings()
@@ -1622,65 +1676,10 @@ class RouterCore:
         }
 
         # Categorical Features
-        features["model_id"] = model_id
         features["agent_id"] = agent_id
         features["user_id"] = settings.user_email
         features["user_location"] = settings.user_location
         features["sso_email"] = settings.sso_email
-
-        # Model Capabilities
-        m_info = self.models.get(model_id, {})
-        features["model_supports_tools"] = (
-            1.0 if m_info.get("supports_function_calling") else 0.0
-        )
-        features["model_context_window"] = float(m_info.get("max_input_tokens") or 8192)
-        features["model_max_output"] = float(m_info.get("max_tokens") or 4096)
-
-        # Pricing/Tier Indicators (Cost correlates with reasoning power)
-        features["model_prompt_cost"] = float(
-            m_info.get("prompt_cost", m_info.get("cost", 0.0))
-        )
-        features["model_completion_cost"] = float(
-            m_info.get("completion_cost", m_info.get("cost", 0.0))
-        )
-
-        # Additional probed capabilities
-        features["model_supports_logprobs"] = (
-            1.0 if m_info.get("supports_logprobs") else 0.0
-        )
-
-        # Provider and Locality
-        is_local = 0.0
-        provider = "unknown"
-        adapter = self.adapters.get(model_id)
-        if adapter:
-            adapter_name = type(adapter).__name__
-            if adapter_name == "LiteLLMAdapter":
-                provider_str = getattr(adapter, "model_name", "")
-                base_url = getattr(adapter, "base_url", "") or ""
-                if (
-                    "11434" in base_url
-                    or "localhost" in base_url
-                    or "127.0.0.1" in base_url
-                ):
-                    is_local = 1.0
-                    provider = "ollama"
-                elif provider_str.startswith("openai/"):
-                    provider = "openai"
-                elif provider_str.startswith("anthropic/"):
-                    provider = "anthropic"
-                elif provider_str.startswith("gemini/"):
-                    provider = "gemini"
-                elif provider_str.startswith("mistral/"):
-                    provider = "mistral"
-                elif provider_str.startswith("ollama/"):
-                    provider = "ollama"
-                    is_local = 1.0
-                else:
-                    provider = "custom_litellm"
-
-        features["model_is_local"] = is_local
-        features["model_provider"] = provider
 
         # Structural analysis if code
         try:
@@ -1967,7 +1966,7 @@ class RouterCore:
                 if settings.is_model_enabled(mid)
             )
 
-            model_tasks = []
+            eligible_models = []
             for mid, info in candidate_models.items():
                 if not settings.is_model_enabled(mid):
                     logger.info(f"Skipping model {mid} (disabled in settings)")
@@ -1996,13 +1995,22 @@ class RouterCore:
                 #     and total_estimated_tokens > info["max_tokens"]
                 # ):
                 #     continue
-                recent = (
-                    db.query(RoutingLog.time, RoutingLog.completion_tokens)
-                    .filter(RoutingLog.model_id == mid, RoutingLog.time != None)
-                    .order_by(RoutingLog.timestamp.desc())
-                    .limit(20)
-                    .all()
-                )
+                eligible_models.append((mid, info))
+
+            recent_by_model: Dict[str, list] = {}
+            base_features: Optional[Dict[str, Any]] = None
+            if eligible_models:
+                eligible_ids = [mid for mid, _ in eligible_models]
+                rn = func.row_number().over(partition_by=RoutingLog.model_id, order_by=RoutingLog.timestamp.desc()).label("rn")
+                subq = db.query(RoutingLog.model_id.label("model_id"), RoutingLog.time.label("time"), RoutingLog.completion_tokens.label("completion_tokens"), rn).filter(RoutingLog.model_id.in_(eligible_ids), RoutingLog.time != None).subquery()
+                for row in db.query(subq.c.model_id, subq.c.time, subq.c.completion_tokens).filter(subq.c.rn <= 20).all() or []:
+                    if row is not None and getattr(row, "model_id", None) is not None:
+                        recent_by_model.setdefault(row.model_id, []).append(row)
+                base_features = self._extract_request_features(request)
+
+            model_tasks = []
+            for mid, info in eligible_models:
+                recent = recent_by_model.get(mid, [])
                 recent_times = [l.time for l in recent if l and getattr(l, "time", None) is not None] if recent else []
                 time_val = (
                     statistics.mean(recent_times)
@@ -2024,7 +2032,7 @@ class RouterCore:
                     avg_completion * c_cost / 1000.0
                 )
 
-                features = self.extract_coding_features(request, mid)
+                features = self.extract_coding_features(request, mid, base_features=base_features)
                 model_tasks.append(
                     {
                         "id": mid,

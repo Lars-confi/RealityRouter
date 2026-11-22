@@ -110,3 +110,69 @@ def test_route_request_gates_background_language_detection():
             assert core_busy._language_check_in_flight is True
 
     asyncio.run(_run())
+
+
+def test_extract_coding_features_with_base_features_matches_direct_call():
+    from src.adapters.litellm_adapter import LiteLLMAdapter
+    core = RouterCore.__new__(RouterCore)
+    core.models = {
+        "local-qwen": {"name": "Local Qwen", "cost": 0.0, "prompt_cost": 0.0, "completion_cost": 0.0, "supports_function_calling": True, "supports_logprobs": True, "max_input_tokens": 32768, "max_tokens": 4096},
+        "cloud-gpt": {"name": "Cloud GPT", "cost": 0.002, "prompt_cost": 0.001, "completion_cost": 0.003, "supports_function_calling": True, "supports_logprobs": False, "max_input_tokens": 128000, "max_tokens": 8192},
+    }
+    core.adapters = {
+        "local-qwen": LiteLLMAdapter("ollama/qwen3-coder:30b", base_url="http://127.0.0.1:11434/v1"),
+        "cloud-gpt": LiteLLMAdapter("openai/gpt-4o", api_key="sk-dummy"),
+    }
+    req = RoutingRequest(query="def add(a, b):\n    return a + b\n", agent_id="perf-test", parameters={"messages": [{"role": "user", "content": "Fix the error and write tests"}]})
+    base = core._extract_request_features(req)
+    for mid in ("local-qwen", "cloud-gpt"):
+        assert core.extract_coding_features(req, mid, base_features=base) == core.extract_coding_features(req, mid)
+
+
+def test_get_ranked_models_batches_routing_log_stats_into_single_query(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from unittest.mock import MagicMock
+    from sqlalchemy import create_engine, event
+    from sqlalchemy.orm import sessionmaker
+    import src.router.core as core_mod
+    from src.models.database import RoutingLog, configure_sqlite_engine, init_db, utcnow
+
+    eng = create_engine(f"sqlite:///{tmp_path / 'batched.db'}", connect_args={"check_same_thread": False})
+    configure_sqlite_engine(eng)
+    init_db(eng)
+    sf = sessionmaker(autocommit=False, autoflush=False, bind=eng)
+    blob, base_ts = "B" * 8000, utcnow() - timedelta(minutes=60)
+    try:
+        db = sf()
+        try:
+            for mid, recent_t in (("m-a", 1.0), ("m-b", 2.0), ("m-c", 3.0)):
+                for i in range(25):
+                    db.add(RoutingLog(timestamp=base_ts + timedelta(seconds=i), query=blob, model_id=mid, model_name=mid, expected_utility=50.0, cost=0.0, time=100.0 if i < 5 else recent_t, probability=0.8, success=True, completion_tokens=100, request_payload=blob, response_payload=blob, response_text=blob, features_json=blob))
+            db.commit()
+        finally:
+            db.close()
+        monkeypatch.setattr(core_mod, "SessionLocal", sf)
+        router = core_mod.RouterCore.__new__(core_mod.RouterCore)
+        router.models = {m: {"name": m, "cost": 0.0, "prompt_cost": 0.0, "completion_cost": 0.0, "time": 9.0, "probability": 0.8, "supports_function_calling": True} for m in ("m-a", "m-b", "m-c")}
+        router.adapters = {}
+        router.load_balancer = MagicMock()
+        router.load_balancer.is_model_healthy.return_value = True
+        router.utility_calculator = core_mod.ExpectedUtilityCalculator(cost_sensitivity=0.5, time_sensitivity=0.5)
+        mock_resp = MagicMock(status_code=200)
+        mock_resp.json.return_value = {"prob_true": 0.85, "uncertainty": 0.05, "decision_id": "dec-batch"}
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        monkeypatch.setattr(core_mod.httpx, "AsyncClient", lambda **kw: mock_client)
+        executed_sql, extract_calls = [], []
+        event.listen(eng, "before_cursor_execute", lambda _c, _cur, stmt, *_a: executed_sql.append(stmt) if "routing_logs" in stmt.lower() else None)
+        orig_extract = router._extract_request_features
+        monkeypatch.setattr(router, "_extract_request_features", lambda req, response=None: (extract_calls.append(1), orig_extract(req, response=response))[1])
+        ranked = asyncio.run(router.get_ranked_models(RoutingRequest(query="Optimize SQLite query batching", parameters={"messages": [{"role": "user", "content": "Optimize SQLite query batching"}]}), strategy="expected_utility"))
+        assert len(ranked) == 3 and len(extract_calls) == 1 and len(executed_sql) == 1
+        assert not any(c in executed_sql[0].lower() for c in ("request_payload", "response_payload", "response_text", "features_json", "routing_context"))
+        times = {d.model_id: d.time for d in ranked}
+        assert abs(times["m-a"] - 1.0) < 1e-6 and abs(times["m-b"] - 2.0) < 1e-6 and abs(times["m-c"] - 3.0) < 1e-6
+    finally:
+        eng.dispose()

@@ -257,25 +257,43 @@ class TrajectoryTracker:
     - cooldown_steps
     """
 
-    def __init__(self):
+    def __init__(self, max_sessions: int = 1000, session_ttl_seconds: float = 3600.0):
         self.consecutive_failures: int = 0
         self.consecutive_stagnation: int = 0
         self.recent_outcomes: List[str] = []
         self.pending_observation: bool = False
         self.cooldown_steps: int = 0
+        self.max_sessions: int = max(1, int(max_sessions))
+        self.session_ttl_seconds: float = float(session_ttl_seconds)
         self._sessions: Dict[str, Dict[str, Any]] = {}
 
+    def _prune_sessions(self, now: float, *, reserve_slot: bool = False) -> None:
+        if self.session_ttl_seconds > 0:
+            for sid in [k for k, v in self._sessions.items() if (now - float(v.get("last_updated", 0.0))) > self.session_ttl_seconds]:
+                del self._sessions[sid]
+        limit = self.max_sessions - (1 if reserve_slot else 0)
+        if len(self._sessions) > limit:
+            oldest = sorted(self._sessions.items(), key=lambda kv: float(kv[1].get("last_updated", 0.0)))
+            for sid, _ in oldest[: len(self._sessions) - max(0, limit)]:
+                del self._sessions[sid]
+
     def get_session_state(self, session_id: str = "default") -> Dict[str, Any]:
-        """Retrieve or initialize state for a session ID."""
-        if session_id not in self._sessions:
-            self._sessions[session_id] = {
-                "consecutive_failures": 0,
-                "consecutive_stagnation": 0,
-                "recent_outcomes": [],
-                "pending_observation": False,
-                "cooldown_steps": 0,
-                "last_updated": time.time(),
-            }
+        now = time.time()
+        existing = self._sessions.get(session_id)
+        if existing is not None:
+            if self.session_ttl_seconds > 0 and (now - float(existing.get("last_updated", 0.0))) > self.session_ttl_seconds:
+                del self._sessions[session_id]
+            else:
+                return existing
+        self._prune_sessions(now, reserve_slot=True)
+        self._sessions[session_id] = {
+            "consecutive_failures": 0,
+            "consecutive_stagnation": 0,
+            "recent_outcomes": [],
+            "pending_observation": False,
+            "cooldown_steps": 0,
+            "last_updated": now,
+        }
         return self._sessions[session_id]
 
     def record_observation(self, outcome: str, session_id: str = "default") -> None:

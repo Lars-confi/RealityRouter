@@ -631,3 +631,33 @@ async def test_disabled_models_excluded_from_ranking(base_router):
             settings.disabled_models.remove("inactive-model-x")
         if "inactive-model-x" in base_router.models:
             del base_router.models["inactive-model-x"]
+
+
+def test_trajectory_tracker_evicts_expired_sessions():
+    tracker = TrajectoryTracker(max_sessions=10, session_ttl_seconds=10.0)
+    tracker.record_observation("failure", "stale")
+    tracker.record_observation("failure", "fresh")
+    tracker._sessions["stale"]["last_updated"] -= 60.0
+
+    tracker.record_observation("progress", "newest")
+    assert "stale" not in tracker._sessions
+    assert "fresh" in tracker._sessions
+    assert "newest" in tracker._sessions
+
+    tracker._sessions["fresh"]["last_updated"] -= 60.0
+    assert tracker.get_session_state("fresh")["consecutive_failures"] == 0
+
+
+def test_trajectory_tracker_enforces_max_sessions_lru_cap():
+    import time as _time
+    tracker = TrajectoryTracker(max_sessions=3, session_ttl_seconds=3600.0)
+    now = _time.time()
+    tracker.get_session_state("s1")["last_updated"] = now - 30.0
+    tracker.get_session_state("s2")["last_updated"] = now - 20.0
+    tracker.get_session_state("s3")["last_updated"] = now - 10.0
+    tracker.record_observation("progress", "s1")
+
+    tracker.get_session_state("s4")
+    assert len(tracker._sessions) == 3
+    assert "s2" not in tracker._sessions
+    assert {"s1", "s3", "s4"} == set(tracker._sessions.keys())

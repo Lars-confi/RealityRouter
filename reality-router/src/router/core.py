@@ -17,7 +17,7 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.config.settings import get_settings, load_models_from_config
@@ -2002,7 +2002,7 @@ class RouterCore:
             if eligible_models:
                 eligible_ids = [mid for mid, _ in eligible_models]
                 rn = func.row_number().over(partition_by=RoutingLog.model_id, order_by=RoutingLog.timestamp.desc()).label("rn")
-                subq = db.query(RoutingLog.model_id.label("model_id"), RoutingLog.time.label("time"), RoutingLog.completion_tokens.label("completion_tokens"), rn).filter(RoutingLog.model_id.in_(eligible_ids), RoutingLog.time != None).subquery()
+                subq = select(RoutingLog.model_id.label("model_id"), RoutingLog.time.label("time"), RoutingLog.completion_tokens.label("completion_tokens"), rn).where(RoutingLog.model_id.in_(eligible_ids), RoutingLog.time != None).subquery()
                 for row in db.query(subq.c.model_id, subq.c.time, subq.c.completion_tokens).filter(subq.c.rn <= 20).all() or []:
                     if row is not None and getattr(row, "model_id", None) is not None:
                         recent_by_model.setdefault(row.model_id, []).append(row)

@@ -1,11 +1,9 @@
-import math
-import math
 """
 Unit tests for LiteLLM adapter.
 """
 import asyncio
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock
 from types import SimpleNamespace
 from src.adapters.litellm_adapter import extract_message_text, LiteLLMAdapter
 from src.models.routing import RoutingRequest
@@ -140,6 +138,8 @@ async def test_forward_request_normalization():
     mock_usage = SimpleNamespace(prompt_tokens=10, completion_tokens=20, total_tokens=30)
     
     # Real 2-token logprobs sequence
+    # Token 1: -0.1, top_logprobs: [-0.1, -0.2]
+    # Token 2: -0.2, top_logprobs: [-0.1, -0.2]
     logprobs_content = [
         SimpleNamespace(
             logprob=-0.1, 
@@ -147,7 +147,7 @@ async def test_forward_request_normalization():
         ),
         SimpleNamespace(
             logprob=-0.2, 
-            top_logprobs=[SimpleNamespace(logprob=-0.3), SimpleNamespace(logprob=-0.4)]
+            top_logprobs=[SimpleNamespace(logprob=-0.1), SimpleNamespace(logprob=-0.2)]
         )
     ]
     
@@ -164,13 +164,13 @@ async def test_forward_request_normalization():
         assert len(res["tool_calls"]) == 1
         assert res["tool_calls"][0]["function"]["name"] == "t"
         
-        # Metrics checks
-        lp = res["logprobs"]
-        assert lp["first_token_logprob"] == -0.1
-        assert lp["second_token_logprob"] == -0.2
-        assert lp["logprobs_mean"] == pytest.approx(-0.15)
-        assert lp["entropy"] > 0
-        assert 0 < lp["confidence"] <= 1.0
+        # Metrics checks: top-level keys (not under 'logprobs')
+        assert res["first_token_logprob"] == -0.1
+        assert res["second_token_logprob"] == -0.2
+        assert res["logprobs_mean"] == pytest.approx(-0.15)
+        assert res["logprobs_std"] == pytest.approx(0.05)
+        assert res["entropy"] > 0
+        assert 0 < res["confidence"] <= 1.0
 
 @pytest.mark.asyncio
 async def test_forward_request_exception_propagation():

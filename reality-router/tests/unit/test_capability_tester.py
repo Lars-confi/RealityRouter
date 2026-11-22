@@ -14,6 +14,14 @@ class MockAdapter:
         self.behavior = behavior
     
     async def forward_request(self, request):
+        # Explicitly handle 'partial_tool' behavior specially: tools_probe should fail
+        if self.behavior == "partial_tool":
+            # Simulate a conditional failing response based on test-specific query
+            # This mock mimics a partial-tooling adapter that fails the first tool probe
+            # but may succeed on logprobs-only probe
+            if hasattr(request, 'parameters') and 'tools' in request.parameters:
+                raise Exception("Partial tool probe failed")
+            return {"logprobs_mean": 0.5, "entropy": 0.2}
         if self.behavior == "fail":
             raise Exception("Probe failed")
         if self.behavior == "logprobs_only":
@@ -35,7 +43,8 @@ def temp_config_dir(tmp_path):
     yield cache_file
     ct.CACHE_FILE = original_cache
 
-def test_capability_manager_cache_hit(temp_config_dir):
+@pytest.mark.asyncio
+async def test_capability_manager_cache_hit(temp_config_dir):
     """Test that cached values are returned without calling the adapter."""
     with open(temp_config_dir, "w") as f:
         json.dump({"model-1": {"supports_tools": True, "supports_logprobs": False, "tested": True}}, f)
@@ -43,7 +52,8 @@ def test_capability_manager_cache_hit(temp_config_dir):
     manager = CapabilityManager()
     adapter = MagicMock()
     
-    caps = manager.get_capabilities("model-1")
+    # We use probe_model which should hit the cache and return without calling adapter
+    caps = await manager.probe_model("model-1", adapter)
     assert caps["supports_tools"] is True
     assert caps["supports_logprobs"] is False
     adapter.forward_request.assert_not_called()
@@ -63,19 +73,19 @@ async def test_capability_manager_probing_logic(temp_config_dir):
     assert caps_tools["supports_tools"] is True
     assert caps_tools["supports_logprobs"] is False
     
-    class PartialAdapter:
-        def __init__(self):
-            self.call_count = 0
-        async def forward_request(self, request):
-            self.call_count += 1
-            if self.call_count == 1:
-                raise Exception("Tool failure")
-            return {"logprobs_mean": 0.5, "entropy": 0.1}
-            
-    adapter_partial = PartialAdapter()
+    adapter_partial = MockAdapter(behavior="partial_tool")
     caps_partial = await manager.probe_model("model-partial", adapter_partial)
     assert caps_partial["supports_tools"] is False
     assert caps_partial["supports_logprobs"] is True
+    
+    # Both fail
+    class BothFailAdapter(MockAdapter):
+        async def forward_request(self, request):
+            raise Exception("Probe failed")
+    adapter_both_fail = BothFailAdapter(behavior="fail")
+    caps_both_fail = await manager.probe_model("model-both-fail", adapter_both_fail)
+    assert caps_both_fail["supports_tools"] is False
+    assert caps_both_fail["supports_logprobs"] is False
 
 @pytest.mark.asyncio
 async def test_capability_manager_persistence(temp_config_dir):

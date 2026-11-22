@@ -255,6 +255,14 @@ class ExpectedUtilityCalculator:
 class RouterCore:
     """Main router core implementing Expected Utility Theory"""
 
+    _ENGLISH_CODE_MARKERS = frozenset({
+        "the", "and", "for", "with", "this", "that", "from", "have", "are", "you",
+        "how", "what", "why", "fix", "add", "update", "test", "code", "error", "return",
+        "is", "to", "in", "of", "on", "it", "not", "be", "can", "please", "def",
+        "class", "import", "function", "const", "var", "let", "true", "false", "none",
+        "null", "print", "select", "where", "file"
+    })
+
     def __init__(self):
         self.models = {}
         self.all_discovered_models = []
@@ -262,6 +270,7 @@ class RouterCore:
         self.metrics = {}
         self.models_to_probe = []
         self.translated_languages = set(["english"])
+        self._language_check_in_flight = False
         settings = get_settings()
         self.utility_calculator = ExpectedUtilityCalculator(
             reward=100.0,
@@ -2587,6 +2596,30 @@ class RouterCore:
         except Exception as e:
             logger.error(f"Failed to send observation feedback to Reality Router: {e}")
 
+    def _needs_language_detection(self, query: Optional[str]) -> bool:
+        """Determine if the query requires a background language detection call."""
+        if not query or len(query.strip()) <= 5:
+            return False
+        
+        sample = query[:500]
+        # Non-ASCII letters trigger detection
+        if any(ord(ch) > 127 and ch.isalpha() for ch in sample):
+            return True
+        
+        # For pure-ASCII, check for code markers or high English commonality
+        code_markers = ["```", "http://", "https://", "def ", "class ", "import ", "{", "}", "=>", "=="]
+        if any(marker in sample for marker in code_markers):
+            return False
+        
+        words = re.findall(r"[A-Za-z]+", sample.lower())
+        if len(words) < 4:
+            return False
+        
+        if any(word in self._ENGLISH_CODE_MARKERS for word in words):
+            return False
+            
+        return True
+
     async def route_request(
         self, request: RoutingRequest, strategy: Optional[str] = None
     ) -> RoutingResponse:
@@ -2649,14 +2682,22 @@ class RouterCore:
                             and len(lang) < 20
                             and lang not in self.translated_languages
                         ):
-                            self.translated_languages.add(lang)
-                            await keyword_manager.translate_and_add_keywords(
-                                adapter, lang.capitalize()
-                            )
+                            try:
+                                await keyword_manager.translate_and_add_keywords(
+                                    adapter, lang.capitalize()
+                                )
+                                self.translated_languages.add(lang)
+                            except Exception:
+                                if lang == "english":
+                                    self.translated_languages.add(lang)
+                                raise
                 except Exception as e:
                     logger.debug(f"Language check/translate failed: {e}")
+                finally:
+                    self._language_check_in_flight = False
 
-            if request.query and len(request.query) > 5:
+            if self._needs_language_detection(request.query) and not self._language_check_in_flight:
+                self._language_check_in_flight = True
                 asyncio.create_task(check_language_and_translate())
 
             # Strip fragile thought signatures from incoming messages to prevent Google 400 errors

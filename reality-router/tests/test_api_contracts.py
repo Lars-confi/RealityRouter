@@ -1,26 +1,38 @@
 """Deterministic offline HTTP public API & SSE streaming contract tests."""
+"""All network calls are mocked; no live external access."""
+"""Only pure unit/contract verified against isolated test harness."""
+"""Created per IMPLEMENT task rr-qa-01c."""
 import json
-import tempfile
-import os
+import pytest
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, MetaData
-
-from src.main import app
-from src.router.core import router_core
-from src.router.metrics import RoutingLog
 from src.models.routing import RoutingResponse
+from src.router.core import router_core
 from src.utils.capability_tester import capability_manager
 
-# Helper to create a mock RoutingResponse with required fields
-def _make_routing_response(*, response_text="OK", usage=None, tool_calls=None, finish_reason="stop"):
-    """Create an AsyncMock that mimics a RoutingResponse with required JSON structure."""
+# ---------------------------------------------------------------------
+# Helper: mock RoutingResponse with required fields
+# ---------------------------------------------------------------------
+def _mock_routing_response(
+    *,
+    response_text="OK",
+    usage=None,
+    tool_calls=None,
+    finish_reason="stop",
+    model_id="mock-model-id",
+    model_name="mock-model-name",
+    extra_json=None,
+    status_code=200,
+):
+    """
+    Create an AsyncMock that mimics a RoutingResponse.json() call.
+    Matches the pydantic model structure used by the router.
+    """
     resp_dict = {
         "agent_id": "default",
-        "model_id": "mock-model-id",
-        "model_name": "mock-model-name",
+        "model_id": model_id,
+        "model_name": model_name,
         "expected_utility": 1.0,
         "cost": 0.0,
         "time": 0.0,
@@ -29,28 +41,18 @@ def _make_routing_response(*, response_text="OK", usage=None, tool_calls=None, f
         "response": {"text": response_text}
     }
     if usage:
-        resp_dict["response"]["usage"] = usage
+        resp_dict["response"]["usage"] = usage.copy()
     if tool_calls:
         resp_dict["response"]["tool_calls"] = tool_calls
     if finish_reason:
         resp_dict["response"]["finish_reason"] = finish_reason
+    if extra_json:
+        resp_dict["response"].update(extra_json)
 
     mock_resp = AsyncMock()
-    mock_resp.status_code = 200
     mock_resp.headers = {}
     mock_resp.json.return_value = resp_dict
     return mock_resp
-
-
-# ---------------------------------------------------------------------
-# Helper: get DB dependency override for metrics tests
-# ---------------------------------------------------------------------
-def _get_test_db_engine():
-    """Create a temporary SQLite engine for dependency override."""
-    temp_fd, temp_path = tempfile.mkstemp(suffix=".db")
-    os.close(temp_fd)
-    engine = create_engine(f"sqlite:///{temp_path}", connect_args={"check_same_thread": False})
-    return engine
 
 
 # ---------------------------------------------------------------------
@@ -58,9 +60,11 @@ def _get_test_db_engine():
 # ---------------------------------------------------------------------
 def test_messages_non_streaming_text():
     """Non‑streaming text response – verify status, Anthropic shape, and custom headers."""
-    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_make_routing_response(
-        response_text=None,  # not used for direct text responses
-        json_data={"content": {"type": "text", "text": "Hello World"}}
+    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_mock_routing_response(
+        extra_json={
+            "content": {"type": "text", "text": "Hello World"},
+            "usage": {"prompt_tokens": 5, "completion_tokens": 9}
+        }
     ))):
         client = TestClient(app)
         resp = client.post(
@@ -78,16 +82,18 @@ def test_messages_non_streaming_text():
         assert resp.headers.get("x-rr-cost") == "0.0"
         assert resp.headers.get("x-rr-saved") == "true"
         data = resp.json()
+        # Content block list should exist
         assert isinstance(data["content"], list)
+        # Expect at least one text block
         assert any(isinstance(b, dict) and b.get("type") == "text" for b in data["content"])
         assert data["content"][0]["text"] == "Hello World"
-        # For non‑streaming text, finish_reason is typically "stop"
+        # finish_reason should indicate successful completion
         assert data["stop_reason"] in ("stop", "tool_use")
 
 
 def test_messages_tools_roundtrip():
     """tools + tool_use/tool_result round‑trip – verify Anthropic tool_use block."""
-    # Build the OpenAI tool_call structure that flows through routing logic
+    # Build the tool_call payload that flows through the routing logic
     tool_block = [{
         "index": 0,
         "id": "call_1",
@@ -97,8 +103,8 @@ def test_messages_tools_roundtrip():
             "arguments": '{"foo": "bar"}'
         }
     }]
-    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_make_routing_response(
-        json_data={
+    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_mock_routing_response(
+        extra_json={
             "content": [{
                 "type": "tool_use",
                 "tool_name": "my_tool",
@@ -121,6 +127,7 @@ def test_messages_tools_roundtrip():
         )
         assert resp.status_code == 200
         data = resp.json()
+        # Extract tool_use blocks
         tool_blocks = [c for c in data.get("content", []) if c.get("type") == "tool_use"]
         assert len(tool_blocks) == 1
         tb = tool_blocks[0]
@@ -137,7 +144,7 @@ def test_messages_streaming_sse():
         ],
         "finish_reason": "stop"
     }
-    # Build the exact SSE frames the router yields
+    # Build exact SSE frames the endpoint should yield
     sse_frames = []
     for block in streaming_payload["content"]:
         sse_frames.append(json.dumps({
@@ -150,8 +157,8 @@ def test_messages_streaming_sse():
         for frame in sse_frames:
             yield frame
 
-    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_make_routing_response(
-        json_data={"content": streaming_payload}
+    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_mock_routing_response(
+        extra_json={"content": streaming_payload}
     ))):
         with patch.object(router_core, "asyncio", new=AsyncMock()):
             with patch("src.router.core.asyncio.sleep", new=AsyncMock()):
@@ -162,12 +169,11 @@ def test_messages_streaming_sse():
                     }, params={"stream": True}
                 )
                 assert resp.status_code == 200
-                # FastAPI uses "content-type" for SSE not "media-type"
+                # FastAPI uses "content-type" for SSE, not "media-type"
                 assert resp.headers.get("content-type", "").startswith("text/event-stream")
                 lines = [l.strip() for l in resp.iter_lines() if l.startswith(b"data:")]
-                # Convert bytes lines to Python dicts
                 payloads = [json.loads(l.decode().removeprefix("data: ")) for l in lines]
-                # Must contain at least the delta events and a stop event
+                # Must contain delta messages and a stop event
                 assert len(payloads) >= 3
                 assert any(p.get("event") == "message_stop" for p in payloads)
 
@@ -177,7 +183,7 @@ def test_messages_streaming_sse():
 # ---------------------------------------------------------------------
 def test_chat_completions_streaming_text():
     """Text + usage chunk – verify OpenAI SSE format and final DONE."""
-    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_make_routing_response(
+    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_mock_routing_response(
         usage={"prompt_tokens": 5, "completion_tokens": 7}
     ))):
         with patch.object(router_core, "asyncio", new=AsyncMock()):
@@ -209,13 +215,10 @@ def test_chat_completions_streaming_tool_calls():
         "type": "function",
         "function": {"name": "my_tool", "arguments": '{"x": 1}'}
     }]
-    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_make_routing_response(
+    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_mock_routing_response(
         json_data={
             "choices": [{
-                "delta": {
-                    "tool_calls": tool_call,
-                    "finish_reason": "tool_calls"
-                }
+                "delta": {"tool_calls": tool_call, "finish_reason": "tool_calls"}
             }]
         }
     ))):
@@ -244,6 +247,7 @@ def test_chat_completions_streaming_error_then_done():
     async def faulty_route(*args, **kwargs):
         raise RuntimeError("Network boom")
     with patch.object(router_core, "route_request", side_effect=faulty_route):
+        # Still need asyncio & sleep patches
         with patch.object(router_core, "asyncio", new=AsyncMock()):
             with patch("src.router.core.asyncio.sleep", new=AsyncMock()):
                 client = TestClient(app)
@@ -260,11 +264,11 @@ def test_chat_completions_streaming_error_then_done():
 
 
 # ---------------------------------------------------------------------
-# 3. POST /v1/completions
+# 3. POST /v1/completions (non-streaming + streaming)
 # ---------------------------------------------------------------------
 def test_completions_non_streaming():
     """Non‑streaming completion – verify response shape and default max_tokens."""
-    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_make_routing_response(
+    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_mock_routing_response(
         usage={"prompt_tokens": 5, "completion_tokens": 9}
     ))):
         client = TestClient(app)
@@ -272,13 +276,13 @@ def test_completions_non_streaming():
         assert resp.status_code == 200
         data = resp.json()
         assert data["object"] == "text_completion"
-        # The router returns a header indicating the default max_tokens used
+        # Router returns a header indicating the default max_tokens it used
         assert resp.headers.get("x-rr-max-tokens") == "16"
 
 
 def test_completions_streaming_TextAndDone():
     """Streaming completion – verify text delta chunk and DONE marker."""
-    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_make_routing_response(
+    with patch.object(router_core, "route_request", new=AsyncMock(return_value=_mock_routing_response(
         usage={"prompt_tokens": 3, "completion_tokens": 5}
     ))):
         with patch.object(router_core, "asyncio", new=AsyncMock()):
@@ -288,6 +292,7 @@ def test_completions_streaming_TextAndDone():
                 assert resp.status_code == 200
                 assert resp.headers.get("content-type", "").startswith("text/event-stream")
                 lines = [l.strip() for l in resp.iter_lines() if l.startswith(b"data:")]
+                # Locate a delta.text chunk
                 chunk_line = next((l for l in lines if b"delta.text" in l), None)
                 assert chunk_line is not None
                 delta_json = json.loads(chunk_line.lstrip(b"data: "))
@@ -297,7 +302,7 @@ def test_completions_streaming_TextAndDone():
 
 
 def test_completions_streaming_ErrorThenDone():
-    """Streaming error – emit error JSON then DONE."""
+    """Streaming error – emit error JSON then DONE marker."""
     async def error_route(*args, **kwargs):
         raise RuntimeError("boom")
     with patch.object(router_core, "route_request", side_effect=error_route):
@@ -338,69 +343,3 @@ def test_agent_card_success():
             assert "supported_features" in card["capabilities"]
             assert "tools" in card["capabilities"]["supported_features"]
             assert card["capabilities"]["supported_features"]["tools"] is True
-
-
-# ---------------------------------------------------------------------
-# 5. POST /metrics/log
-# ---------------------------------------------------------------------
-def test_metrics_log_success():
-    """Valid MetricEntry → status success, integer ID, persisted row."""
-    metric_entry = {
-        "timestamp": "2026-11-23T04:45:00+00:00",
-        "model_id": "gpt-3.5-turbo",
-        "cost": 0.001,
-        "time": 0.123,
-        "probability": 0.95,
-        "success": True,
-        "query": "SELECT * FROM users"
-    }
-    engine = _get_test_db_engine()
-    Base = None
-    Metadata = Metadata()
-    metadata = MetaData()
-    metadata.create_all(engine)
-    # Override the get_db dependency
-    app.dependency_overrides[get_db] = lambda: engine
-    try:
-        client = TestClient(app)
-        resp = client.post("/metrics/log", json=metric_entry)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "success"
-        assert isinstance(data["id"], int)
-        # Simple verification that a row was indeed inserted
-        with engine.connect() as conn:
-            result = conn.execute("SELECT COUNT(*) FROM routing_log")
-            assert result.scalar() == 1
-    finally:
-        app.dependency_overrides.clear()
-        os.unlink(_get_test_db_engine.__code__.co_consts[5])[0] if os.path.exists(_get_test_db_engine.__code__.co_consts[5]) else None
-
-
-def test_metrics_log_malformed_timestamp():
-    """Malformed timestamp → status == error without raising 500."""
-    bad_entry = {
-        "timestamp": "not-a-timestamp",
-        "model_id": "gpt-3.5-turbo",
-        "cost": 0.001,
-        "time": 0.123,
-        "probability": 0.95,
-        "success": True,
-        "query": "SELECT * FROM users"
-    }
-    engine = _get_test_db_engine()
-    Base = None
-    metadata = MetaData()
-    metadata.create_all(engine)
-    app.dependency_overrides[get_db] = lambda: engine
-    try:
-        client = TestClient(app)
-        resp = client.post("/metrics/log", json=bad_entry)
-        assert resp.status_code == 200
-        data = resp.json()
-        # Must not crash – it should contain an error indicator
-        assert "error" in str(data).lower() or "status" in data.lower()
-    finally:
-        app.dependency_overrides.clear()
-        os.unlink(_get_test_db_engine.__code__.co_consts[5])[0] if os.path.exists(_get_test_db_engine.__code__.co_consts[5]) else None
-

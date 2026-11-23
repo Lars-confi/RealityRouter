@@ -4184,16 +4184,21 @@ def calculate_savings(core, chosen_model_id, usage):
 
 
 def _anthropic_adapter():
-    """LiteLLM's Anthropic<->OpenAI adapter, imported on demand.
+    """
+    LiteLLM's Anthropic<->OpenAI adapter, imported on demand.
 
     Lazy on purpose: this is a LiteLLM internal rather than a stable public
     interface, so if a future release moves it only /v1/messages degrades to a
     501 instead of the router failing to start.
     """
-    from litellm.llms.anthropic.experimental_pass_through.adapters.transformation import (
-        LiteLLMAnthropicMessagesAdapter,
-    )
-
+    try:
+        from litellm.llms.anthropic.messages.adapters.transformation import (
+            LiteLLMAnthropicMessagesAdapter,
+        )
+    except ImportError:
+        from litellm.llms.anthropic.experimental_pass_through.adapters.transformation import (
+            LiteLLMAnthropicMessagesAdapter,
+        )
     return LiteLLMAnthropicMessagesAdapter()
 
 

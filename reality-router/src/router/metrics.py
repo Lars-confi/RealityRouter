@@ -32,6 +32,8 @@ class MetricEntry(BaseModel):
     probability: float
     success: bool
     query: str
+    model_name: Optional[str] = None
+    expected_utility: Optional[float] = None
 
 
 class MetricsSummary(BaseModel):
@@ -582,6 +584,8 @@ async def log_metric(entry: MetricEntry, db: Session = Depends(get_db)):
         db_entry = RoutingLog(
             timestamp=datetime.fromisoformat(entry.timestamp),
             model_id=entry.model_id,
+            model_name=entry.model_name or entry.model_id,
+            expected_utility=entry.expected_utility if entry.expected_utility is not None else 0.0,
             cost=entry.cost,
             time=entry.time,
             probability=entry.probability,

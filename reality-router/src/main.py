@@ -34,7 +34,10 @@ init_db()
 async def lifespan(_app: FastAPI):
     log_auth_status()
     asyncio.create_task(router_core.run_capability_probes())
-    yield
+    try:
+        yield
+    finally:
+        await router_core.close_http_client()
 
 
 # Create the FastAPI application

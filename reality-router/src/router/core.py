@@ -11,9 +11,13 @@ import math
 import re
 import statistics
 import time
+from collections import OrderedDict
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Union
 
 import httpx
+
+_REAL_ASYNC_CLIENT = httpx.AsyncClient
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
@@ -281,13 +285,113 @@ class RouterCore:
         self.adapters = {}
         self.load_balancer = load_balancer
         self.concurrency_limits = {}  # Map of model_id to asyncio.Semaphore
-        self.active_sessions = {}
+        self._rc_http_client: Optional[httpx.AsyncClient] = None
+        self._rc_http_client_loop = None
+        self.active_sessions: OrderedDict[str, str] = OrderedDict()
+        self._active_session_timestamps: Dict[str, float] = {}
+        self._active_session_ttl_seconds: float = 3600.0
+        self._active_session_max_entries: int = 1000
         self.trajectory_tracker = TrajectoryTracker()
 
         init_db()
         self.load_configured_models()
 
         logger.info("Router core initialized with Expected Utility Theory framework")
+
+    def _get_rc_http_client(self) -> httpx.AsyncClient:
+        """Return a pooled httpx.AsyncClient bound to the current running event loop."""
+        loop = asyncio.get_running_loop()
+        client = getattr(self, "_rc_http_client", None)
+        client_loop = getattr(self, "_rc_http_client_loop", None)
+        if client is None or client.is_closed or client_loop is not loop:
+            client = httpx.AsyncClient(
+                http2=False,
+                trust_env=False,
+                limits=httpx.Limits(
+                    max_keepalive_connections=20,
+                    max_connections=50,
+                    keepalive_expiry=30.0,
+                ),
+            )
+            self._rc_http_client = client
+            self._rc_http_client_loop = loop
+        return client
+
+    async def close_http_client(self) -> None:
+        """Close and reset the pooled RealitySignal HTTP client."""
+        client = getattr(self, "_rc_http_client", None)
+        self._rc_http_client = None
+        self._rc_http_client_loop = None
+        if client is not None and not client.is_closed:
+            await client.aclose()
+
+    @asynccontextmanager
+    async def _rc_client(self):
+        """Yield pooled client in production (and .post mocks); honour class-level AsyncClient patches."""
+        if httpx.AsyncClient is not _REAL_ASYNC_CLIENT:
+            async with httpx.AsyncClient(http2=False, trust_env=False) as client:
+                yield client
+            return
+        yield self._get_rc_http_client()
+
+    def _prune_active_sessions(self, now: Optional[float] = None) -> None:
+        sessions = getattr(self, "active_sessions", None)
+        if not sessions:
+            return
+        timestamps = getattr(self, "_active_session_timestamps", None)
+        if timestamps is None:
+            timestamps = {}
+            self._active_session_timestamps = timestamps
+        ttl = getattr(self, "_active_session_ttl_seconds", 3600.0)
+        now = time.time() if now is None else now
+        expired = [sid for sid, ts in list(timestamps.items()) if (now - ts) > ttl]
+        for sid in expired:
+            sessions.pop(sid, None)
+            timestamps.pop(sid, None)
+        for sid in list(timestamps.keys()):
+            if sid not in sessions:
+                timestamps.pop(sid, None)
+
+    def _get_active_session(self, session_id: str) -> Optional[str]:
+        sessions = getattr(self, "active_sessions", None)
+        if sessions is None:
+            return None
+        now = time.time()
+        self._prune_active_sessions(now)
+        if session_id not in sessions:
+            return None
+        timestamps = getattr(self, "_active_session_timestamps", None)
+        if timestamps is None:
+            timestamps = {}
+            self._active_session_timestamps = timestamps
+        timestamps[session_id] = now
+        if isinstance(sessions, OrderedDict):
+            sessions.move_to_end(session_id)
+        return sessions[session_id]
+
+    def _set_active_session(self, session_id: str, model_id: str) -> None:
+        sessions = getattr(self, "active_sessions", None)
+        if sessions is None:
+            sessions = OrderedDict()
+            self.active_sessions = sessions
+        now = time.time()
+        self._prune_active_sessions(now)
+        timestamps = getattr(self, "_active_session_timestamps", None)
+        if timestamps is None:
+            timestamps = {}
+            self._active_session_timestamps = timestamps
+        sessions[session_id] = model_id
+        timestamps[session_id] = now
+        if isinstance(sessions, OrderedDict):
+            sessions.move_to_end(session_id)
+        max_entries = getattr(self, "_active_session_max_entries", 1000)
+        while len(sessions) > max_entries:
+            if isinstance(sessions, OrderedDict):
+                evicted_id, _ = sessions.popitem(last=False)
+            else:
+                evicted_id = next(iter(sessions))
+                sessions.pop(evicted_id, None)
+            timestamps.pop(evicted_id, None)
 
     def _discover_openai_compatible(
         self,
@@ -2081,9 +2185,7 @@ class RouterCore:
                         )
 
                     # Match curl behavior: fresh connection per request, no HTTP/1.1
-                    async with httpx.AsyncClient(
-                        http2=False, trust_env=False
-                    ) as client:
+                    async with self._rc_client() as client:
                         logger.info(f"Reality Router POST starting for {m['id']}...")
                         resp = await client.post(
                             f"{url}/decide",
@@ -2591,7 +2693,7 @@ class RouterCore:
                     )
                     headers["X-Reality-Check-Token"] = full_token
 
-                async with httpx.AsyncClient(http2=False, trust_env=False) as client:
+                async with self._rc_client() as client:
                     fb_resp = await client.post(
                         f"{url}/feedback",
                         json=fb_payload,
@@ -2746,11 +2848,9 @@ class RouterCore:
                 session_hash = hashlib.sha256(session_str.encode("utf-8")).hexdigest()
                 session_id = f"zed_{session_hash}"
 
-                if (
-                    getattr(self, "active_sessions", None) is not None
-                    and session_id in self.active_sessions
-                ):
-                    model_id = self.active_sessions[session_id]
+                sticky_model_id = self._get_active_session(session_id)
+                if sticky_model_id is not None:
+                    model_id = sticky_model_id
                     if model_id not in self.models:
                         raise HTTPException(
                             status_code=503, detail="Sticky model unavailable"
@@ -2862,9 +2962,7 @@ class RouterCore:
                                         "Reality Router token is missing in settings or unauthenticated! Authentication will be anonymous."
                                     )
 
-                                async with httpx.AsyncClient(
-                                    http2=False, trust_env=False
-                                ) as client:
+                                async with self._rc_client() as client:
                                     fb_resp = await client.post(
                                         f"{url}/feedback",
                                         json=fb_payload,
@@ -3218,9 +3316,7 @@ class RouterCore:
                             try:
                                 rc_id_str = str(decision.reality_check_id)
                                 # Match sequential curl behavior with fresh connection
-                                async with httpx.AsyncClient(
-                                    http2=False, trust_env=False
-                                ) as client:
+                                async with self._rc_client() as client:
                                     url = (
                                         get_routing_url()
                                         if strategy == "expected_utility"
@@ -3583,9 +3679,7 @@ class RouterCore:
                                     f"Sending auto-negative feedback for {status} response (decision {rc_id_str})"
                                 )
                                 # Match sequential curl behavior with fresh connection
-                                async with httpx.AsyncClient(
-                                    http2=False, trust_env=False
-                                ) as client:
+                                async with self._rc_client() as client:
                                     url = (
                                         get_routing_url()
                                         if strategy == "expected_utility"
@@ -3716,9 +3810,7 @@ class RouterCore:
 
                                     # 1. Calculate p_actual via /decide endpoint (Expert Mode)
                                     # Match sequential curl behavior with fresh connection
-                                    async with httpx.AsyncClient(
-                                        http2=False, trust_env=False
-                                    ) as client:
+                                    async with self._rc_client() as client:
                                         # Post-hoc assessment for tiered rerouting always uses get_rerouting_url()
                                         auth_token = get_reality_check_token()
                                         headers = {
@@ -3862,9 +3954,7 @@ class RouterCore:
                         try:
                             rc_id_str = str(decision.reality_check_id)
                             # Match sequential curl behavior with fresh connection
-                            async with httpx.AsyncClient(
-                                http2=False, trust_env=False
-                            ) as client:
+                            async with self._rc_client() as client:
                                 url = (
                                     get_routing_url()
                                     if strategy == "expected_utility"
@@ -3944,7 +4034,7 @@ class RouterCore:
                         session_str = f"{request.agent_id}_{first_msg_str}"
                         session_hash = hashlib.sha256(session_str.encode("utf-8")).hexdigest()
                         s_id = f"zed_{session_hash}"
-                        self.active_sessions[s_id] = decision.model_id
+                        self._set_active_session(s_id, decision.model_id)
                         logger.info(f"Registered sticky session {s_id} for model {decision.model_id}")
 
                     if not self.models[decision.model_id].get("supports_function_calling"):

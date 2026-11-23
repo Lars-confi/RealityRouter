@@ -1,5 +1,7 @@
 """Tests for hot-path performance optimizations."""
 import asyncio
+import httpx
+import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -176,3 +178,56 @@ def test_get_ranked_models_batches_routing_log_stats_into_single_query(tmp_path,
         assert abs(times["m-a"] - 1.0) < 1e-6 and abs(times["m-b"] - 2.0) < 1e-6 and abs(times["m-c"] - 3.0) < 1e-6
     finally:
         eng.dispose()
+
+
+@pytest.mark.asyncio
+async def test_pooled_http_client_reuse_and_close(base_router):
+    """Pooled httpx.AsyncClient is reused across RealitySignal calls and reset on close_http_client."""
+    req = RoutingRequest(
+        query="pool test",
+        agent_id="pool_agent",
+        parameters={"messages": [{"role": "user", "content": "pool test"}]},
+    )
+    mock_resp = httpx.Response(status_code=200, json={"prob_true": 0.5, "decision_id": 901})
+    with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=mock_resp)):
+        await base_router.get_ranked_models(req)
+        client1 = base_router._rc_http_client
+        assert client1 is not None and not client1.is_closed
+
+        await base_router.get_ranked_models(req)
+        assert base_router._rc_http_client is client1
+
+        await base_router.close_http_client()
+        assert base_router._rc_http_client is None
+        assert client1.is_closed
+
+        await base_router.get_ranked_models(req)
+        client2 = base_router._rc_http_client
+        assert client2 is not None and client2 is not client1
+        await base_router.close_http_client()
+
+
+def test_active_sessions_ttl_expiry(base_router):
+    """active_sessions evicts entries older than _active_session_ttl_seconds."""
+    base_router._active_session_ttl_seconds = 60.0
+    base_router._set_active_session("sess_stale", "model_a")
+    assert base_router._get_active_session("sess_stale") == "model_a"
+    assert base_router.active_sessions["sess_stale"] == "model_a"
+
+    base_router._active_session_timestamps["sess_stale"] -= 120.0
+    assert base_router._get_active_session("sess_stale") is None
+    assert "sess_stale" not in base_router.active_sessions
+
+
+def test_active_sessions_lru_cap(base_router):
+    """active_sessions evicts least-recently-used entry when exceeding _active_session_max_entries."""
+    base_router._active_session_max_entries = 2
+    base_router._set_active_session("s1", "m1")
+    base_router._set_active_session("s2", "m2")
+    assert base_router._get_active_session("s1") == "m1"
+
+    base_router._set_active_session("s3", "m3")
+    assert base_router._get_active_session("s1") == "m1"
+    assert base_router._get_active_session("s3") == "m3"
+    assert base_router._get_active_session("s2") is None
+    assert list(base_router.active_sessions.keys()) == ["s1", "s3"]

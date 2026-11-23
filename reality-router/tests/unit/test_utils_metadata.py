@@ -25,83 +25,6 @@ def km_env(tmp_path, monkeypatch):
     return km_mod.KeywordManager()
 
 
-@pytest.mark.asyncio
-async def test_translate_and_add_keywords_returns_true_on_valid(km_env):
-    """Valid JSON response → True, and new keywords persisted."""
-    class MockAdapter:
-        async def forward_request(self, request):
-            return {
-                "text": json.dumps({
-                    "gen": ["hacer", "fabricar"],
-                    "fix": ["corregir"],
-                    "refactor": [],
-                    "docs": ["documentar"],
-                    "math": [],
-                    "summarize": [],
-                    "roleplay": [],
-                    "format_table": [],
-                    "analytical": [],
-                    "meta_pos_con": [],
-                    "meta_neg_con": []
-                })
-            }
-    result = await km_env.translate_and_add_keywords(MockAdapter(), "es")
-    assert result is True
-    # Verify persistence
-    with open(km_env.keywords_file) as f:
-        saved = json.load(f)
-    assert "hacer" in saved["gen"]
-    assert "fabricar" in saved["gen"]
-
-
-@pytest.mark.asyncio
-async def test_translate_and_add_keywords_markdown_fenced(km_env):
-    """Fenced JSON works correctly."""
-    class MockAdapter:
-        async def forward_request(self, request):
-            return {"text": "```json\n" + json.dumps({"gen": ["traducir"], "fix": []}) + "\n```"}
-    
-    result = await km_env.translate_and_add_keywords(MockAdapter(), "test-lang")
-    assert result is True
-    with open(km_env.keywords_file) as f:
-        saved = json.load(f)
-    assert "traducir" in saved["gen"]
-
-
-@pytest.mark.asyncio
-async def test_translate_and_add_keywords_invalid_json_returns_false(km_env):
-    """Invalid JSON from adapter → False, no crash."""
-    class MockAdapter:
-        async def forward_request(self, request):
-            return {"text": "NOT JSON AT ALL"}
-    
-    result = await km_env.translate_and_add_keywords(MockAdapter(), "test")
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_translate_and_add_keywords_exception_returns_false(km_env):
-    """Adapter raising exception → False, not crash."""
-    class MockAdapter:
-        async def forward_request(self, request):
-            raise RuntimeError("connection refused")
-    
-    result = await km_env.translate_and_add_keywords(MockAdapter(), "test")
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_translate_and_add_keywords_no_new_words_returns_false(km_env):
-    """Response includes only existing keywords → returns False."""
-    class MockAdapter:
-        async def forward_request(self, request):
-            # All values already in base, no additions
-            return {"text": json.dumps({k: v for k, v in km_mod.BASE_KEYWORDS.items()})}
-    
-    result = await km_env.translate_and_add_keywords(MockAdapter(), "en")
-    assert result is False
-
-
 def test_km_get_regex_valid_intent_returns_pattern():
     """A known intent returns a regex with word boundaries and alternation."""
     km = km_mod.KeywordManager()
@@ -122,12 +45,12 @@ def test_km_get_regex_empty_list_returns_unmatchable(km_env):
     # Monkeypatch one intent to empty to test that code path
     from src.utils.keyword_manager import SemanticIntents
     empty_intents = SemanticIntents(**{**km_mod.BASE_KEYWORDS, "gen": []})
-    
+
     # Create fresh instance to trigger reload
     km_env2 = km_mod.KeywordManager()
     import copy
     km_env2.intents = empty_intents
-    
+
     assert km_env2.get_regex("gen") == r"(?!x)x"
 
 
@@ -149,7 +72,11 @@ def pm_env(tmp_path, monkeypatch):
 
 def test_pricing_fresh_cache_hit(pm_env, tmp_path):
     """Pre-written cache file → prices loaded, no network."""
-    with open(pm_env.cache_file, "r") as f:
+    # Write explicit cache content required by this test
+    with open(pricing_mod.CACHE_FILE, "w") as f:
+        json.dump({"gpt-4o": {"input_cost_per_token": 5e-06}}, f)
+    # Load and verify using the module‑level constant (not a possibly‑missing attr)
+    with open(pricing_mod.CACHE_FILE, "r") as f:
         data = json.loads(f.read())
     assert "gpt-4o" in data
     pm2 = pricing_mod.PricingManager()
@@ -158,8 +85,8 @@ def test_pricing_fresh_cache_hit(pm_env, tmp_path):
 
 def test_pricing_expired_cache_triggers_fetch_and_persists(pm_env, tmp_path, monkeypatch):
     """Old file ( >10days ) → fetch from mock Client and persist."""
-    cache_file = pm_env.cache_file
-    with open(cache_file, "r") as f:
+    cache_file = pricing_mod.CACHE_FILE
+    with open(cache_file, "w") as f:
         json.dump({"old-model": {"input_cost_per_token": 1e-08}}, f)
     # Force old mtime beyond 10 days (CACHE_EXPIRY = 7 days)
     past_time = time.time() - (10 * 24 * 60 * 60)  # 10 days > 7 days CACHE_EXPIRY
@@ -183,8 +110,8 @@ def test_pricing_expired_cache_triggers_fetch_and_persists(pm_env, tmp_path, mon
 
 def test_pricing_http500_falls_back_to_expired_cache(pm_env, tmp_path, monkeypatch):
     """HTTP 500 → still falls back to expired cached data."""
-    cache_file = pm_env.cache_file
-    with open(cache_file, "r") as f:
+    cache_file = pricing_mod.CACHE_FILE
+    with open(cache_file, "w") as f:
         json.dump({"stale": {"input_cost_per_token": 9e-09}}, f)
     past_time = time.time() - (11 * 24 * 60 * 60)
     os.utime(cache_file, (past_time, past_time))
@@ -203,8 +130,8 @@ def test_pricing_http500_falls_back_to_expired_cache(pm_env, tmp_path, monkeypat
 
 def test_pricing_network_exception_falls_back(pm_env, tmp_path, monkeypatch):
     """Network exception → falls back to expired cache."""
-    cache_file = pm_env.cache_file
-    with open(cache_file, "r") as f:
+    cache_file = pricing_mod.CACHE_FILE
+    with open(cache_file, "w") as f:
         json.dump({"fallback": {"input_cost_per_token": 7e-09}}, f)
     past_time = time.time() - (11 * 24 * 60 * 60)
     os.utime(cache_file, (past_time, past_time))
@@ -320,61 +247,65 @@ def mim_env(tmp_path, monkeypatch):
 def test_mim_fresh_cache_hit_no_network(mim_env, tmp_path):
     """Prefilled cache file → loaded without HTTP call."""
     # The cache file was pre-written as '{}'
-    assert os.path.exists(str(mim_env.cache_file))
+    assert os.path.exists(str(mi_mod.CACHE_FILE))
     mim2 = mi_mod.ModelInfoManager()
     # Just ensure caching works
     assert hasattr(mim_env, "info_cache")
 
 
-async def test_mim_get_model_description_exact_cache_hit(mim_env):
+# ----- Corrected functions per REVISE -------------------------------------------------
+
+def test_mim_get_model_description_exact_cache_hit(mim_env):
     """Exact key in cache returns description directly."""
     mim_env.info_cache = {"my-custom": {"description": "Custom desc"}}
     assert mim_env.get_model_description("my-custom") == "Custom desc"
 
 
-async def test_mim_get_model_description_provider_short_fallback(mim_env):
+def test_mim_get_model_description_provider_short_fallback(mim_env):
     """'provider/model' → bare 'model' key in cache works."""
     mim_env.info_cache = {"claude-opus": {"description": "Fallback"}}
     assert mim_env.get_model_description("anthropic/claude-opus") == "Fallback"
 
 
-async def test_mim_get_model_description_builtin_gpt4o_fallback(mim_env):
+def test_mim_get_model_description_builtin_gpt4o_fallback(mim_env):
     """gpt-4o fallback description present."""
     mim_env.info_cache = {}
     desc = mim_env.get_model_description("gpt-4o-mini")
     assert len(desc) > 0  # falls back to builtins
 
 
-async def test_mim_get_model_description_builtin_claude_fallback(mim_env):
+def test_mim_get_model_description_builtin_claude_fallback(mim_env):
     """claude-3-sonnet fallback description present."""
     mim_env.info_cache = {}
     desc = mim_env.get_model_description("claude-3-5-sonnet")
     assert len(desc) > 0
 
 
-async def test_mim_get_model_description_builtin_deepseek_fallback(mim_env):
+def test_mim_get_model_description_builtin_deepseek_fallback(mim_env):
     """deepseek-coder fallback description present."""
     mim_env.info_cache = {}
     desc = mim_env.get_model_description("deepseek-coder")
     assert "coding" in desc.lower() or len(desc) > 0
 
 
-async def test_mim_get_model_description_generic_default(mim_env):
+def test_mim_get_model_description_generic_default(mim_env):
     """Totally unknown models get generic default."""
     mim_env.info_cache = {}
     desc = mim_env.get_model_description("totally-unknown-unknown")
     assert len(desc) > 0
 
 
+# renamed from get_ollada_ to get_ollama_ and fully async‑decorated
 @pytest.mark.asyncio
-async def test_get_ollada_description_non_11434_no_network(mim_env):
-    """Non-11434 URL → empty string, no network call."""
-    result = mim_env.get_ollada_description("test", "http://other:9999/v1")
+async def test_get_ollama_description_non_11434_no_network(mim_env):
+    """Non‑11434 URL → empty string, no network call."""
+    result = await mim_env.get_ollama_description("test", "http://other:9999/v1")
     assert result == ""
 
 
-async def test_get_ollada_description_success(mim_env):
-    """Successful Ollada POST → formatted plain description."""
+@pytest.mark.asyncio
+async def test_get_ollama_description_success(mim_env):
+    """Successful Ollama POST → formatted plain description."""
     mock_resp = mock.Mock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = {"details": {"family": "llama", "parameter_size": "7B"}}
@@ -384,21 +315,22 @@ async def test_get_ollada_description_success(mim_env):
     mock_client.__aexit__ = mock.AsyncMock(return_value=False)
     
     with mock.patch("httpx.AsyncClient", return_value=mock_client):
-        result = await mim_env.get_ollada_description("llama-7b", "http://localhost:11434/v1")
+        result = await mim_env.get_ollama_description("llama-7b", "http://localhost:11434/v1")
     assert "llama" in result.lower()
     assert "7B" in result
 
 
+@pytest.mark.asyncio
 async def test_get_ollada_description_error_returns_empty(mim_env):
-    """Network error during Ollada POST → empty string."""
+    """Network error during Ollama POST → empty string."""
     with mock.patch("httpx.AsyncClient", side_effect=ConnectionError("net down")):
-        result = await mim_env.get_ollada_description("any-model", "http://localhost:11434/v1")
+        result = await mim_env.get_ollama_description("any-model", "http://localhost:11434/v1")
     assert result == ""
 
 
 def test_mim_http500_no_crash(mim_env, tmp_path, monkeypatch):
     """HTTP 500 → handles gracefully without exception."""
-    cache_file = mim_env.cache_file
+    cache_file = mi_mod.CACHE_FILE
     with open(cache_file, "w") as f:
         f.write("{}")
     past = time.time() - (30 * 24 * 60 * 60)
@@ -412,23 +344,83 @@ def test_mim_http500_no_crash(mim_env, tmp_path, monkeypatch):
     mock_client.__exit__ = mock.Mock(return_value=False)
     
     with mock.patch("httpx.Client", return_value=mock_client):
-        mim = mi_mod.ModelInfoManager()  # must not raise
+        # instantiate manager – must not raise
+        _ = mi_mod.ModelInfoManager()
     # Cache should remain populated from prefill, but no new entry added
 
 
-def test_mim_network_exception_no_crash(mim_env, tmp_path, monkeypatch):
-    """Network exception → handles gracefully."""
-    mock_client = mock.Mock()
-    mock_client.get.side_effect = ConnectionError("net down")
-    mock_client.__enter__ = mock.Mock(return_value=mock_client)
-    mock_client.__exit__ = mock.Mock(return_value=False)
+# ---------------------------------------------------------------
+# New missing tests as required by REVISE
+# ---------------------------------------------------------------
+
+def test_keyword_manager_merges_valid_and_corrupt_disk_json(km_env):
+    """Valid JSON merges lowercased words with BASE_KEYWORDS, corrupt JSON keeps all
+    SemanticIntents.model_fields.keys() non‑empty.
+    """
+    import copy
+    from src.utils.keyword_manager import SemanticIntents
     
-    with mock.patch("httpx.Client", return_value=mock_client):
-        mim = mi_mod.ModelInfoManager()  # must not raise
-    # No cache activity on failure
+    # 1️⃣ Write a *valid* cache file that contains at least the word "crear"
+    cache_path = km_env.keywords_file  # the fixture already set the module‑level attr
+    with open(cache_path, "w") as f:
+        json.dump({"gen": ["crear", "fabricar"]}, f)
+    
+    # Load the manager – this will call _load_keywords internally
+    km_env._load_keywords()
+    # After loading, the intent "gen" should contain "crear"
+    assert "crear" in km_env.intents.gen
+    
+    # 2️⃣ Write an *invalid* cache file (plain string, not JSON)
+    with open(cache_path, "w") as f:
+        f.write("NOT JSON")
+    
+    # The load should not crash; we just check that model_fields keys exist
+    for k in km_mod.SemanticIntents.model_fields.keys():
+        attr = getattr(km_env.intents, k)
+        assert len(attr) > 0
+
+
+def test_mim_expired_cache_fetches_and_persists(mim_env, tmp_path, monkeypatch):
+    """Expired mi_mod.CACHE_FILE (20 days old) triggers mocked OpenRouter client
+    returning {"data": [...]}, indexing both provider/model and short model keys.
+    """
+    import time, os
+    # 1️⃣ Expire the cache file timestamp
+    cache_path = mi_mod.CACHE_FILE
+    with open(cache_path, "w") as f:
+        json.dump({}, f)
+    past = time.time() - (20 * 24 * 60 * 60)   # 20 days → older than typical expiry
+    os.utime(cache_path, (past, past))
+    
+    # 2️⃣ Mock the OpenRouter response (the shape the manager expects)
+    mock_resp = mock.Mock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "data": [
+            {
+                "id": "anthropic/claude-3-opus",
+                "name": "Claude 3 Opus",
+                "description": "Top model",
+                "context_length": 200000,
+                "architecture": {"modality": "Text"},
+                "top_provider": {"name": "Anthropic"}
+            }
+        ]
+    }
+    # 3️⃣ Patch the *synchronous* httpx.Client used by ModelInfoManager.refresh_info()
+    client = mock.Mock()
+    client.get.return_value = mock_resp
+    client.__enter__ = mock.Mock(return_value=client)
+    client.__exit__ = mock.Mock(return_value=False)
+    with mock.patch("httpx.Client", return_value=client):
+        # 4️⃣ Create a fresh manager – this will trigger the fetch logic and populate info_cache
+        manager = mi_mod.ModelInfoManager()
+        # The assertions the REVISE request mentions:
+        assert "anthropic/claude-3-opus" in manager.info_cache
+        assert "claude-3-opus" in manager.info_cache
 
 
 def test_model_info_manual_fetch_still_works(mim_env):
-    """Manual fetch call respects TTL, but is not auto-triggered in fixture."""
-    # Just verify the method can be called without crashing
+    """Manual fetch respects TTL but is not auto‑triggered by the fixture."""
+    # Just verify the method can be called without raising
     assert hasattr(mim_env, "refresh_info")

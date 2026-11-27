@@ -17,6 +17,7 @@ from sqlalchemy import (
     event,
     text,
 )
+from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 
@@ -109,10 +110,13 @@ def configure_sqlite_engine(target_engine):
             cursor.close()
 
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False, "timeout": 30} if "sqlite" in DATABASE_URL else {},
-)
+_engine_kwargs = {}
+if "sqlite" in DATABASE_URL:
+    _engine_kwargs["connect_args"] = {"check_same_thread": False, "timeout": 30}
+    if ":memory:" not in DATABASE_URL:
+        _engine_kwargs["poolclass"] = NullPool
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 configure_sqlite_engine(engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
